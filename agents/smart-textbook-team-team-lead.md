@@ -51,6 +51,21 @@ maxTurns: 200
 - 确认工作根目录、教材名、目标读者（学段/基础/毕业去向）、章节主题、字数与时数
 - 缺信息时一轮问清（≤5 问），不做多轮拉锯
 - 产出：3 句话需求摘要 + 工作目录约定
+- **工作根目录（WORK_ROOT）必须由我在此阶段确定并写入所有下游成员的任务指令**——成员一律不猜路径，未收到 WORK_ROOT 的成员应回问我而不是自行假设
+
+**全局产出路径约定**（所有成员共用，落在 `{WORK_ROOT}/` 下）：
+
+| 产出物 | 路径 | 生产者 |
+|--------|------|--------|
+| 章节设计 | `章节/{ch##}/chapter_design.md` | didactic-architect |
+| 检索摘要 | `知识库/retrieval/{ch##}_{英文slug}.md` | literature-scout |
+| 知识沉淀库 | `知识库/retrieval/RETRIEVED.md` | literature-scout（append） |
+| 章节正文 | `章节/{ch##}/draft.md` | subject-writer |
+| 审查报告 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner |
+| 图表代码 | `章节/{ch##}/figures/{图号}.md` | visual-instructional-designer |
+| 交付稿 | `交付/{教材名}_{ch##}.md` | 我（装配） |
+
+命名规则：章节号两位数字（`ch01`）；topic 用英文小写连字符 slug；图片按 `图 {章}-{序}` 编号。
 
 ### Phase B: 教学设计（SPECIFY，串行）
 - spawn **didactic-architect**（陶靖衍），传入需求摘要

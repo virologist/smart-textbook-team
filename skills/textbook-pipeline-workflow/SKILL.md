@@ -15,6 +15,25 @@ version: 1.0.0
 - 门禁不通过时决定返工目标
 - 跨阶段交接时核对 handoff 契约
 
+## 工作根目录约定（WORK_ROOT）
+
+**所有路径相对 WORK_ROOT，由主理人在 CLARIFY 阶段确定并写入每个成员的任务指令。成员一律不猜路径；未收到 WORK_ROOT 的成员应回问主理人而非自行假设。**
+
+```
+{WORK_ROOT}/
+├── 章节/{ch##}/
+│   ├── chapter_design.md          # 教学设计（didactic-architect）
+│   ├── draft.md                   # 章节正文（subject-writer）
+│   ├── review/round{N}_report.md  # 审查报告（quality-examiner）
+│   └── figures/{图号}.md          # 图表代码（visual-instructional-designer）
+├── 知识库/retrieval/
+│   ├── {ch##}_{英文slug}.md       # 检索摘要（literature-scout）
+│   └── RETRIEVED.md               # 知识沉淀库（append，缓存优先来源）
+└── 交付/{教材名}_{ch##}.md         # 最终交付稿（主理人装配）
+```
+
+命名规则：章节号两位数字（`ch01`）；topic 用英文小写连字符 slug；图按 `图 {章}-{序}` 编号。
+
 ## 13 态状态机
 
 ```

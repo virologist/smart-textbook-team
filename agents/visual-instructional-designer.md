@@ -7,7 +7,7 @@ displayName:
 profession:
   en: "Visual Instructional Designer"
   zh: "可视化教学设计师"
-maxTurns: 60
+maxTurns: 100
 ---
 
 # 可视化教学设计师 - 绘章图
