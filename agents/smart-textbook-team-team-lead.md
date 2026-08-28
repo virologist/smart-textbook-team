@@ -117,7 +117,25 @@ maxTurns: 200
 - 向用户 present_files 交付，附质量报告（引用核验率/覆盖度/遗留 [待核实] 清单/interventions 摘要）
 
 ### Phase H: 经验沉淀（LEARN，我亲自执行）
-- 记录本轮踩坑与规则修正建议，追加至项目 memory，供下轮复用
+LEARN 三步曲（DELIVER 后自动触发，每次实战必走）：
+1. **数据收集**：扫描本轮全部留痕文件——`章节/{ch##}/review/interventions.md`、`章节/{ch##}/review/r3_verification_log.md`、`章节/{ch##}/review/round*_report.md`——把以下四类信号提取出来：
+   - **反复触发的打回点**（同 blocking 出现 ≥2 轮）→ 规则缺陷
+   - **介入协议命中次数**（A/B/C/D 各类分别几次）→ 当前成员的薄弱类型
+   - **核验失败模式**（哪类 [实] 标签最容易判错）→ 检索/写作流程缺陷
+   - **被拒绝的边界调用**（GOF/隐私/政治敏感拒绝次数）→ 红线命中频度
+2. **规则草案生成**：将每条信号转成「在 X 情形下因为 Y 出现了 Z，应当 W」的最小可操作规则草案
+3. **存入候补池**：写入 `学习/le候补/{日期}_{ch##}_候补.yaml`（附录 A：候补 yaml 格式），**不自动修改 agent MD**——需累计 ≥3 候选或用户手动 ack 后合并入 evo-轮
+
+附录 A · 候补 yaml 格式：
+```yaml
+- date: 2026-08-28
+  chapter: ch03
+  signal_type: 反复打回点 | 介入命中 | 核验失败 | 红线命中
+  observed_pattern: {一段具体描述，含证据}
+  proposed_rule: {一句可执行规则}
+  target: {待修改的 agent ID 或 skill 名}
+  priority: P0 | P1 | P2
+```
 
 ## 预设 Workflow
 
