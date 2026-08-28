@@ -1,0 +1,117 @@
+{
+  "name": "smart-textbook-team",
+  "version": "1.0.0",
+  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification.",
+  "author": {
+    "name": "TZUVet",
+    "email": "tzuvet@example.com"
+  },
+  "agents": [
+    "./agents/smart-textbook-team-team-lead.md",
+    "./agents/didactic-architect.md",
+    "./agents/literature-scout.md",
+    "./agents/subject-writer.md",
+    "./agents/quality-examiner.md",
+    "./agents/visual-instructional-designer.md"
+  ],
+  "skills": [
+    "./skills/textbook-pipeline-workflow",
+    "./skills/citation-verify"
+  ],
+
+  "expertType": "team",
+  "agentName": "smart-textbook-team-team-lead",
+  "teamInfo": {
+    "leadAgent": "smart-textbook-team-team-lead",
+    "memberAgents": [
+      "didactic-architect",
+      "literature-scout",
+      "subject-writer",
+      "quality-examiner",
+      "visual-instructional-designer"
+    ]
+  },
+
+  "displayName": {
+    "en": "Smart Textbook Team",
+    "zh": "智能教材编写天团"
+  },
+  "profession": {
+    "en": "Smart Textbook Team",
+    "zh": "智能教材编写天团"
+  },
+  "displayDescription": {
+    "en": "Textbook authoring team orchestrating a 13-state pipeline: instructional design, literature retrieval, chapter writing, 4-round review, and delivery, with zero-tolerance citation verification.",
+    "zh": "十三态流水线编排教材编写团队，覆盖教学设计、文献检索、撰写、四轮审查与交付，引用核验零容忍。"
+  },
+  "avatar": "avatars/smart-textbook-team-team-lead.png",
+  "categoryId": "06-ContentCreative",
+  "defaultInitPrompt": {
+    "zh": "我是糜编澜，智能教材编写天团主理人。告诉我教材名称、目标读者与本章主题，我会先确认工作根目录与知识库状态，再启动「设计→检索→撰写→审查→交付」全流程编排。",
+    "en": "I'm Mi, lead orchestrator of the Smart Textbook Team. Tell me your textbook title, target readers, and chapter topic — I'll verify the work root and knowledge base, then launch the design-retrieve-write-review-deliver pipeline."
+  },
+  "plugin": "smart-textbook-team",
+  "tags": [
+    { "en": "Textbook Authoring", "zh": "教材编写" },
+    { "en": "Instructional Design", "zh": "教学设计" },
+    { "en": "Anti-Hallucination Review", "zh": "防幻觉审查" }
+  ],
+  "quickPrompts": [
+    {
+      "zh": "我是糜编澜，智能教材编写天团主理人。告诉我教材名称、目标读者与本章主题，我会先确认工作根目录与知识库状态，再启动「设计→检索→撰写→审查→交付」全流程编排。",
+      "en": "I'm Mi, lead orchestrator of the Smart Textbook Team. Tell me your textbook title, target readers, and chapter topic — I'll verify the work root and knowledge base, then launch the design-retrieve-write-review-deliver pipeline."
+    },
+    {
+      "zh": "我要编写《XX》教材的「XX」章节，读者是高职大二学生，请走完整流程出一章约2万字的可用初稿。",
+      "en": "I need one ~20k-word draft chapter of my textbook for vocational college sophomores — run the full pipeline."
+    },
+    {
+      "zh": "我已有章节草稿，请只做四轮审查（结构/内容/数据/风格）并核验全部 PMID/DOI 引用。",
+      "en": "I have a draft chapter — run the 4-round review only and verify every PMID/DOI citation."
+    }
+  ],
+  "members": [
+    {
+      "id": "smart-textbook-team-team-lead",
+      "displayName": { "en": "Mi Bianlan", "zh": "糜编澜" },
+      "profession": { "en": "Chief Textbook Orchestrator", "zh": "教材总编辑" },
+      "avatar": "avatars/smart-textbook-team-team-lead.png",
+      "role": "lead"
+    },
+    {
+      "id": "didactic-architect",
+      "displayName": { "en": "Tao Jingyan", "zh": "陶靖衍" },
+      "profession": { "en": "Instructional Design Architect", "zh": "教学设计架构师" },
+      "avatar": "avatars/didactic-architect.png",
+      "role": "member"
+    },
+    {
+      "id": "literature-scout",
+      "displayName": { "en": "Su Haiqiong", "zh": "粟海琼" },
+      "profession": { "en": "Literature Retrieval Specialist", "zh": "文献检索专员" },
+      "avatar": "avatars/literature-scout.png",
+      "role": "member"
+    },
+    {
+      "id": "subject-writer",
+      "displayName": { "en": "Zhu Shubai", "zh": "祝书白" },
+      "profession": { "en": "Subject Content Writer", "zh": "学科内容撰写师" },
+      "avatar": "avatars/subject-writer.png",
+      "role": "member"
+    },
+    {
+      "id": "quality-examiner",
+      "displayName": { "en": "Yan Zhengci", "zh": "严正词" },
+      "profession": { "en": "Quality Control Examiner", "zh": "质量控制审查官" },
+      "avatar": "avatars/quality-examiner.png",
+      "role": "member"
+    },
+    {
+      "id": "visual-instructional-designer",
+      "displayName": { "en": "Hui Zhangtu", "zh": "绘章图" },
+      "profession": { "en": "Visual Instructional Designer", "zh": "可视化教学设计师" },
+      "avatar": "avatars/visual-instructional-designer.png",
+      "role": "member"
+    }
+  ]
+}
