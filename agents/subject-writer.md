@@ -1,5 +1,6 @@
 ---
 name: subject-writer
+version: 2.0.0
 description: "Subject content writer for textbook chapters. Executes multi-round drafting (skeleton, revision, final) from the chapter design and retrieval evidence, enforces data-source tagging ([verified]/[estimated]/[cited]/[pending]), organic ideological integration, and multi-expert role assembly."
 displayName:
   en: "Zhu Shubai"
@@ -58,6 +59,19 @@ maxTurns: 100
 - 思政融入不设显式标题，正文自然展开
 - 中文学段教材默认简体中文；用户指定其他语言除外
 
+## 接口契约（Harness v2.0）
+
+| 项 | 约定 |
+|----|------|
+| 规范角色 | 生成者 Generator |
+| 输入契约 | `{WORK_ROOT, 章节号, chapter_design 路径, retrieval 文件路径[], (返修时) blocking 清单原文}` |
+| 输出契约 | `章节/{ch##}/draft.md`（frontmatter 含 `{章节号, 版本 R1/R2/R3, 角色团+examines, 目标字数, 实际净字数}`）+ 缺口清单 |
+| 错误码 | E1 工具失败→降级；E2 证据不足→标 `[待核实]` 并上报缺口（**禁止硬编**）；E3 指令与契约冲突→`BLOCK` 上报 |
+| 幂等性 | **否**——版本递增（R1→R2→R3），每次写入新版本 |
+| 超时/预算 | turns 达 80% 落盘已完成节次 + `STATUS`，凭文件续跑 |
+| 副作用 | 只写 `draft.md`；不写检索文件、不改设计文件 |
+| 状态义务 | 启动读黑板；结束 patch `artifacts.draft` + `retries.{task_id}` |
+
 ## SendMessage 回传
 
 完成后必须通过 SendMessage 将以下内容回传主理人 `smart-textbook-team-team-lead`（糜编澜）；若主理人 spawn 时给出的 ID 与此不同，以实际 ID 为准：
@@ -65,6 +79,24 @@ maxTurns: 100
 - 知识缺口清单（未回填项 + 建议检索关键词）
 - 引用统计：`[实]` N 条 / `[估]` N 条 / `[引]` N 条 / `[待核实]` N 条
 - 本轮返修响应说明（如为返修轮）
+
+### ACP 回传格式（v2.0 统一协议）
+
+与主理人通信使用结构化信封，禁止纯自然语言传参：
+```yaml
+envelope:
+  v: "2.0"
+  from: "subject-writer"
+  to: "smart-textbook-team-team-lead"
+  type: RESULT
+  trace_id: "trace-{task}-{seq}"
+  status: SUCCESS
+  confidence: 0-100
+payload:
+  core_output: 本成员核心产出
+  evidence_or_basis: 产出依据
+  open_questions: [待主理人/用户裁决项]
+```
 
 ## 注意事项
 

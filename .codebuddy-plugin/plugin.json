@@ -1,7 +1,7 @@
 {
   "name": "smart-textbook-team",
-  "version": "1.0.0",
-  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification.",
+  "version": "2.0.0",
+  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members.",
   "author": {
     "name": "TZUVet",
     "email": "tzuvet@example.com"
@@ -16,9 +16,10 @@
   ],
   "skills": [
     "./skills/textbook-pipeline-workflow",
-    "./skills/citation-verify"
+    "./skills/citation-verify",
+    "./skills/agent-harness-protocol",
+    "./skills/multi-agent-patterns"
   ],
-
   "expertType": "team",
   "agentName": "smart-textbook-team-team-lead",
   "teamInfo": {
@@ -31,7 +32,6 @@
       "visual-instructional-designer"
     ]
   },
-
   "displayName": {
     "en": "Smart Textbook Team",
     "zh": "智能教材编写天团"
@@ -52,9 +52,18 @@
   },
   "plugin": "smart-textbook-team",
   "tags": [
-    { "en": "Textbook Authoring", "zh": "教材编写" },
-    { "en": "Instructional Design", "zh": "教学设计" },
-    { "en": "Anti-Hallucination Review", "zh": "防幻觉审查" }
+    {
+      "en": "Textbook Authoring",
+      "zh": "教材编写"
+    },
+    {
+      "en": "Instructional Design",
+      "zh": "教学设计"
+    },
+    {
+      "en": "Anti-Hallucination Review",
+      "zh": "防幻觉审查"
+    }
   ],
   "quickPrompts": [
     {
@@ -73,43 +82,79 @@
   "members": [
     {
       "id": "smart-textbook-team-team-lead",
-      "displayName": { "en": "Mi Bianlan", "zh": "糜编澜" },
-      "profession": { "en": "Chief Textbook Orchestrator", "zh": "教材总编辑" },
+      "displayName": {
+        "en": "Mi Bianlan",
+        "zh": "糜编澜"
+      },
+      "profession": {
+        "en": "Chief Textbook Orchestrator",
+        "zh": "教材总编辑"
+      },
       "avatar": "avatars/smart-textbook-team-team-lead.png",
       "role": "lead"
     },
     {
       "id": "didactic-architect",
-      "displayName": { "en": "Tao Jingyan", "zh": "陶靖衍" },
-      "profession": { "en": "Instructional Design Architect", "zh": "教学设计架构师" },
+      "displayName": {
+        "en": "Tao Jingyan",
+        "zh": "陶靖衍"
+      },
+      "profession": {
+        "en": "Instructional Design Architect",
+        "zh": "教学设计架构师"
+      },
       "avatar": "avatars/didactic-architect.png",
       "role": "member"
     },
     {
       "id": "literature-scout",
-      "displayName": { "en": "Su Haiqiong", "zh": "粟海琼" },
-      "profession": { "en": "Literature Retrieval Specialist", "zh": "文献检索专员" },
+      "displayName": {
+        "en": "Su Haiqiong",
+        "zh": "粟海琼"
+      },
+      "profession": {
+        "en": "Literature Retrieval Specialist",
+        "zh": "文献检索专员"
+      },
       "avatar": "avatars/literature-scout.png",
       "role": "member"
     },
     {
       "id": "subject-writer",
-      "displayName": { "en": "Zhu Shubai", "zh": "祝书白" },
-      "profession": { "en": "Subject Content Writer", "zh": "学科内容撰写师" },
+      "displayName": {
+        "en": "Zhu Shubai",
+        "zh": "祝书白"
+      },
+      "profession": {
+        "en": "Subject Content Writer",
+        "zh": "学科内容撰写师"
+      },
       "avatar": "avatars/subject-writer.png",
       "role": "member"
     },
     {
       "id": "quality-examiner",
-      "displayName": { "en": "Yan Zhengci", "zh": "严正词" },
-      "profession": { "en": "Quality Control Examiner", "zh": "质量控制审查官" },
+      "displayName": {
+        "en": "Yan Zhengci",
+        "zh": "严正词"
+      },
+      "profession": {
+        "en": "Quality Control Examiner",
+        "zh": "质量控制审查官"
+      },
       "avatar": "avatars/quality-examiner.png",
       "role": "member"
     },
     {
       "id": "visual-instructional-designer",
-      "displayName": { "en": "Hui Zhangtu", "zh": "绘章图" },
-      "profession": { "en": "Visual Instructional Designer", "zh": "可视化教学设计师" },
+      "displayName": {
+        "en": "Hui Zhangtu",
+        "zh": "绘章图"
+      },
+      "profession": {
+        "en": "Visual Instructional Designer",
+        "zh": "可视化教学设计师"
+      },
       "avatar": "avatars/visual-instructional-designer.png",
       "role": "member"
     }

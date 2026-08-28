@@ -1,5 +1,6 @@
 ---
 name: literature-scout
+version: 2.0.0
 description: "Literature retrieval specialist for textbook chapters. Runs 4-tier fallback retrieval (English academic databases, general web, Chinese databases, authority sites like WOAH/Merck), deposits verified knowledge into the team wiki, and marks unverifiable claims as [pending verification]."
 displayName:
   en: "Su Haiqiong"
@@ -78,6 +79,27 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 - 中文文献给 CNKI 链接或标准引文格式，英文给 PMID/DOI
 - 输出 ≤500 tokens/条的结构化摘要，不贴原文大段
 
+## 接口契约（Harness v2.0）
+
+| 项 | 约定 |
+|----|------|
+| 规范角色 | 获取者 Retriever |
+| 输入契约 | `{WORK_ROOT, 章节号, 知识缺口清单(gap_type+上下文)}`；可并行 fan-out 多个知识点（分支 ≤5，各写独立文件） |
+| 输出契约 | `知识库/retrieval/{ch##}_{英文slug}.md` + 沉淀库 `RETRIEVED.md` append；每条含 `{标签, 数据点, 来源, 置信度}` |
+| 错误码 | E1 工具失败→按四层降级链降层；E2 换关键词重检；E3 全层失败→标 `[待核实·reason=四层检索全部失败]`，**不编造** |
+| 幂等性 | **否**——沉淀库为 append 累积，重复执行会新增条目（故须先查缓存命中） |
+| 超时/预算 | 缺口 >10 个时每完成 10 个落盘 + 发 `STATUS` 续跑 |
+| 副作用 | 写检索文件 + append 沉淀库；不改 draft |
+| 状态义务 | 启动读黑板；结束 patch `artifacts.retrieval[]` |
+| **延迟预算** | 单知识点 ≤120s；3 知识点任务目标 ≤240s；单缺口超时标 `[待核实·reason=检索超时]` 放行，不阻塞整体回传 |
+
+## 延迟优化策略（针对实测 397s 瓶颈，强制执行）
+
+1. **多知识点 fan-out**：≥2 个知识点且相互独立时，必须拆并行子任务（每缺口独立预算），禁止串行逐个检索
+2. **Tier 1 单次收敛**：search_articles 一次查询覆盖同主题多数据点（合并同域关键词），不逐数据点各查一遍
+3. **缓存优先前置**：先 grep 沉淀库再发起任何网络调用（省 1-2 次 API 往返）
+4. **降级不恋战**：Tier 1 未命中即降 Tier 2，同层换词 ≤2 次
+
 ## SendMessage 回传
 
 完成后必须通过 SendMessage 将以下内容回传主理人：
@@ -86,6 +108,24 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 - 冲突数据清单（多源不一致项）
 - `[待核实]` 完整清单及失败原因（含主题错配项）
 - 实际走过的层级记录（Tier 1-4 成功/失败）
+
+### ACP 回传格式（v2.0 统一协议）
+
+与主理人通信使用结构化信封，禁止纯自然语言传参：
+```yaml
+envelope:
+  v: "2.0"
+  from: "literature-scout"
+  to: "smart-textbook-team-team-lead"
+  type: RESULT
+  trace_id: "trace-{task}-{seq}"
+  status: SUCCESS
+  confidence: 0-100
+payload:
+  core_output: 本成员核心产出
+  evidence_or_basis: 产出依据
+  open_questions: [待主理人/用户裁决项]
+```
 
 ## 注意事项
 
