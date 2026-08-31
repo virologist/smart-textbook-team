@@ -1,7 +1,7 @@
 ---
 name: agent-harness-protocol
 description: "Execution-layer harness for multi-agent orchestration: message envelope schema, state blackboard spec, retry/timeout/budget/circuit-breaker rules, trace logging format, and degradation chains. Load when dispatching agents, handling cross-agent state, or when a task stalls, retries, or times out. Trigger words: 任务卡住 / 成员超时 / 重试几次了 / 熔断 / 黑板怎么patch / 信封格式 / 预算耗尽 / 并发写冲突 / dispatch checklist."
-version: 1.1.0
+version: 1.2.0
 ---
 
 # agent-harness-protocol — 多代理编排执行层
@@ -88,6 +88,10 @@ trace_ref: 运行态/trace.jsonl
 1. **写权限声明 ≠ 写权限强制**：平台层无法阻止成员物理写入黑板文件，故强制**对账机制**——编排者每次收到 state_patch 后 10 秒内 diff 黑板实际内容与各成员申报的 patch：出现**无人认领的变更**（特别是 `circuit` 回退、`blocking_open` 被清空、`gates` 被翻转为 pass）→ 判投毒，回滚该 patch、记 trace（outcome=POISON_DETECTED）、涉事成员本轮产出全部拒收
 2. **预算对账（防谎报 turns_used）**：编排者维护每任务实际 turn 计数（spawn 前后差值），与成员申报值交叉核对；申报值 < 实际值 20% 以上 → 记 trace 警告；两次谎报 → 该成员产出降级为待复核
 3. **信封来源校验（防伪造 from）**：编排者只采信「自己 spawn 过的成员 ID」发来的信封；未 spawn 的 from 字段 → 直接丢弃并记 trace（outcome=SPOOFED_SENDER）。msg_id 重复（重放攻击）→ 丢弃后到的
+4. **副作用越界校验（v1.2，evo-9）**：成员产出落盘后，编排者 post-check 产物路径 ∈ 该成员契约声明的副作用范围（如检索员只可写 `知识库/retrieval/`）；越界写（如检索员改 draft）→ **拒收该产物 + trace 记 OUT_OF_SCOPE_WRITE**，按 E2 上报处置
+5. **打回计数防逃逸（v1.2，evo-9）**：打回轮次计数键 = `correlation_id + 问题指纹`（blocking 的违反项类型 + 证据位置），**跨 task_id 累计**——换 task_id（R2→R2b）不重置计数；计数 ≥3 → 强制走介入升级，禁止借改名续命
+6. **死锁解锁路径（v1.2，evo-9）**：两成员 BLOCK 相互等待（BLOCK 依赖图成环），或 `blocking_open` 非空但责任成员预算已耗尽且悬空超过 1 个调度周期 → 编排者**必须**主动裁决（拆依赖/换责任人/升级用户），禁止悬空等待
+7. **降级疲劳监测（v1.2，evo-9）**：同一 correlation_id 下同一降级层触发 ≥3 次 → 该层进入冷却（后续直接用下层）+ trace 记 DEGRADE_FATIGUE + 上报编排者——既省时也防「疲劳降级」滥用
 
 ---
 

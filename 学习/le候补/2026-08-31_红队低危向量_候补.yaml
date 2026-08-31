@@ -1,0 +1,47 @@
+# LEARN 候补池 — 来源：evo-8 红队对抗遗留（非章节生产，chapter=self-evo）
+# 规则：≥3 条候选且用户 ack 后合并入 evo 轮；解决后就地标 RESOLVED + Resolution
+- date: 2026-08-31
+  chapter: self-evo
+  signal_type: 红队低危向量
+  observed_pattern: 双成员各自 BLOCK 等对方、或 blocking_open 非空但责任成员预算耗尽——无解锁路径，全队挂起
+  proposed_rule: BLOCK 依赖图成环（A等B且B等A）→ 编排者强制裁决；blocking_open 悬空超过 1 个调度周期 → 编排者必须介入（介入协议或升级用户），禁止悬空等待
+  target: agent-harness-protocol
+  priority: P2
+  status: RESOLVED
+  resolution: evo-9 已落地（agent-harness-protocol v1.2 第 4-7 条 / team-lead 计数键）
+- date: 2026-08-31
+  chapter: self-evo
+  signal_type: 红队低危向量
+  observed_pattern: 环境使 Tier 1 持续超时，团队被迫反复走降级链，既浪费时间又可能被用于疲劳降级攻击
+  proposed_rule: 降级率监控——单 correlation_id 下同层降级 ≥3 次 → 该层冷却（跳过直用下层）+ trace 记 WARNING + 上报编排者
+  target: agent-harness-protocol
+  priority: P2
+  status: RESOLVED
+  resolution: evo-9 已落地（agent-harness-protocol v1.2 第 4-7 条 / team-lead 计数键）
+- date: 2026-08-31
+  chapter: self-evo
+  signal_type: 红队低危向量
+  observed_pattern: 打回计数挂在 task_id 上，换 task_id（如 R2→R2b）即重置计数，绕过「3 轮上限」
+  proposed_rule: 计数键 = correlation_id + 问题指纹（blocking 违反项类型 + 证据位置），跨 task_id 累计
+  target: agent-harness-protocol + team-lead
+  priority: P2
+  status: RESOLVED
+  resolution: evo-9 已落地（agent-harness-protocol v1.2 第 4-7 条 / team-lead 计数键）
+- date: 2026-08-31
+  chapter: self-evo
+  signal_type: 红队低危向量
+  observed_pattern: 成员契约声明了「副作用=只写某文件」但无人校验，越界写（如检索员改 draft）不会被拦截
+  proposed_rule: 编排者 post-check——产物路径 ∈ 该成员契约声明的副作用范围；越界写 → 拒收 + trace 记 OUT_OF_SCOPE_WRITE
+  target: agent-harness-protocol
+  priority: P2
+  status: RESOLVED
+  resolution: evo-9 已落地（agent-harness-protocol v1.2 第 4-7 条 / team-lead 计数键）
+- date: 2026-08-31
+  chapter: self-evo
+  signal_type: 备忘
+  observed_pattern: 第三轮报告列「沉淀库周期复检」为候补——evo-8 已落地（缓存不豁免三要素 + 20% 抽样复检）
+  proposed_rule: 已解决，留档防重提
+  target: citation-verify
+  priority: P3
+  status: RESOLVED
+  resolution: evo-8 已写入 citation-verify v1.2「输入不可信原则」
