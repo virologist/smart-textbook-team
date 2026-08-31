@@ -1,0 +1,8 @@
+{
+  "skill": "textbook-pipeline-workflow",
+  "prompts": [
+    {"id": 1, "prompt": "现在 RETRIEVE 做完了，接下来该干嘛", "expected": "查 13 态表：RETRIEVE→PRODUCE，先过门禁2（覆盖率≥80%/冲突<20%/时效近10年≥80%）"},
+    {"id": 2, "prompt": "审查 R2 发现深度不够要打回，回哪个阶段", "expected": "VERIFY 内 4 轮循环：R1/R2/R3 阻塞→回 PRODUCE 返修；只有 R4 通过才进 PROOFREAD"},
+    {"id": 3, "prompt": "交接时对方说缺 handoff 字段拒收了，哪 6 个字段", "expected": "当前状态/上一完成态/轮次计数/遗留blocking数/读过的文件清单/质量评分"}
+  ]
+}

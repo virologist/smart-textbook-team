@@ -1,7 +1,7 @@
 ---
 name: multi-agent-patterns
-description: "Loop and collaboration patterns for multi-agent orchestration: generator-critic, plan-execute-reflect, evidence spiral, retry-strategy-switch, fan-out/fan-in. Each pattern includes applicability, convergence criteria, hard iteration limits, and anti-patterns. Load when designing or debugging any multi-agent collaboration flow."
-version: 1.0.0
+description: "Loop and collaboration patterns for multi-agent orchestration: generator-critic, plan-execute-reflect, evidence spiral, retry-strategy-switch, fan-out/fan-in. Each pattern includes applicability, convergence criteria, hard iteration limits, and anti-patterns. Load when designing or debugging any multi-agent collaboration flow. Trigger words: 串行还是并行 / 循环不收敛 / 扇出聚合 / fan-out / generator-critic / 重试换策略 / 协作模式怎么选."
+version: 1.1.0
 ---
 
 # multi-agent-patterns — 多代理协作与循环模式库

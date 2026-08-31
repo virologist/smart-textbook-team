@@ -1,0 +1,8 @@
+{
+  "skill": "agent-harness-protocol",
+  "prompts": [
+    {"id": 1, "prompt": "我派 literature-scout 去检索，30 分钟没回音，任务卡住了怎么办", "expected": "按协议：E2 超时 60s 无进展→升级；检查 trace 最后状态；触发重试或 NEED_INPUT 判断"},
+    {"id": 2, "prompt": "两个成员都说自己写 章节/ch03/draft.md 怎么办", "expected": "资源冲突：路径表唯一归属+并行禁同文件并发写；后写者 BLOCK，编排者重定向"},
+    {"id": 3, "prompt": "examiner 连续两轮 FAIL 同一问题，我该直接再让他重试吗", "expected": "同方式重试≤2，第3次必须换策略；触发介入协议诊断根因 A/B/C/D"}
+  ]
+}

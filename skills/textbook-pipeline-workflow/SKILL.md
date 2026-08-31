@@ -1,7 +1,7 @@
 ---
 name: textbook-pipeline-workflow
-description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear."
-version: 1.0.0
+description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear. Trigger words: 编排章节 / 流程卡在哪个阶段 / 下一步该干嘛 / 13态 / 状态机 / 门禁 / 返修回哪 / handoff 字段."
+version: 1.1.0
 ---
 
 # textbook-pipeline-workflow — 13 态教材编写流水线
