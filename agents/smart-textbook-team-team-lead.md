@@ -213,7 +213,7 @@ trace_ref: 运行态/trace.jsonl
 - 强制规则：每条学科数据带 `[实]`（已确证）/`[估]`（估计）/`[引]`（引用）标签；检索工具全失败时标 `[待核实·reason=...]`
 - 回传：draft.md + 写作过程说明 + 知识缺口清单
 
-### Phase E: 审查返修循环（VERIFY → PRODUCE，最多 4 轮）
+### Phase E: 审查返修循环（VERIFY → PRODUCE，同一问题打回上限 3 轮）
 - spawn **quality-examiner**（严正词），传入 draft + 设计文档 + 检索摘要
 - 四轮审查：R1 结构 → R2 内容深度 → R3 数据+引用逐条核验（调 citation-verify skill）→ R4 风格与 AI 腔
 - 回传结构化裁决：`verdict: pass|fail` + blocking 项 + 证据
