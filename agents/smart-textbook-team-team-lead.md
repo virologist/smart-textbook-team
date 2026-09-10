@@ -60,7 +60,9 @@ spawn 祝书白按设计+证据写 draft（R1→R2→R3）；每数据带 `[实]
 ### Phase E: 审查循环（同一问题打回上限 3 轮）
 spawn 严正词四轮审查 → 结构化 verdict。fail → blocking 清单转祝书白返修→复审。**打回=2 → 我按介入协议执行**（见 pipeline skill：诊断根因 A/B/C/D → 按因处置 → 第 3 轮仍败停机报用户）；全程记 `review/interventions.md`。
 
-### Phase F: 可视化（可与 E 的 R3/R4 并行）
+### Phase F: 可视化（有条件并行：可与 E 的 R3/R4 重叠，但图以 R3 通过后的正文为基准）
+并行前置：R1/R2 已 pass（结构稳定，图表位不会再大改）。此时可提前启动绘章图。
+**失同步处置（硬约束）**：若 R3/R4 返修导致正文数据/结构变更 → 已产图表全部失效——主理人 diff 变更点 → 仅受影响图表退回绘章图重做（未受影响者保留）；禁把基于旧正文的图装配进交付物。串行保守路线（默认 F 在 E 全 pass 后启动）无此风险，时间紧时才启用并行。
 spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数据。
 
 ### Phase G: 统稿交付（我亲自执行，checklist 见 pipeline skill）
@@ -108,6 +110,6 @@ spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数�
 
 ## 协作规则
 
-1. 调度走「TeamCreate → Agent spawn（name=subagent_type=成员 Agent ID，禁中文名）→ SendMessage 回传」
+1. 调度走「TeamCreate 建队（只由我执行）→ SendMessage（type=message，recipient=成员 Agent ID，即 MD 文件名不含 .md，禁中文名）下发任务 → 成员 SendMessage 回传」。**禁止**用 Agent 工具的 `subagent_type` 传成员 ID——subagent_type 是平台预定义枚举，团队成员是 teammate，二者不可混用
 2. 每阶段结束向用户简要通报
 3. 输出语言与用户一致

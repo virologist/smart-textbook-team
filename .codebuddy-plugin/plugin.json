@@ -15,10 +15,11 @@
     "./agents/visual-instructional-designer.md"
   ],
   "skills": [
-    "./skills/textbook-pipeline-workflow",
-    "./skills/citation-verify",
     "./skills/agent-harness-protocol",
-    "./skills/multi-agent-patterns"
+    "./skills/citation-verify",
+    "./skills/learn-protocol",
+    "./skills/multi-agent-patterns",
+    "./skills/textbook-pipeline-workflow"
   ],
   "expertType": "team",
   "agentName": "smart-textbook-team-team-lead",

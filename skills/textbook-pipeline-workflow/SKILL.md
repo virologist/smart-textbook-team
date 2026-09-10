@@ -1,7 +1,7 @@
 ---
 name: textbook-pipeline-workflow
 description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear. Trigger words: 编排章节 / 流程卡在哪个阶段 / 下一步该干嘛 / 13态 / 状态机 / 门禁 / 返修回哪 / handoff 字段."
-version: 1.1.0
+version: 1.2.0
 ---
 
 # textbook-pipeline-workflow — 13 态教材编写流水线
@@ -99,3 +99,40 @@ VERIFY R3 → citation-verify 逐条核验 → 查无此文即删
 - 原 `tb-question-bank` 题库生成并入 subject-writer 职责（习题位标注 + 按需生成）
 - 原 `tb-export-docx`（pandoc 导出）由主理人在 DELIVER 阶段按需执行，不设独立成员
 - 13 态 SSOT 映射关系保留，成员职责按 WorkBuddy 团队协作模型（SendMessage 回传）重排
+
+---
+
+## 介入协议（Phase E 打回数 = 2 时，主理人按此执行）
+
+> 从 team-lead 拆入（evo-11）。触发条件：同一问题打回数达到 2。
+
+**打回计数口径**：
+- 「打回轮次」按**同一问题**计：返修后复审，若该问题仍在（含改而未净），打回数 +1
+- **计数键防逃逸**：同一问题 = `correlation_id + 问题指纹（blocking 违反项类型 + 证据位置）`，**跨 task_id 累计**——换 task_id（R2→R2b）不重置
+
+**介入动作序列（按序执行，逐级升级）**：
+1. **诊断归类**：读 examiner 该项 blocking 证据 + writer 返修响应，判定根因——{A 证据缺失 / B 理解偏差（指令歧义）/ C 能力边界 / D 故意抵抗（罕见）}
+2. **按根因处置**：
+   - A → 转 literature-scout 补检索后回填
+   - B → 主理人重写返修指令（给具体改法示例，不复述 examiner 原话）
+   - C → 主理人拆解为更小子步骤；**可给 ≤3 句改法示范（指出位置+方向），禁止输出可直接交付的连续正文**——整合仍由 writer 完成（代写边界条款）
+   - D → 停下通知用户
+3. 处置后送第 3 轮审查；第 3 轮仍失败 → 停下通知用户（附 3 轮证据链）
+
+「3 轮无进展」= 同一问题 2 次介入处置后仍未通过 → 立即停止。
+每轮打回与介入动作记入 `章节/{ch##}/review/interventions.md`（时间/问题/根因/处置/结果）。
+
+---
+
+## 统稿 checklist（Phase G 逐项过，任何一项不过回对应成员）
+
+> 从 team-lead 拆入（evo-11）。
+
+1. **术语一致**：全章同一概念无多种写法；对照教材术语表（如有）——可委托 examiner 抽查，主理人核结论
+2. **编号连续**：图表号 `图{章}-{序}` 与习题位节号无跳号/错位
+3. **引用格式统一**：全部 `[实]` 条目「来源: PMID/DOI」格式一致
+4. **正文清洁**：无流程标注残留（TODO、写作过程说明、测试标记）
+5. **遗留清单**：全部 `[待核实]` 汇总成表附交付物末尾
+6. **净字数达标**：draft frontmatter 实际净字数 vs 设计目标（偏差 >20% → 回 writer 补齐或经用户同意放宽）
+
+装配：draft + 图表 + 习题 → `交付/{教材名}_{ch##}.md`（Markdown 优先，按需转 DOCX）。交付时附质量报告（引用核验率/覆盖度/[待核实] 清单/interventions 摘要）。

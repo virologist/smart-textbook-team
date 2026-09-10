@@ -13,6 +13,8 @@
     数值）必须在来源摘要中逐字可定位，不可定位的限定词删除或降为 [估]。
   target: literature-scout.md
   priority: P1
+  status: RESOLVED
+  resolution: "evo-12a 已落地 literature-scout.md §5「结构化提取防过度补全自检」——逐字核对 + 三选一处理 + ch06 实证 case + 执行位置 + 回传要求"
 - date: 2026-09-01
   chapter: ch06
   signal_type: 核验失败
@@ -26,6 +28,8 @@
     计而非逐条计，预算口径同步改为「每批调用 ≤60s」。
   target: quality-examiner.md
   priority: P2
+  status: RESOLVED
+  resolution: "evo-12a 已落地 quality-examiner.md 接口契约新增「R3 计时口径（evo-12 ch06 补丁）」行——按整批计 vs 按节分批计两种口径"
 - date: 2026-09-01
   chapter: ch06
   signal_type: 反复打回点
@@ -38,3 +42,5 @@
     标识符数，如「[实] 8 处（唯一 PMID 5 个）」。
   target: subject-writer.md
   priority: P2
+  status: RESOLVED
+  resolution: "evo-12a 已落地 subject-writer.md SendMessage 回传新增「引用统计口径（evo-12 ch06 补丁）」——按「处数」计 + 唯一标识符数，例 [实] 8 处（唯一 PMID 5 个）"

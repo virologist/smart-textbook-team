@@ -34,11 +34,14 @@ version: 1.2.0
 
 ## 执行方法（按优先级降级）
 
-### 方法 1：PubMed MCP 工具（如已连接）
+### 方法 1：文献检索 MCP 工具（如已连接）
 ```
-mcp__PubMed__get_article_metadata / mcp__PubMed__search_articles
+mcp__paper_search_server__search_pubmed            # PubMed 检索
+mcp__paper_search_server__get_crossref_paper_by_doi  # DOI 核验
 ⚠️ 首次使用须先 ToolSearch 载入 schema，再 DeferExecuteTool 调用；
-   直接调用会报 schema 校验失败（已实证复现）
+   工具名以 ToolSearch 实际检索结果为准——不同环境接入的 MCP 前缀可能不同
+   （如 paper_search_server / biomcp 等），引用环境不存在的工具名会永远降层。
+   正确动作：先 ToolSearch 查 "pubmed/crossref"，用实际可用的等价工具执行。
 ```
 
 ### 方法 2：PubMed 网页核验（无 MCP 时）

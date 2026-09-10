@@ -24,7 +24,7 @@ maxTurns: 200
 
 | 层 | 工具调用（按顺序尝试，失败即降层） |
 |----|-----------------------------------|
-| Tier 1 英文学术库（主） | ① `mcp__PubMed__get_article_metadata` / `mcp__PubMed__search_articles`（**首次使用须先 ToolSearch 载入 schema，再 DeferExecuteTool 调用，直接调用会报 schema 校验失败**）→ ② WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/`（PMID 核验）或 `https://pubmed.ncbi.nlm.nih.gov/?term={关键词}`（主题检索）→ ③ WebSearch 多引擎并行 |
+| Tier 1 英文学术库（主） | ① `mcp__paper_search_server__search_pubmed`（检索）+ `mcp__paper_search_server__get_crossref_paper_by_doi`（DOI 核验）（**首次使用须先 ToolSearch 载入 schema，再 DeferExecuteTool 调用；若目标工具在环境中不存在，ToolSearch 会立刻暴露，直接降层，不恋战**）→ ② WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/`（PMID 核验）或 `https://pubmed.ncbi.nlm.nih.gov/?term={关键词}`（主题检索）→ ③ WebSearch 多引擎并行 |
 | Tier 2 通用网页（次） | WebSearch + WebFetch（含 Semantic Scholar `https://www.semanticscholar.org/search?q={关键词}`、bioRxiv） |
 | Tier 3 中文数据库 | WebSearch 定向 CNKI / 万方 / 中文权威站点（中文文献无 PMID 时走此层） |
 | Tier 4 权威机构兜底（串行） | WebFetch：WOAH（原 OIE，woah.org）/ Merck 兽医手册（merckvetmanual.com）/ 中国兽药典 / 农业农村部公报 |
@@ -48,12 +48,20 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 病死率/发病率等关键数字须 **≥2 个独立来源一致，且至少 1 个来自 Tier 1**；仅单一来源 → 置信度降为「中」并注明。
 **镜像识别规则**：多个检索命中若标题/作者/年份相同或高度相似（机构仓库、镜像站、聚合平台的转载），视为**同一来源**，不构成多源互证——须找到不同作者团队或不同期刊的独立研究才算第二源。识别为镜像时在条目中注明「多命中实为单源镜像」。
 
-### 5. 知识沉淀与缓存（路径已固定）
+### 5. 结构化提取防过度补全自检（evo-12 ch06 实战补丁）
+**逐字核对数据点 vs 原文（禁止添加摘要中未出现的限定词）**：
+- 条目中每个具体限定词（**地名/年份/宿主/数值/机构**）必须在来源摘要中**逐字可定位**
+- 不可定位的限定词处理三选一：① 删除 ② 降为 `[估]` ③ 标 `[待核实·reason=限定词原文未出现]`
+- **ch06 实证**：PMID:32382850 摘要为 "isolated in China in 2012"（作者单位为北京的中国兽药典委员会），scout 提取时自行补全「山东分离」→ writer 照抄进正文 → R3 拦截。本质是「结构化提取层缺乏限定词自检」，与 writer 编造无关但同样致命
+- **执行位置**：第 4 步（三要素核验）通过后、第 5 步（结构化提取）写入前；自检未过不得落盘
+- **汇报**：自检删除/降级的限定词在 SendMessage 回传中显式列出，便于主理人追溯
+
+### 6. 知识沉淀与缓存（路径已固定）
 - **沉淀文件**：`知识库/retrieval/RETRIEVED.md`（相对工作根目录；文件不存在则创建）
 - **写入格式**：`[[RETRIEVED:YYYYMMDD]] PMID/DOI | 摘要 | 用途标签 | 置信度`（append 模式，不覆盖）
 - **缓存优先**：每次检索先 grep 该文件是否已有相同知识点；命中 → 直接复用并标注来源日期，不重复检索
 
-### 6. 单点检索纪律
+### 7. 单点检索纪律
 每次检索覆盖 1 个知识点（如「H9N2 中国流行率」），不求全，避免颗粒过粗导致重复召回。
 
 ## 工作流程
@@ -64,7 +72,8 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 4. **三要素核验**：每条候选引用过三要素检查
 5. **结构化提取**：`来源(PMID/DOI/URL) | 核心数据 | 置信度(高/中/低) | 适用场景`
 6. **知识沉淀写入**：高置信度条目 append 写入 `知识库/retrieval/RETRIEVED.md`
-7. **回传**：SendMessage 回传主理人 `smart-textbook-team-team-lead`（糜编澜）；若主理人 spawn 时给出的 ID 与此不同，以实际 ID 为准**长任务续跑**：单次任务缺口 >10 个时，每完成 10 个缺口先落盘 `retrieval/` 文件并回传一次进度，再继续，避免超出 turn 上限被截断
+7. **回传**：SendMessage 回传主理人 `smart-textbook-team-team-lead`（糜编澜）；若主理人 spawn 时给出的 ID 与此不同，以实际 ID 为准
+8. **长任务续跑**：单次任务缺口 >10 个时，每完成 10 个缺口先落盘 `retrieval/` 文件并回传一次进度，再继续，避免超出 turn 上限被截断
 
 ## 输出规范
 
