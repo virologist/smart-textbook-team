@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# install.sh — Smart Textbook Team cross-platform installer
+# 支持平台：WorkBuddy / Claude Code / Claude Desktop / Cursor
+# 用法: ./install.sh [--target TARGET] [--dry-run] [--help]
+#   TARGET: workbuddy | claude-code | claude-desktop | cursor | all（默认）
+#
+# Author: TZUVet (MIT)
+
+set -euo pipefail
+
+VERSION="2.0.0"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET="all"
+DRY_RUN=0
+
+usage() {
+    sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'
+    exit "${1:-0}"
+}
+
+# ---------- arg parsing ----------
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --target) TARGET="$2"; shift 2 ;;
+        --target=*) TARGET="${1#*=}"; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        -h|--help) usage 0 ;;
+        *) echo "Unknown arg: $1"; usage 1 ;;
+    esac
+done
+
+# ---------- helpers ----------
+log()  { printf '\033[1;34m[install]\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
+err()  { printf '\033[1;31m[err]\033[0m %s\n'  "$*" >&2; }
+ok()   { printf '\033[1;32m[ok]\033[0m %s\n'   "$*"; }
+
+# run-or-print command based on DRY_RUN
+# 注意：所有调用应传单个字符串参数（"$*" 合并）,因为 "$@" 在函数内不接收数组
+run() {
+    if [[ $DRY_RUN -eq 1 ]]; then
+        printf '  DRY-RUN: %s\n' "$*"
+    else
+        eval "$*"
+    fi
+}
+
+# Detect user home (works on macOS/Linux; works in sudo if $HOME not set)
+HOME_DIR="${HOME:-$(eval echo ~$(id -un))}"
+UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
+
+# ---------- WorkBuddy ----------
+install_workbuddy() {
+    log "→ WorkBuddy（专家团）"
+    # v5 新路径优先，回退到 v4 老路径
+    local WB_NEW="$HOME_DIR/.codebuddy/plugins/marketplaces"
+    local WB_OLD="$HOME_DIR/.workbuddy/plugins/marketplaces"
+    local WB=""
+    # 默认装到当前已存在的路径，没有则选新路径
+    if [[ -d "$WB_OLD" ]]; then WB="$WB_OLD"; else WB="$WB_NEW"; fi
+    local DEST="$WB/my-experts/plugins/smart-textbook-team"
+    log "  安装到: $DEST"
+    run "mkdir -p '$DEST'"
+    # 复制核心目录与文件
+    for item in agents skills .codebuddy-plugin role-assembly.md README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
+        if [[ -e "$REPO_DIR/$item" ]]; then
+            run "rm -rf '$DEST/$item'"
+            run "cp -R '$REPO_DIR/$item' '$DEST/$item'"
+            ok "  copied: $item"
+        fi
+    done
+    # 注入 marketplace 注册
+    local MKT_FILE="$WB/my-experts/marketplace.json"
+    if [[ ! -f "$MKT_FILE" && $DRY_RUN -eq 0 ]]; then
+        run "mkdir -p '$WB/my-experts'"
+        cat > "$MKT_FILE" <<'EOF'
+{
+  "name": "my-experts",
+  "owner": "TZUVet",
+  "plugins": []
+}
+EOF
+        ok "  created marketplace.json"
+    fi
+    warn "  启用方式：打开 WorkBuddy → 插件管理 → 启用 smart-textbook-team（如已自动发现可忽略）"
+}
+
+# ---------- Claude Code ----------
+install_claude_code() {
+    log "→ Claude Code（subagent）"
+    # 一律用户级 ~/.claude/agents/——subagent 是用户级共享资源
+    # 项目级 .claude/agents/ 应仅在用户显式 --scope=project 时启用
+    local TARGET_DIR="$HOME_DIR/.claude/agents"
+    log "  使用用户级 ~/.claude/agents/（subagent 用户级共享）"
+    run "mkdir -p '$TARGET_DIR'"
+    # 复制 6 个 agent MD
+    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
+        if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
+            run "cp '$REPO_DIR/agents/$a.md' '$TARGET_DIR/$a.md'"
+            ok "  agent: $a.md"
+        fi
+    done
+    # skills 复制到 ~/.claude/skills/（Claude Code 自 v2.1.32+ 支持 skills frontmatter 字段）
+    local SKILL_DIR="$HOME_DIR/.claude/skills"
+    run "mkdir -p '$SKILL_DIR'"
+    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns textbook-pipeline-workflow; do
+        if [[ -d "$REPO_DIR/skills/$s" ]]; then
+            run "rm -rf '$SKILL_DIR/$s'"
+            run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
+            ok "  skill: $s"
+        fi
+    done
+    warn "  Claude Code v2.1.32+ 已支持 subagent skills；如用 Task tool dispatch,按 description 路由即可"
+}
+
+# ---------- Claude Desktop ----------
+install_claude_desktop() {
+    log "→ Claude Desktop（macOS）"
+    # 仅 macOS 路径(其他平台跳过)
+    if [[ "$UNAME_S" != "Darwin" ]]; then
+        warn "  Claude Desktop 安装仅在 macOS 测试过,当前 $UNAME_S 跳过"
+        return 0
+    fi
+    local AGENTS_DIR="$HOME_DIR/.claude/agents"
+    run "mkdir -p '$AGENTS_DIR'"
+    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
+        if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
+            run "cp '$REPO_DIR/agents/$a.md' '$AGENTS_DIR/$a.md'"
+            ok "  agent: $a.md"
+        fi
+    done
+    local SKILL_DIR="$HOME_DIR/.claude/skills"
+    run "mkdir -p '$SKILL_DIR'"
+    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns textbook-pipeline-workflow; do
+        if [[ -d "$REPO_DIR/skills/$s" ]]; then
+            run "rm -rf '$SKILL_DIR/$s'"
+            run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
+            ok "  skill: $s"
+        fi
+    done
+    warn "  Claude Desktop 通过 ~/.claude/agents/*.md 自动识别 subagent,无需额外配置"
+    warn "  MCP 服务器(若需要)请手动编辑 ~/Library/Application Support/Claude/claude_desktop_config.json"
+}
+
+# ---------- Cursor ----------
+install_cursor() {
+    log "→ Cursor (Agent Skills)"
+    local TARGET_DIR="$REPO_DIR/.cursor"
+    run "mkdir -p '$TARGET_DIR/agents' '$TARGET_DIR/skills'"
+    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
+        if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
+            run "cp '$REPO_DIR/agents/$a.md' '$TARGET_DIR/agents/$a.md'"
+            ok "  .cursor/agents/$a.md"
+        fi
+    done
+    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns textbook-pipeline-workflow; do
+        if [[ -d "$REPO_DIR/skills/$s" ]]; then
+            run "rm -rf '$TARGET_DIR/skills/$s'"
+            run "cp -R '$REPO_DIR/skills/$s' '$TARGET_DIR/skills/$s'"
+            ok "  .cursor/skills/$s"
+        fi
+    done
+    # AGENTS.md 总入口（如不存在则创建）
+    if [[ ! -f "$REPO_DIR/AGENTS.md" ]]; then
+        if [[ $DRY_RUN -eq 1 ]]; then
+            printf '  DRY-RUN: would write AGENTS.md\n'
+        else
+            cat > "$REPO_DIR/AGENTS.md" <<'EOF'
+# AGENTS.md — Smart Textbook Team (Cursor)
+
+This project uses the Smart Textbook Team (6 agents + 5 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
+
+## Quick start
+
+Dispatch the team lead (`smart-textbook-team-team-lead`) with your textbook title, target audience, and chapter topic — it will route through the 13-state pipeline.
+
+## Update
+
+Re-run `bash install.sh --target cursor` from the upstream repo to refresh local copies.
+EOF
+            ok "  created AGENTS.md"
+        fi
+    else
+        ok "  AGENTS.md 已存在,跳过"
+    fi
+}
+
+# ---------- main ----------
+echo "===================================================="
+echo "Smart Textbook Team v${VERSION} 安装器"
+echo "源目录: ${REPO_DIR}"
+echo "目标平台: ${TARGET}"
+echo "模式: $([ $DRY_RUN -eq 1 ] && echo DRY-RUN || echo ACTUAL)"
+echo "===================================================="
+
+case "$TARGET" in
+    workbuddy)      install_workbuddy ;;
+    claude-code)    install_claude_code ;;
+    claude-desktop) install_claude_desktop ;;
+    cursor)         install_cursor ;;
+    all)
+        install_workbuddy
+        install_claude_code
+        install_claude_desktop
+        install_cursor
+        ;;
+    *)
+        err "Unknown target: $TARGET"
+        usage 1
+        ;;
+esac
+
+echo
+ok "完成 ✓  Smart Textbook Team v${VERSION}"
+echo
+echo "后续:"
+echo "  - WorkBuddy: 打开后应能在专家列表看到『智能教材编写天团』"
+echo "  - Claude Code/Desktop: 用 Task tool dispatch 或 @ 提及 team-lead"
+echo "  - Cursor: 重启 Cursor,Agent 面板可见团队"
