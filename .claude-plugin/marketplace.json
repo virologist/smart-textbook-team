@@ -1,0 +1,23 @@
+{
+  "name": "smart-textbook-team-marketplace",
+  "owner": {
+    "name": "TZUVet",
+    "email": "54756814+virologist@users.noreply.github.com",
+    "url": "https://github.com/virologist"
+  },
+  "metadata": {
+    "description": "Single-plugin marketplace for smart-textbook-team",
+    "version": "2.0.0"
+  },
+  "plugins": [
+    {
+      "name": "smart-textbook-team",
+      "source": "./",
+      "version": "2.0.0",
+      "description": "Textbook authoring team orchestrating a 13-state pipeline: instructional design, literature retrieval, chapter writing, 4-round review, and delivery, with zero-tolerance citation verification.",
+      "license": "MIT",
+      "category": "writing",
+      "strict": true
+    }
+  ]
+}

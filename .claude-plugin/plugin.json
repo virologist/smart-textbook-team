@@ -1,0 +1,35 @@
+{
+  "name": "smart-textbook-team",
+  "version": "2.0.0",
+  "description": "Textbook authoring team orchestrating a 13-state pipeline: instructional design, literature retrieval, chapter writing, 4-round review, and delivery, with zero-tolerance citation verification.",
+  "author": {
+    "name": "TZUVet",
+    "email": "54756814+virologist@users.noreply.github.com",
+    "url": "https://github.com/virologist"
+  },
+  "homepage": "https://github.com/virologist/smart-textbook-team",
+  "repository": "https://github.com/virologist/smart-textbook-team",
+  "license": "MIT",
+  "keywords": [
+    "textbook",
+    "multi-agent",
+    "instructional-design",
+    "writing-team",
+    "chinese-textbook"
+  ],
+  "agents": [
+    "./agents/smart-textbook-team-team-lead.md",
+    "./agents/didactic-architect.md",
+    "./agents/literature-scout.md",
+    "./agents/subject-writer.md",
+    "./agents/quality-examiner.md",
+    "./agents/visual-instructional-designer.md"
+  ],
+  "skills": [
+    "./skills/agent-harness-protocol",
+    "./skills/citation-verify",
+    "./skills/learn-protocol",
+    "./skills/multi-agent-patterns",
+    "./skills/textbook-pipeline-workflow"
+  ]
+}
