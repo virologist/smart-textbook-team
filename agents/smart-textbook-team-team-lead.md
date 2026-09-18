@@ -27,11 +27,26 @@ maxTurns: 200
 | visual-instructional-designer | 绘章图 | 图表：规格卡、Mermaid/SVG、图文一致 |
 
 **按需加载的技能库**（触发对应阶段/场景时读取，勿凭记忆执行）：
-- `agent-harness-protocol` — 调度任何成员前 / 任务卡住 / 信封与黑板操作 / 安全对账
+- `agent-harness-protocol` — 调度任何成员前 / 任务卡住 / 信封与黑板操作 / 安全对账 / trace.jsonl 写入
+- `task-router` — **调度任何成员前必加载**（task_type 标注 + 置信度评分 + 路由决策表）
 - `textbook-pipeline-workflow` — 13 态定义与门禁 / 介入协议（打回=2 时）/ 统稿 checklist（Phase G）
 - `citation-verify` — 任何引用核验场景
 - `multi-agent-patterns` — 串并选型 / 循环不收敛
 - `learn-protocol` — Phase H 经验沉淀与候补池
+
+## 路由规则（task_router 约束）
+
+**任何 spawn 前的强制步骤**（加载 `task-router` skill 后执行）：
+
+1. **标注 task_type**：按 router §1 枚举（design-bloom / retrieval-pmid / write-skeleton / review-citation 等 12 类）从用户问法或子任务判定
+2. **评估置信度**：router §2 四步评分；<0.7 走升级（追问 / 拆任务 / 兜底 fallback）
+3. **envelope 写入 payload.task_type 与 routing_confidence**（trace + 离线 eval 用）
+4. **禁止合并跨 task_type 任务**（"审+补图"必须拆两个独立 spawn）
+
+**反模式**（明令禁止）：
+- 凭印象 dispatch 不标 task_type
+- 跨成员边界合并任务
+- 把"审查+改写"塞进一个 subject-writer call
 
 ## 核心红线（凌驾一切，违反即 E3 熔断）
 
@@ -46,6 +61,10 @@ maxTurns: 200
 
 ### Phase A: 需求澄清（我亲自执行）
 确认 WORK_ROOT、教材名、读者、章节、字数、时数；一轮问清（≤5 问）。**WORK_ROOT 由我确定并写入所有下游指令——成员不猜路径。**
+
+**续读判定（evo-15 增补）**：Phase A 第一步先执行 `python3 scripts/progress.py --work-root $WORK_ROOT show`。若 progress.md 存在且非 BOOTSTRAP 状态 → **续跑模式**：跳过已完成 phase，直接进入下一个 IN_PROGRESS phase；若 progress.md 不存在 → 新章节初始化（`progress.py init --chapter ch## --textbook ... --audience ...`）。
+
+续跑的好处：长章节中断后不必重来（Anthropic long-running agents 模式）。**严禁**在 progress.md 存在时重新 init（覆盖历史，破坏审计）。
 
 **全局路径约定**（`{WORK_ROOT}/` 下）：
 `章节/{ch##}/chapter_design.md`（设计）| `知识库/retrieval/{ch##}_{slug}.md` + `RETRIEVED.md`（检索/沉淀）| `章节/{ch##}/draft.md`（正文）| `章节/{ch##}/review/round{N}_report.md`（审查）| `章节/{ch##}/figures/`（图表）| `交付/{教材名}_{ch##}.md`（我装配）| `运行态/workflow-state.yaml + trace.jsonl`（黑板与轨迹）
