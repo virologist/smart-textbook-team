@@ -61,7 +61,9 @@ maxTurns: 80
 | 幂等性 | **是**——同输入应产出等价设计 |
 | 超时/预算 | turns 达 80% 落盘进度并发 `STATUS`；耗尽保存现场 |
 | 副作用 | 只写 `chapter_design.md`，不改其他文件 |
-| 状态义务 | 启动读 `运行态/workflow-state.yaml`；结束 patch `artifacts.design` |
+| 状态义务 | 启动读 `运行态/workflow-state.yaml`（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.design` |
+| 工具白名单（evo-16，契约层最小权限） | 文件读写（限副作用路径）+ SendMessage；**禁网络检索**（学科数据属 scout 职责） |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板 ② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase SPECIFY ...`（§6.3）——三项缺一 = 任务未完成 |
 
 ### ACP 回传格式（v2.0 统一协议）
 

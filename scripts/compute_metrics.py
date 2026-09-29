@@ -5,7 +5,7 @@
   1. 分派命中率  (spawn RESULT OK 数 / spawn 总数)
   2. 返工率      (同 task_id R2+ 计数 / 审查类总数)
   3. blocking 占比 (blocking_open 非空任务 / 总任务)
-  4. 平均轮次    (同 task_id 的 trace 行数中位数)
+  4. 平均轮次    (同 task_id 的 trace 行数中位数; 自报 turns 仅作参考列 — evo-16 口径修复)
   5. per-task token (in+out 累加,按 task_id)
 
 输出: 文本报告 + 可选 JSON
@@ -52,6 +52,7 @@ def compute(traces: list[dict]) -> dict:
             'blocking_total': 0,
             'blocking_pct': None,
             'avg_turns': None,
+            'self_reported_turns_median': None,
             'tokens_per_task': {},
             'by_task_type': {},
         }
@@ -71,13 +72,17 @@ def compute(traces: list[dict]) -> dict:
     blocking_total = sum(1 for t in traces if t.get('blocking_open'))
     blocking_pct = blocking_total / len(traces) if traces else None
 
-    turns_per_task = defaultdict(int)
+    # 平均轮次（evo-16 口径修复）: 按文档语义 = 同 task_id 的 trace 行数中位数（接力轮次,可审计）;
+    # 成员自报 turns 取中位数仅作参考列（自报值不可审计,与 §2 预算对账"防谎报"原则一致）
+    lines_per_task = Counter(t.get('task_id') for t in traces)
+    avg_turns = statistics.median(list(lines_per_task.values())) if lines_per_task else None
+
+    self_reported = defaultdict(int)
     for t in traces:
         tid = t.get('task_id')
         if t.get('turns'):
-            turns_per_task[tid] = max(turns_per_task[tid], t.get('turns', 0))
-    turns_count = list(turns_per_task.values())
-    avg_turns = statistics.median(turns_count) if turns_count else None
+            self_reported[tid] = max(self_reported[tid], t.get('turns', 0))
+    self_reported_turns = statistics.median(list(self_reported.values())) if self_reported else None
 
     tokens_per_task: dict[str, int] = defaultdict(int)
     for t in traces:
@@ -101,6 +106,7 @@ def compute(traces: list[dict]) -> dict:
         'blocking_total': blocking_total,
         'blocking_pct': blocking_pct,
         'avg_turns': avg_turns,
+        'self_reported_turns_median': self_reported_turns,
         'tokens_per_task': dict(tokens_per_task),
         'by_task_type': dict(by_task_type),
     }
@@ -134,9 +140,12 @@ def render(m: dict) -> str:
         lines.append('    暂无数据')
 
     lines.append('')
-    lines.append('[4] 平均轮次 (同 task_id 的 trace 行数中位数)')
+    lines.append('[4] 平均轮次 (同 task_id 的 trace 行数中位数 — 接力轮次,可审计)')
     if m['avg_turns'] is not None:
         lines.append(f'    median = {m["avg_turns"]}')
+        sr = m.get('self_reported_turns_median')
+        if sr is not None:
+            lines.append(f'    (参考) 成员自报 turns 中位数 = {sr} (不可审计,不进门禁)')
         lines.append(f'    门槛 ≤ 6  {"✓ PASS" if m["avg_turns"] <= 6 else "✗ FAIL"}')
     else:
         lines.append('    暂无数据')

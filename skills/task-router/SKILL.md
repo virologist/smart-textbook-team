@@ -169,6 +169,8 @@ envelope:
 
 **门槛**：命中率 < 80% → 路由器需扩展（加更多训练样本或调整权重）。
 
+**同步义务（evo-16 增补）**：`tests/test_router_eval.py` 的枚举表已改为**从本 skill §1 表格解析派生**（SSOT 消灭漂移）；但其 route() 影子实现的**分支关键词与优先级顺序**仍需与本 skill §1 输入信号/§3 fallback 同步演进——本 skill 调整路由语义（新增 task_type / 改关键词 / 改优先级）时，必须同轮更新该文件并在 §7 Changelog 记录。
+
 ---
 
 ## 7. Changelog

@@ -132,6 +132,8 @@ trace_ref: 运行态/trace.jsonl
 2. patch 是增量的、append 式的，不覆盖他人写入
 3. 只有编排者可写 `phase` 与 `circuit`
 4. `blocking_open` 非空 → 任何成员不得推进到下一阶段
+5. **门禁推进即时落盘（evo-16 增补，实战实证：黑板 phase 全章停留 SPECIFY、gate2 停留 pending——编排者未推进）**：编排者每完成一次 gate 裁决，**同轮** patch `phase`/`gates` 并执行 `progress.py update`，禁止攒批
+6. **预算对账活字段（evo-16 增补，实战实证：budget.tokens_used 全章停留初值 8000 而实际累计 ≈64K——死字段等于无对账）**：编排者每 gate 后按 `运行态/trace.jsonl` 累加各成员 `tokens_in+tokens_out` patch `budget.tokens_used`；≥80% `tokens_limit` 触发本节降级策略
 
 **字段级 patch 语义（evo-7 补，防并发丢更新）**
 | 字段类型 | patch 方式 | 示例 |
@@ -269,6 +271,20 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 **工件路径**：`{WORK_ROOT}/运行态/progress.md`
 
 **协议**：
+0. **黑板同轮创建（evo-16 增补，堵初始化断链）**：Phase A 末 team-lead 创建 progress.md 的**同一轮**必须创建黑板 `运行态/workflow-state.yaml`（成员的「启动读黑板」义务依赖它存在）。模板：
+   ```yaml
+   chapter: ch##
+   phase: BOOTSTRAP
+   artifacts: {}
+   gates: {gate1: pending, gate2: pending, gate3: pending}
+   blocking_open: []
+   retries: {}
+   budget: {turns_used: 0, turns_limit: 200, tokens_used: 0, tokens_limit: 80000,
+            tokens_per_phase: {SPECIFY: 8000, RETRIEVE: 16000, PRODUCE: 12000, VERIFY: 10000}}
+   circuit: CLOSED
+   trace_ref: 运行态/trace.jsonl
+   ```
+   黑板已存在 → 严禁重新 init；成员上报「黑板不存在」→ 属 lead 失职，立即补建并在 trace 留因。
 1. Phase A 末：`progress.py init --chapter ch## --textbook ... --audience ...`
 2. 每 phase 完成：`progress.py update --phase <PHASE> --status DONE --summary "..."`
 3. H15 缺口：`progress.py block --item "..." --source "writer 上报"`
@@ -292,3 +308,5 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 - [ ] **trace 写入强制**：指令中要求成员完成后 `python3 scripts/record_trace.py ...` 写 trace.jsonl（含 task_type + routing_confidence + blocking_open）
 - [ ] **progress.md 更新强制**：phase 完成时 `progress.py update`；H15 缺口时 `progress.py block`
 - [ ] **路由前加载 task-router**：dispatch 前 team-lead 已用 task-router 标注 task_type + 评估 routing_confidence ≥ 0.7
+- [ ] **黑板已初始化（evo-16）**：Phase A 已同轮创建 `运行态/workflow-state.yaml`——成员「启动读黑板」义务依赖其存在
+- [ ] **gate 即时推进（evo-16）**：每次 gate 裁决后同轮 patch 黑板 `phase`/`gates` + `progress.py update` + 按 trace 累加 `budget.tokens_used`，禁止攒批

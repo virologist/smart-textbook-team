@@ -75,7 +75,9 @@ maxTurns: 100
 | 幂等性 | **是**——同草稿同轮次应产出等价裁决 |
 | 超时/预算 | 引用 >15 条强制分批（≤10 条/批），每批落盘日志；turn 耗尽凭日志断点续跑 |
 | 副作用 | 只写 `review/` 下文件；**禁止改 draft**（改稿是 Generator 的事） |
-| 状态义务 | 启动读黑板；结束 patch `artifacts.review[]` + `blocking_open[]` |
+| 状态义务 | 启动读黑板（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.review[]` + `blocking_open[]` |
+| 工具白名单（evo-16，契约层最小权限） | ToolSearch/DeferExecuteTool（R3 核验用 PubMed/DOI MCP）+ WebFetch + WebSearch（仅 R3 降级链）+ 文件读写（限 `review/`）+ SendMessage |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板 ② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase VERIFY-R{N} ...`（§6.3）——三项缺一 = 任务未完成 |
 | **延迟预算** | 单次四轮审查目标 ≤240s：R1/R2 纸面 ≤60s；R3 每批 ≤60s（超时批降级「未核验标注」上报不阻塞）；R4 ≤60s。总超 240s → 输出已完成轮次的部分裁决并发 `STATUS`，编排者决定续跑或部分采纳 |
 | **R3 计时口径（evo-12 ch06 补丁）** | 引用数 ≤15 条时 MCP `get_article_metadata` 单次批量调用返回，**按整批计而非逐条计**——预算口径为「每批调用 ≤60s」；引用 >15 条按节分批（≤10 条/批），恢复逐批计时。ch06 实测：5 PMID 单次批量 45s（远低于分批预算），机械按"≤60s/批"无法反映真实耗时结构 |
 
