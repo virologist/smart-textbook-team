@@ -72,7 +72,7 @@ maxTurns: 100
 | 副作用 | 只写 `draft.md`；不写检索文件、不改设计文件 |
 | 状态义务 | 启动读黑板（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.draft` + `retries.{task_id}` |
 | 工具白名单（evo-16，契约层最小权限） | 文件读写（限副作用路径）+ SendMessage；**禁网络检索**（缺证据上报，不自行检索） |
-| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板 ② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase PRODUCE-R{N} ...`（§6.3）——三项缺一 = 任务未完成 |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase PRODUCE-R{N} ...`（§6.3）——三项缺一 = 任务未完成 |
 
 ## SendMessage 回传
 

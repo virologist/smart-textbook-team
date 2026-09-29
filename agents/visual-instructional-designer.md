@@ -64,7 +64,7 @@ maxTurns: 100
 | 副作用 | 只写 `figures/` 下文件；**禁止改 draft**（图表位修正建议进回传清单，由主理人转 writer） |
 | 状态义务 | 启动读黑板（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.figures[]` |
 | 工具白名单（evo-16，契约层最小权限） | 文件读写（限 `figures/` 与规格卡）+ SendMessage；**禁网络检索**（图表数据必须来自正文/检索文件） |
-| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板 ② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase VISUALIZE ...`（§6.3）——三项缺一 = 任务未完成 |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase VISUALIZE ...`（§6.3）——三项缺一 = 任务未完成 |
 
 ### ACP 回传格式（v2.0 统一协议）
 

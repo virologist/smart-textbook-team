@@ -128,7 +128,9 @@ trace_ref: 运行态/trace.jsonl
 ```
 
 **操作规则**
-1. 成员启动 = 先读黑板；成员结束 = 必 patch 黑板
+1. 成员启动 = 先读黑板；成员结束 = 必 patch 黑板——**黑板权属双模式（evo-16b 合成：并行会话实测 teammate 裸 spawn 不注入成员 MD，成员亲 patch 不可信；注入场景则亲 patch 更低延迟）**：
+   - **注入模式**（spawn 文案来自 `scripts/assemble_spawn_prompt.py` 装配，或成员已全文加载本协议）：成员**亲自 patch**（append 语义），主理人事后对账
+   - **裸跑模式**（teammate 直接 spawn、无人设注入）：成员**只落盘产物 + 回传中声明待核验字段**，主理人核验后**代 patch**；成员声明不可信时以文件为准（写权限声明 ≠ 写权限强制）
 2. patch 是增量的、append 式的，不覆盖他人写入
 3. 只有编排者可写 `phase` 与 `circuit`
 4. `blocking_open` 非空 → 任何成员不得推进到下一阶段

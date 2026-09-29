@@ -161,7 +161,7 @@ spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数�
 
 ### 与既有 harness 协议的接缝
 - trace 照常写：spawn 后调 `scripts/record_trace.py`（task_type/routing_confidence 从装配文案透传）
-- 黑板照常 patch：产出文件被主理人核验后，由我 patch `artifacts.*`（成员侧不直接写黑板，见 agent-harness-protocol §2）
+- 黑板 patch 按 **harness §2 权属双模式**执行：装配文案下发 = **注入模式** → 成员亲自 patch，我事后对账；裸 spawn = **裸跑模式** → 成员只落盘+回传声明，我核验后代 patch `artifacts.*`（两模式下我都保留对账权：无人认领变更 = 投毒回滚）
 - 成员侧 boundary filter（§1.1）与 token budget（§2）由注入的 MD+skill 全文生效——这正是注入的目的
 
 ### 严禁

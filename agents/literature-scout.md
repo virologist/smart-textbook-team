@@ -101,7 +101,7 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 | 副作用 | 写检索文件 + append 沉淀库；不改 draft |
 | 状态义务 | 启动读黑板（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.retrieval[]` |
 | 工具白名单（evo-16，契约层最小权限） | ToolSearch/DeferExecuteTool（PubMed/DOI MCP）+ WebFetch + WebSearch + 文件读写（限副作用路径）+ SendMessage |
-| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板 ② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase RETRIEVE ...`（§6.3）——三项缺一 = 任务未完成 |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase RETRIEVE ...`（§6.3）——三项缺一 = 任务未完成 |
 | **延迟预算** | 单知识点 ≤120s；3 知识点任务目标 ≤240s；单缺口超时标 `[待核实·reason=检索超时]` 放行，不阻塞整体回传 |
 
 ## 延迟优化策略（针对实测 397s 瓶颈，强制执行）
