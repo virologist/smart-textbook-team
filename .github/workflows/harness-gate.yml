@@ -1,0 +1,32 @@
+name: harness-gate
+
+# smart-textbook-team 编排质量门禁（evo-16 接入）:
+#   1) router 离线评测   命中率 >= 0.80 (26 用例, SSOT 解析自 skill §1)
+#   2) 静态契约评测      总分须 >= 0.95 (186 项; E1c 应用侧标记不计入门槛)
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  harness-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Router 离线评测 (>= 0.80)
+        run: python3 tests/test_router_eval.py
+
+      - name: 静态契约评测 (>= 0.95)
+        run: |
+          SCORE=$(python3 tests/test_smart_textbook_team.py --json | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])")
+          echo "静态契约总分: $SCORE"
+          python3 -c "import sys; sys.exit(0 if float('$SCORE') >= 0.95 else 1)"
+
+      # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源
+      # (SSOT 在包内, tb-writer 侧为评测适配器; 任一侧修改须同步另一侧)
