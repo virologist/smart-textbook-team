@@ -123,20 +123,36 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 ### ACP 回传格式（v2.0 统一协议）
 
 与主理人通信使用结构化信封，禁止纯自然语言传参：
-```yaml
-envelope:
-  v: "2.0"
-  from: "literature-scout"
-  to: "smart-textbook-team-team-lead"
-  type: RESULT
-  trace_id: "trace-{task}-{seq}"
-  status: SUCCESS
-  confidence: 0-100
-payload:
-  core_output: 本成员核心产出
-  evidence_or_basis: 产出依据
-  open_questions: [待主理人/用户裁决项]
+### 回传信封（统一协议 result_envelope v2.4）
+
+> 跨团队统一标准：6必填字段对齐（与 triz-invention-team / viral-evo-lab / vet-med-ppt-team 一致）。
+> 保留 ACP 扩展能力（evidence GRADE分级 / trace_id 追踪链 / payload 角色定制）。
+
+```json
+{
+  "agent_id": "literature-scout",
+  "task_id": "<由主理人下发·与trace_id对应>",
+  "phase": "<阶段号或WF编号>",
+  "status": "success|partial|failed|blocked",
+  "confidence": 0-100,
+  "deliverable_summary": "<一句话摘要>",
+  "evidence": [
+    {"type": "source|skill_ref|prior_artifact", "ref": "<PMID|DOI|arXiv ID|URL|路径>",
+     "used_for": "<该证据支撑的结论>", "grade": "<GRADE 1a-5 或 顶会|期刊|预印本>", "recency": "<近6月|近12月|>12月>"}
+  ],
+  "issues": ["<自评发现的问题>"],
+  "next_agent_hint": "<建议下游成员>",
+  "metrics": {"duration_ms": 0, "retry_count": 0},
+  "trace_id": "trace-<task>-<seq>",
+  "payload": {
+    "core_output": "<检索结果>", "evidence_or_basis": "<PMID/DOI清单>", "open_questions": []
+  }
+}
 ```
+
+**status取值**（原ACP UPPERCASE已弃用）：`success` / `partial` / `failed` / `blocked`。
+
+**status自评准则**：完整满足→success；部分满足且issues非空→partial；无法满足需重试→failed；前置条件不足→blocked。
 
 
 **额外预加载skills**（前置门禁）：运行时必须加载后再接收任务：

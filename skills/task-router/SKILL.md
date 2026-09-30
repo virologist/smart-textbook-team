@@ -138,25 +138,32 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ## 5. 与 dispatch 的接口
 
-```yaml
-envelope:
-  v: "2.0"
-  from: "smart-textbook-team-team-lead"
-  to: "{member_id}"
-  type: TASK
-  task_id: "{ch##}-{phase}-{round}"     # 例: ch06-PRODUCE-R2
-  correlation_id: "{ch##}"
-  payload:
-    task_type: "review-citation"        # ← 新增：本路由器的核心输出
-    routing_confidence: 0.92            # ← 新增：便于 trace 与离线 eval
-    routing_signals: ["PMID", "核验"]    # ← 新增：哪些信号触发了路由
-    required_skills: ["citation-verify"]
-    input: { ... 业务数据 ... }
-    output_contract: { ... 期望产出 ... }
-  context_refs: [...]
-  state_patch: { ... 黑板增量 ... }
-  ts: "ISO8601"
+```json
+{
+  "agent_id": "smart-textbook-team-team-lead",
+  "task_id": "{ch##}-{phase}-{round}",
+  "phase": "{phase}",
+  "status": "success",
+  "confidence": 0.0-1.0,
+  "deliverable_summary": "<任务一句话描述>",
+  "type": "TASK",
+  "correlation_id": "{ch##}",
+  "context_refs": ["相对 WORK_ROOT 的路径"],
+  "state_patch": {"黑板增量": "..."},
+  "ts": "ISO8601",
+  "payload": {
+    "task_type": "review-citation",
+    "routing_confidence": 0.92,
+    "routing_signals": ["PMID", "核验"],
+    "required_skills": ["citation-verify"],
+    "input": {},
+    "output_contract": {}
+  }
+}
 ```
+
+> 下行任务包与上行回传共用同一信封骨架（6必填），`type=TASK` 标识下行；
+> `payload.task_type` / `routing_confidence` / `routing_signals` 为本路由器核心输出（供 trace 与离线 eval）。
 
 ---
 

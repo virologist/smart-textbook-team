@@ -50,19 +50,31 @@ version: 1.4.0
 
 **ACP 兼容**：若平台注入 ACP 统一信封（v/to/type/trace_id/status/confidence），以 ACP 为外层，本协议字段（msg_id/task_id/correlation_id/context_refs/state_patch/ts）并入 payload；`trace_id` 与 `msg_id` 同值，ACP `status` 映射本协议 `type`。两套字段不得互相丢弃。
 
-```yaml
-envelope:
-  msg_id: "{task_id}-{from}-{seq}"
-  task_id: "{ch##}-{阶段}-{轮次}"
-  correlation_id: "{ch##}"
-  from: "{member_id}"
-  to: "smart-textbook-team-team-lead"    # 一律回编排者
-  type: RESULT | BLOCK | ERROR | STATUS | NEED_INPUT
-  payload: {...}
-  context_refs: ["相对 WORK_ROOT 的路径"]
-  state_patch: {phase:..., artifacts:{...}, blocking_open:[...]}
-  ts: "ISO8601"
+```json
+{
+  "agent_id": "{member_id}",
+  "task_id": "{ch##}-{阶段}-{轮次}",
+  "phase": "{阶段}",
+  "status": "success|partial|failed|blocked",
+  "confidence": 0-100,
+  "deliverable_summary": "<一句话摘要>",
+  "evidence": [{"type": "skill_ref|prior_artifact|source", "ref": "...", "used_for": "..."}],
+  "issues": ["<自评发现的问题>"],
+  "next_agent_hint": "smart-textbook-team-team-lead",
+  "metrics": {"duration_ms": 0, "retry_count": 0},
+  "msg_id": "{task_id}-{from}-{seq}",
+  "correlation_id": "{ch##}",
+  "type": "RESULT|BLOCK|ERROR|STATUS|NEED_INPUT",
+  "context_refs": ["相对 WORK_ROOT 的路径"],
+  "state_patch": {"phase": "...", "artifacts": {}, "blocking_open": []},
+  "ts": "ISO8601",
+  "payload": {"core_output": "...", "evidence_or_basis": "...", "open_questions": []}
+}
 ```
+
+> **6必填**（agent_id/task_id/phase/status/confidence/deliverable_summary）跨团队统一强制；
+> `msg_id`/`correlation_id`/`type`/`context_refs`/`state_patch` 为团队扩展字段（黑板与追踪用）。
+> `status` 取值 `success|partial|failed|blocked`（原 ACP UPPERCASE 已弃用）。
 
 | 字段 | 用途 | 违规后果 |
 |------|------|---------|
