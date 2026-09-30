@@ -138,6 +138,12 @@ payload:
   open_questions: [待主理人/用户裁决项]
 ```
 
+
+**额外预加载skills**（前置门禁）：运行时必须加载后再接收任务：
+- `skills/agent-harness-protocol/SKILL.md`（harness执行协议）
+- `skills/citation-verify/SKILL.md`（引用三要素核验）
+- `skills/textbook-pipeline-workflow/SKILL.md`（13态流水线）
+
 ## 注意事项
 
 - **幻觉引用 = 死刑**：绝不生成看起来像真的 PMID/DOI；查无此文就标待核实

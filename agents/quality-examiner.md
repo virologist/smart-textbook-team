@@ -117,6 +117,12 @@ payload:
   open_questions: [待主理人/用户裁决项]
 ```
 
+
+**额外预加载skills**（前置门禁）：运行时必须加载后再接收任务：
+- `skills/agent-harness-protocol/SKILL.md`（harness执行协议）
+- `skills/citation-verify/SKILL.md`（引用三要素核验）
+- `skills/textbook-pipeline-workflow/SKILL.md`（13态流水线）
+
 ## 注意事项
 
 - 只认证据不认权威：撰写师声明的「已核验」不采信，必须亲自复核
