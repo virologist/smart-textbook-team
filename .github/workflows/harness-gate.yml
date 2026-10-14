@@ -1,8 +1,14 @@
 name: harness-gate
 
-# smart-textbook-team 编排质量门禁（evo-16 接入）:
-#   1) router 离线评测   命中率 >= 0.80 (26 用例, SSOT 解析自 skill §1)
-#   2) 静态契约评测      总分须 >= 0.95 (186 项; E1c 应用侧标记不计入门槛)
+# smart-textbook-team 编排质量门禁（evo-16 接入；P0 阶段扩至 4 道，2026-10-15）:
+#   1) router 离线评测      命中率 >= 0.80 (26 用例, SSOT 解析自 skill §1)
+#   2) 静态契约评测        总分须 >= 0.99 (199 计分项; E1c 已降级为不计分环境项)
+#                          —— 阈值从 0.95 上调: E1c 解耦后 1.000 可达,
+#                             0.99 仅容忍约 1 项偶发失败, 2 项及以上必红
+#   3) shared-core 分发门禁  vendor 兜底副本与清单自洽 + git-clone 态冒烟
+#                          (V4 防漂移在 CI 无联邦 core 时自动 SKIP)
+#   4) 跨平台清单同步门禁   两份 plugin.json 必一致字段 + install.sh 技能覆盖
+#   5) install.sh 语法/干跑冒烟（防安装脚本腐化）
 on:
   push:
     branches: [master, main]
@@ -22,11 +28,21 @@ jobs:
       - name: Router 离线评测 (>= 0.80)
         run: python3 tests/test_router_eval.py
 
-      - name: 静态契约评测 (>= 0.95)
+      - name: 静态契约评测 (>= 0.99)
         run: |
+          python3 tests/test_smart_textbook_team.py
           SCORE=$(python3 tests/test_smart_textbook_team.py --json | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])")
           echo "静态契约总分: $SCORE"
-          python3 -c "import sys; sys.exit(0 if float('$SCORE') >= 0.95 else 1)"
+          python3 -c "import sys; sys.exit(0 if float('$SCORE') >= 0.99 else 1)"
+
+      - name: shared-core 分发与防漂移门禁
+        run: python3 tests/test_vendor_core.py
+
+      - name: 跨平台清单同步门禁
+        run: python3 tests/test_manifest_sync.py
+
+      - name: install.sh 干跑冒烟（--dry-run，无副作用）
+        run: bash install.sh --dry-run --target all
 
       # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源
       # (SSOT 在包内, tb-writer 侧为评测适配器; 任一侧修改须同步另一侧)

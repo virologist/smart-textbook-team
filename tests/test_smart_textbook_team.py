@@ -6,8 +6,10 @@ smart-textbook-team 专家团评测基准（A-Evolve Benchmark Adapter 简化版
 用途：对 WorkBuddy 专家团包做静态契约评测，输出 0-1 分数 + 失败项清单，
       供进化循环（solve → observe → evolve → gate → reload）驱动定向变异。
 
-评分模型：
-  A 结构合规 25% | B 协作契约 25% | C 流程闭环 25% | D 质量红线 15% | E 注册状态 10%
+评分模型（与文末 WEIGHTS 常量一致，改权重请同步此处）：
+  A 结构合规 20% | B 协作契约 20% | C 流程闭环 15% | D 质量红线 15%
+  E 注册状态  5% | F 可执行性 25%
+  ENV 环境项：不计分、不进入失败清单（见 check_env 说明）
 
 用法：
   python3 tests/test_smart_textbook_team.py [--expert-dir 路径] [--json]
@@ -66,15 +68,34 @@ def load_plugin(expert_dir):
 
 
 class Checker:
-    """收集检查结果：每项 (id, 分类, 描述, 是否通过, 失败详情)"""
+    """收集检查结果：每项 (id, 分类, 描述, 是否通过, 失败详情)
+
+    两类条目：
+      items —— 计分项，进入 WEIGHTS 加权总分，失败即列进进化靶点；
+      env   —— 环境项，只观测不计分（见 check_env）。
+    """
 
     def __init__(self):
         self.items = []
+        self.env_items = []
 
     def check(self, cid, category, desc, ok, detail=""):
         self.items.append({
             "id": cid, "category": category, "desc": desc,
             "pass": bool(ok), "detail": detail if not ok else "",
+        })
+
+    def check_env(self, cid, desc, ok, detail=""):
+        """环境项：宿主/安装态产物，与专家包内容质量无关，不计分不入失败清单。
+
+        判据：该条目的成立与否取决于【包外的安装器行为】，改包内任何文件都无法
+        使其通过。例如 .created-by-session 是 WorkBuddy 建包时写入的所有者标记，
+        git 仓库态与 CI 态天然不存在 —— 若计入分母，则总分永远凑不满 1.000，
+        真实内容缺陷被这 0.017 的恒定噪声掩盖（E 类仅 3 项，权重 0.05）。
+        """
+        self.env_items.append({
+            "id": cid, "desc": desc, "pass": bool(ok),
+            "detail": detail if not ok else "",
         })
 
     def score_by_category(self, category):
@@ -474,8 +495,11 @@ def check_registration(ck, expert_dir, plugin):
         names = [p.get("name") for p in mp]
     ck.check("E1b", "E", "专家已注册进 marketplace.json",
              plugin.get("name") in names, f"已注册: {names}")
-    ck.check("E1c", "E", "专家目录所有者标记 (.created-by-session)",
-             os.path.exists(os.path.join(expert_dir, ".created-by-session")))
+    # E1c 降级为环境项（P0-2, 2026-10-15）：该标记由宿主安装器写入包外，
+    # 实测本机 7 个专家包全部不存在 → git/CI 态恒失败，属伪阴性噪声。
+    ck.check_env("E1c", "宿主写入的所有者标记 .created-by-session（环境项·不计分）",
+                 os.path.exists(os.path.join(expert_dir, ".created-by-session")),
+                 "未写入（安装态标记，非内容缺陷；git/CI 态预期如此）")
 
 
 # ── 主流程 ──────────────────────────────────────────────────────────
@@ -510,6 +534,7 @@ def main():
             "by_category": {c: round(ck.score_by_category(c), 4) for c in WEIGHTS},
             "total_checks": len(ck.items),
             "failed": failures,
+            "env_observations": ck.env_items,
         }, ensure_ascii=False, indent=2))
     else:
         print("=" * 62)
@@ -521,7 +546,7 @@ def main():
             bar = "#" * int(s * 20) + "." * (20 - int(s * 20))
             print(f"  {c} {CAT_NAMES[c]:<6} [{bar}] {s:.2f}  ({n} 项)")
         print("-" * 62)
-        print(f"检查项 {len(ck.items)} | 通过 {len(ck.items) - len(failures)} | 失败 {len(failures)}")
+        print(f"计分项 {len(ck.items)} | 通过 {len(ck.items) - len(failures)} | 失败 {len(failures)}")
         if failures:
             print("-" * 62)
             print("失败项清单（进化靶点）：")
@@ -529,6 +554,13 @@ def main():
                 print(f"  [{f['id']}] {f['desc']}")
                 if f["detail"]:
                     print(f"        → {f['detail']}")
+        if ck.env_items:
+            print("-" * 62)
+            print("环境观测项（不计分，仅供人工排查）：")
+            for e in ck.env_items:
+                print(f"  [{'✓' if e['pass'] else '—'}] [{e['id']}] {e['desc']}")
+                if e["detail"]:
+                    print(f"        → {e['detail']}")
         print("=" * 62)
     return 0 if not failures else 1
 

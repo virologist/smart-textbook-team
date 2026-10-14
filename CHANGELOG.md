@@ -3,6 +3,34 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-10-15
+
+> P0 分发可安装性修复。来源：10-15 五维诊断（资源配置 3/5，「建而未用」）
+> 报告 `tb-writer/docs/2026-10-15-smart-textbook-team-diagnosis-report.md`。
+
+### Added
+- `vendor/shared-core/` — shared-core 兜底副本 + `VENDOR.json` 清单（sha256/来源/同步命令）
+- `tests/test_vendor_core.py`（V1–V6）：清单自洽 + 防漂移 + 安装态冒烟 + **git-clone 态隔离冒烟**
+- `tests/test_manifest_sync.py`（M1–M9）：两份 plugin.json 必一致字段 + install.sh 逐循环技能覆盖
+- shim `SHIM_DEBUG=1` 开关：打印 core 解析来源（federal / vendor）
+
+### Fixed
+- **P0-1 git clone 后 shim 退出码 3**（R9 联邦下沉回归）：解析顺序改为
+  ① 联邦真源（自包根**父目录**起向上 4 层）→ ② `vendor/shared-core` 兜底 → ③ exit 3。
+  安装态仍走真源不产生第二副本；clone/CI/离线态开箱可用。
+- **P0-1b install.sh 漏拷 scripts/tests/vendor/.claude-plugin**：新建装的
+  trace / progress / assemble_spawn_prompt 全部不可用（v2.0 起即存在）
+- **P0-3 跨平台漂移**：`.claude-plugin` version 2.0.0→2.1.0、skills 补 `task-router`、
+  description/author 对齐；install.sh 三处技能循环补 `task-router`
+  （原 Claude Code / Desktop / Cursor 用户拿不到 router）
+- **P0-2 E1c 伪阴性**：`.created-by-session` 为宿主安装标记，实测本机 7 个专家包
+  全不存在 → git/CI 态恒失败。降级为不计分环境观测项（`Checker.check_env`）
+
+### Changed
+- 静态契约评测 0.983 → **1.000**（199 计分项 + 1 环境观测项）
+- CI 门禁 2 道 → 5 道（+ vendor core、+ 清单同步、+ install.sh 干跑冒烟）；
+  静态契约阈值 0.95 → **0.99**（E1c 解耦后 1.000 可达）
+
 ## [2.1.0] - 2026-09-30
 
 > 九维编排诊断（evo-16）驱动修复 + 成员人设注入协议（并行会话平台实测）合成落地。

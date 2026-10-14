@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="2.0.0"
+VERSION="2.1.0"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0
@@ -62,7 +62,10 @@ install_workbuddy() {
     log "  安装到: $DEST"
     run "mkdir -p '$DEST'"
     # 复制核心目录与文件
-    for item in agents skills .codebuddy-plugin role-assembly.md README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
+    # v2.1: 补 scripts/tests/vendor/.claude-plugin —— 缺 scripts 会导致
+    # trace/progress/assemble_spawn_prompt 全部不可用（P0-1 连带修复）
+    for item in agents skills scripts tests vendor .codebuddy-plugin .claude-plugin \
+                role-assembly.md README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
         if [[ -e "$REPO_DIR/$item" ]]; then
             run "rm -rf '$DEST/$item'"
             run "cp -R '$REPO_DIR/$item' '$DEST/$item'"
@@ -103,7 +106,7 @@ install_claude_code() {
     # skills 复制到 ~/.claude/skills/（Claude Code 自 v2.1.32+ 支持 skills frontmatter 字段）
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
-    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns textbook-pipeline-workflow; do
+    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns task-router textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
@@ -131,7 +134,7 @@ install_claude_desktop() {
     done
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
-    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns textbook-pipeline-workflow; do
+    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns task-router textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
@@ -153,7 +156,7 @@ install_cursor() {
             ok "  .cursor/agents/$a.md"
         fi
     done
-    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns textbook-pipeline-workflow; do
+    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns task-router textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$TARGET_DIR/skills/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$TARGET_DIR/skills/$s'"

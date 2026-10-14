@@ -1,10 +1,11 @@
 {
   "name": "smart-textbook-team",
   "version": "2.1.0",
-  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members.",
+  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members. v2.1: task-router 13-type routing + trace/progress observability.",
   "author": {
     "name": "TZUVet",
-    "email": "tzuvet@example.com"
+    "email": "54756814+virologist@users.noreply.github.com",
+    "url": "https://github.com/virologist"
   },
   "agents": [
     "./agents/smart-textbook-team-team-lead.md",
