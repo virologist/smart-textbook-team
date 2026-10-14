@@ -30,8 +30,15 @@ import subprocess
 import sys
 import tempfile
 
-DEFAULT_EXPERT_DIR = os.path.expanduser(
+_INSTALL_DIR = os.path.expanduser(
     "~/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
+)
+_REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 与 test_smart_textbook_team.py 同策略：CI/纯 clone 态回落到仓库自身
+DEFAULT_EXPERT_DIR = (
+    _REPO_DIR
+    if os.path.exists(os.path.join(_REPO_DIR, ".codebuddy-plugin", "plugin.json"))
+    else _INSTALL_DIR
 )
 CORE_REL = os.path.join("vendor", "shared-core", "assemble_spawn_prompt.py")
 MANIFEST_REL = os.path.join("vendor", "shared-core", "VENDOR.json")

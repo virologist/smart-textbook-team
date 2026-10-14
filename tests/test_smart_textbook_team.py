@@ -22,8 +22,23 @@ import re
 import sys
 
 # ── 配置 ────────────────────────────────────────────────────────────
-DEFAULT_EXPERT_DIR = os.path.expanduser(
+_INSTALL_DIR = os.path.expanduser(
     "~/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
+)
+# 仓库根（tests/ 的上级）——CI / 纯 clone 态下安装路径不存在，须回落到仓库自身，
+# 否则本评测在 GitHub Actions 上会因找不到 plugin.json 直接 FATAL（exit 2）。
+_REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_EXPERT_DIR = (
+    _REPO_DIR
+    if os.path.exists(os.path.join(_REPO_DIR, ".codebuddy-plugin", "plugin.json"))
+    else _INSTALL_DIR
+)
+# 夹具根：默认指向本机 tb-writer 工作区（包外），可用 STT_FIXTURE_ROOT 覆盖；
+# 该路径不存在时 F23a 降级为环境观测项（见 check_executability）。
+FIXTURE_ROOT = os.environ.get(
+    "STT_FIXTURE_ROOT",
+    "/Users/biodog/Library/CloudStorage/OneDrive-Personal/GPT/Claude/tb-writer"
+    "/tests/fixtures/smart-textbook-team",
 )
 MARKETPLACE_JSON = os.path.expanduser(
     "~/.workbuddy/plugins/marketplaces/my-experts/.codebuddy-plugin/marketplace.json"
@@ -472,10 +487,11 @@ def check_executability(ck, expert_dir):
     ck.check("F22b", "F", "主理人定义候补池路径 + yaml 格式",
              "学习/le候补" in lead and "signal_type" in lead)
     # F23 夹具归档（遗留-3）
-    fixture_root = ("/Users/biodog/Library/CloudStorage/OneDrive-Personal/GPT/Claude/tb-writer"
-                   "/tests/fixtures/smart-textbook-team")
-    ck.check("F23a", "F", "测试夹具归档至 tests/fixtures/smart-textbook-team/",
-             os.path.exists(os.path.join(fixture_root, "README.md")))
+    # 夹具在【包外】的 tb-writer 工作区，纯 clone 态/CI 天然不存在 ——
+    # 归为环境观测项，避免把「本机有没有挂 OneDrive」误判成专家团内容缺陷。
+    ck.check_env("F23a", "夹具归档于外部工作区 tests/fixtures/smart-textbook-team/（环境项）",
+                 os.path.exists(os.path.join(FIXTURE_ROOT, "README.md")),
+                 f"未找到: {FIXTURE_ROOT}（可用 STT_FIXTURE_ROOT 覆盖）")
 
 
 # ── E. 注册状态 ─────────────────────────────────────────────────────
