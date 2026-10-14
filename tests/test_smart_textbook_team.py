@@ -7,9 +7,12 @@ smart-textbook-team 专家团评测基准（A-Evolve Benchmark Adapter 简化版
       供进化循环（solve → observe → evolve → gate → reload）驱动定向变异。
 
 评分模型（与文末 WEIGHTS 常量一致，改权重请同步此处）：
-  A 结构合规 20% | B 协作契约 20% | C 流程闭环 15% | D 质量红线 15%
-  E 注册状态  5% | F 可执行性 25%
-  ENV 环境项：不计分、不进入失败清单（见 check_env 说明）
+  A 结构合规 21% | B 协作契约 21% | C 流程闭环 16% | D 质量红线 16% | F 可执行性 26%
+
+ENV 环境项（不计分、不进入失败清单）：E1a/E1b 注册状态、E1c 所有者标记、
+  F23a 外部夹具。判据：条目成立与否取决于【包外的宿主/工作区状态】，
+  改包内任何文件都无法使其通过；计入分母只会让 CI/纯 clone 态恒红，
+  掩盖真实内容缺陷（详见各 check_env 处注释）。
 
 用法：
   python3 tests/test_smart_textbook_team.py [--expert-dir 路径] [--json]
@@ -494,23 +497,33 @@ def check_executability(ck, expert_dir):
                  f"未找到: {FIXTURE_ROOT}（可用 STT_FIXTURE_ROOT 覆盖）")
 
 
-# ── E. 注册状态 ─────────────────────────────────────────────────────
+# ── E. 注册状态（环境观测·不计分）──────────────────────────────────
+# E 类整体降级为环境项（P0-2b, 2026-10-15）：marketplace.json 位于【包外】的
+# 宿主 marketplace 根，git clone / CI / 未安装态必然不存在 → 原实现让 CI 恒红
+# （实测空 HOME 下 E 类 0/3，总分被拉到 0.95）。注册与否属宿主状态，
+# 不反映专家包内容质量；仍逐条观测输出，供人工排查与本地安装态核验。
 def check_registration(ck, expert_dir, plugin):
-    ck.check("E1a", "E", "marketplace.json 存在", os.path.exists(MARKETPLACE_JSON))
     if not os.path.exists(MARKETPLACE_JSON):
+        ck.check_env("E1a", "宿主 marketplace.json 存在（环境项·不计分）", False,
+                     f"未找到: {MARKETPLACE_JSON}（clone/CI 态预期如此）")
+        ck.check_env("E1b", "专家已注册进 marketplace.json（环境项·不计分）", False,
+                     "marketplace.json 不存在，无法判定")
         return
     try:
         mp = json.loads(read(MARKETPLACE_JSON))
     except json.JSONDecodeError as e:
-        ck.check("E1b", "E", "marketplace.json 可解析", False, str(e))
+        ck.check_env("E1a", "宿主 marketplace.json 存在（环境项·不计分）", True)
+        ck.check_env("E1b", "专家已注册进 marketplace.json（环境项·不计分）", False, str(e))
         return
     names = []
     if isinstance(mp, dict):
         names = [p.get("name") for p in mp.get("plugins", [])]
     elif isinstance(mp, list):
         names = [p.get("name") for p in mp]
-    ck.check("E1b", "E", "专家已注册进 marketplace.json",
-             plugin.get("name") in names, f"已注册: {names}")
+    registered = plugin.get("name") in names
+    ck.check_env("E1a", "宿主 marketplace.json 存在（环境项·不计分）", True)
+    ck.check_env("E1b", f"专家已注册进 marketplace.json（环境项·不计分）",
+                 registered, f"已注册: {names}")
     # E1c 降级为环境项（P0-2, 2026-10-15）：该标记由宿主安装器写入包外，
     # 实测本机 7 个专家包全部不存在 → git/CI 态恒失败，属伪阴性噪声。
     ck.check_env("E1c", "宿主写入的所有者标记 .created-by-session（环境项·不计分）",
@@ -519,9 +532,11 @@ def check_registration(ck, expert_dir, plugin):
 
 
 # ── 主流程 ──────────────────────────────────────────────────────────
-WEIGHTS = {"A": 0.20, "B": 0.20, "C": 0.15, "D": 0.15, "E": 0.05, "F": 0.25}
+# E 类（注册状态）已于 P0-2b 整体转为不计分环境项，其原 5% 权重按内容类
+# 等比重分配（A/B/C/D/F: 0.20/0.20/0.15/0.15/0.25 → 0.21/0.21/0.16/0.16/0.26）
+WEIGHTS = {"A": 0.21, "B": 0.21, "C": 0.16, "D": 0.16, "F": 0.26}
 CAT_NAMES = {"A": "结构合规", "B": "协作契约", "C": "流程闭环",
-             "D": "质量红线", "E": "注册状态", "F": "可执行性"}
+             "D": "质量红线", "F": "可执行性"}
 
 
 def main():
