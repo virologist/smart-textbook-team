@@ -42,6 +42,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - V4 防漂移门禁在 P2-5 后实际拦截 vendor 漂移一次（联邦 sha 02a69d1f… ≠ vendor b808ff8d…），
   按提示同步后 6/6 通过——设计目的首次达成
 
+### CI（P3-2 归档）
+- **实证：harness-gate 自 2026-09-30 建立以来 4 连 failure，从未通过**（静态契约
+  默认路径指向安装态，runner 上必 FATAL）——P0 修复后首次转绿：
+  - 首绿 run: https://github.com/virologist/smart-textbook-team/actions/runs/38651831819（P0-2b，2026-10-14）
+  - 最新 run: https://github.com/virologist/smart-textbook-team/actions/runs/38658898153（v2.2.0，2026-10-15，
+    ubuntu + Python 3.12.15，5 道门禁全过，router 40/40=1.000）
+- P3-1（install.sh 清单同步检查）已于 2.1.1 提前落地：tests/test_manifest_sync.py M1–M9
+
 ## [2.1.1] - 2026-10-15
 
 > P0 分发可安装性修复。来源：10-15 五维诊断（资源配置 3/5，「建而未用」）
