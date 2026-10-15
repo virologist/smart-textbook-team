@@ -96,8 +96,9 @@ def route(query: str) -> tuple[str | None, float, list[str]]:
             return 'design-review', conf(False), signals
         return 'design-bloom', conf(KNOWN_SAMPLES.get(q.strip()) == 'design-bloom'), signals
 
-    # ── 检索-标准 ──
-    if any(kw in q for kw in ('GB ', 'GB/', 'WOAH', 'OIE', '标准', '法规', '条例', '手册', '版次')):
+    # ── 检索-标准(v1.3 中文法规链联动: 兽药典/动物防疫法/公告 等中文权威源入路由) ──
+    if any(kw in q for kw in ('GB ', 'GB/', 'WOAH', 'OIE', '标准', '法规', '条例', '手册', '版次',
+                              '兽药典', '动物防疫法', '畜牧法', '公告')):
         signals.append('standard')
         return 'retrieval-standard', conf(KNOWN_SAMPLES.get(q.strip()) == 'retrieval-standard'), signals
 
@@ -148,7 +149,12 @@ def route(query: str) -> tuple[str | None, float, list[str]]:
     return None, 0.0, []
 
 
-# 26 用例: 原 22 + 新增 4(含两个曾被误路由的回归钉)
+# 40 用例(2026-10-15 P2-3 扩容): 原 26 + 新增 14。
+# 覆盖目标: 13 类 task_type 每类 ≥2(目标 3) + 模糊升级用例。
+# 类型分布(40): design-bloom 3 | design-review 2 | retrieval-standard 4 |
+#   retrieval-pmid 3 | retrieval-wiki 3 | write-skeleton 3 | write-revise 2 |
+#   review-structure 2 | review-depth 3 | review-citation 3 | review-style 3 |
+#   visual-spec 3 | visual-review 3 | 升级 3
 EVAL_CASES = [
     ("设计第 6 章禽流感鉴别诊断", "design-bloom", 0.8),
     ("给我这一章的 Bloom 分层大纲", "design-bloom", 0.7),
@@ -173,6 +179,23 @@ EVAL_CASES = [
     ("做个 Mermaid 流程图", "visual-spec", 0.7),
     ("图与正文数据一致吗", "visual-review", 0.6),                 # 回归钉: 曾被误路由为 visual-spec
     ("图表数值和 draft 对得上吗", "visual-review", 0.6),          # 新增: 一致性意图
+
+    # ── P2-3 扩容(2026-10-15): 14 条,补齐 1-覆盖类至 3 ──
+    ("按 Bloom 认知层级排布这章的知识块", "design-bloom", 0.7),
+    ("先写一版 ch09 的 R1 框架", "write-skeleton", 0.7),
+    ("查兽药典 2020 版对碘伏的浓度规定", "retrieval-standard", 0.7),   # 中文法规源入路由(联动 citation-verify v1.3)
+    ("查动物防疫法第 X 条的现行表述", "retrieval-standard", 0.7),      # 中文法规源(新关键词)
+    ("找 H5 亚型分子流行病学方面的文献", "retrieval-pmid", 0.7),
+    ("把这条结论入库", "retrieval-wiki", 0.7),
+    ("把这个知识点沉淀一下", "retrieval-wiki", 0.7),
+    ("审一下这章的结构安排", "review-structure", 0.7),
+    ("看看 §2 机制讲得深不深,内容够不够", "review-depth", 0.7),
+    ("这章因果链深度不够,做一次深度复核", "review-depth", 0.7),
+    ("查一下有没有套话和 AI 腔", "review-style", 0.7),
+    ("统一一下各节的术语和文风可读性", "review-style", 0.7),
+    ("给 §4 画一张免疫程序时序图", "visual-spec", 0.7),
+    ("插图编号和正文引用对得上吗", "visual-review", 0.7),
+
     # 边界用例: 模糊问法, 应触发升级
     ("帮我搞一下这章", None, 0.0),
     ("看看这章", None, 0.0),

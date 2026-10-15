@@ -45,6 +45,9 @@ def main() -> int:
     ap.add_argument('--task-type', default='', help='router 标注的 task_type')
     ap.add_argument('--routing-conf', type=float, default=None, help='routing_confidence')
     ap.add_argument('--notes', default='', help='自由备注')
+    ap.add_argument('--estimated', action='store_true',
+                    help='tokens 为估算值(字符数÷3 口径)——平台未暴露真实用量时必须打此标,'
+                         'compute_metrics 报告将标注「不可审计」(P2-6/LE-20261015-04)')
     args = ap.parse_args()
 
     # correlation_id 推断
@@ -70,6 +73,8 @@ def main() -> int:
         'notes': args.notes,
         'ts': datetime.now(timezone.utc).isoformat(timespec='seconds'),
     }
+    if args.estimated:
+        rec['estimated'] = True
 
     # 路径
     trace_dir = Path(args.work_root) / '运行态'

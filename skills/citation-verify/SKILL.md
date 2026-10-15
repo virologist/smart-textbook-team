@@ -1,7 +1,7 @@
 ---
 name: citation-verify
-description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / citation verify / 引用审查 / 这条引用能用吗. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
-version: 1.2.0
+description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准) against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 法规现行有效 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
+version: 1.3.0
 ---
 
 # citation-verify — 引用核验（零容忍防幻觉）
@@ -56,7 +56,31 @@ WebFetch https://api.crossref.org/works/{DOI}
 → 确认 DOI 真实性与元数据一致
 ```
 
-### 方法 4：全部失败
+### 方法 4：中文法规 / 标准 / 公告源核验链（v1.3 新增）
+
+中文教材引用大量法规、国标与官方公告——这些**没有 PMID/DOI**，不能走方法 1–3，
+也不得以「查不到 PMID」为由删除。走下表专属链路，逐源实检：
+
+| 源类型 | 权威入口（URL 模板） | 核验动作 | 通过标签 |
+|--------|---------------------|---------|---------|
+| 法律（动物防疫法/畜牧法等） | `https://flk.npc.gov.cn/`（国家法律法规数据库）→ 搜法律名 → 确认**现行有效版本**与条文序号 | 条文号 + 关键表述与原文一致；**已废止/已修订旧版 = FAIL** | `[实·法规]` |
+| 行政法规/部门规章 | `https://www.gov.cn/zhengce/`（中国政府网） | 发文字号 + 印发日期一致 | `[实·法规]` |
+| 农业农村部公告/通知 | `http://www.mara.gov.cn/` 站内搜公告号（如「第 573 号公告」） | 公告号 + 日期 + 关键清单（如疫病名录）一致 | `[实·公告]` |
+| 国家标准（GB/GB/T） | `https://openstd.samr.gov.cn/bzgk/gb/`（国家标准全文公开系统）→ 搜标准号 | **现行版次**（查有无被新版替代）+ 关键指标值（如 GB/T 16550 判读 1:32）一致 | `[实·标准]` |
+| 兽药典 | `https://www.ivdc.org.cn/`（中国兽药信息网）→ 兽药典专栏 | 版次（2020 年版一部/二部/三部）+ 条目存在 | `[实·兽药典]` |
+| 官方技术指南 | 印发机构官网原文（如中国动物疫病预防控制中心 → mara.gov.cn） | **必须有可回访的原文 URL**，二手转载不算 | `[实·指南]` |
+| 国际组织（WOAH 等） | `https://www.woah.org/`（WAHIS） | 条款/名单与官网现行版一致 | `[实·机构]` |
+
+**中文源核验三要素**（与方法 1–3 的三要素同构）：
+① **源真实**——在权威入口可检索到该文件（转发稿/自媒体转述不算）；
+② **版次现行**——法规与国标必须核「现行有效」，旧版次引用 = FAIL（错版视同错配）；
+③ **数据可定位**——引用的条文号/指标值能在原文中找到。
+
+> **时效性陷阱（v1.3 实证条款）**：动物防疫法（2021 修订）、GB/T 16550 等均有多版历史。
+> 引用旧版 = 数据可能整体失效。凡 `[实·法规]`/`[实·标准]` 标签，核验记录必须写明
+> 「版次 + 现行性判定依据」，不能只写「查到」。
+
+### 方法 5：全部失败
 标注 `[待核实·reason=核验工具不可用]`，**不得默认通过**。
 
 ## 输入不可信原则（v1.2 新增，红队实证）
@@ -86,6 +110,6 @@ WebFetch https://api.crossref.org/works/{DOI}
 ## 注意事项
 
 - 中文文献（CNKI）无 PMID：核验标准引文格式（作者/期刊/年/卷期页）可检索到即可，标 `[实·CNKI]`
-- 权威机构数据（WOAH/Merck/兽药典）：核验 URL 可访问且数据一致，标 `[实·机构]`
+- 权威机构数据（WOAH/Merck/兽药典）：走方法 4 专属链路核验，标 `[实·机构]`/`[实·兽药典]`
 - 绝不因「看起来合理」而免检；逐条核验，无一例外
 - 消费者：quality-examiner（R3 报告）、主理人（交付质量报告）

@@ -2,11 +2,16 @@
 """compute_metrics.py — 5 指标计算器
 
 读取 {WORK_ROOT}/运行态/trace.jsonl,计算:
-  1. 分派命中率  (spawn RESULT OK 数 / spawn 总数)
-  2. 返工率      (同 task_id R2+ 计数 / 审查类总数)
+  1. 分派命中率  (末态 outcome=OK 的任务数 / 派发任务总数——按 task_id 去重取末态,
+                  E1 重试的 ERROR 被后续 RESULT 覆盖时不双扣; P2-6 口径修复)
+  2. 返工率      (同 task_id 出现 ≥2 次 RESULT OK——同一任务重复成功交付才算返工;
+                  ERROR→OK 的重试不算返工,单列 retry_rate; P2-6 口径修复:
+                  旧口径按「R2 出现在任务名」计数,把流水线既定的第二轮审查
+                  误判为返工,真实运行 2/2=1.000 恒 FAIL)
+  2b. retry_rate (含 ERROR/BLOCK 行的任务占比——E1 重试强度,参考项不设门槛)
   3. blocking 占比 (blocking_open 非空任务 / 总任务)
   4. 平均轮次    (同 task_id 的 trace 行数中位数; 自报 turns 仅作参考列 — evo-16 口径修复)
-  5. per-task token (in+out 累加,按 task_id)
+  5. per-task token (in+out 累加,按 task_type; 行内 estimated:true 时报告标注)
 
 输出: 文本报告 + 可选 JSON
 
@@ -43,9 +48,13 @@ def compute(traces: list[dict]) -> dict:
     if not traces:
         return {
             'total_traces': 0,
+            'total_tasks': 0,
+            'has_estimated_tokens': False,
             'spawn_total': 0,
             'spawn_ok': 0,
             'dispatch_hit_rate': None,
+            'retry_tasks': 0,
+            'retry_rate': None,
             'review_total': 0,
             'review_rework': 0,
             'rework_rate': None,
@@ -57,16 +66,39 @@ def compute(traces: list[dict]) -> dict:
             'by_task_type': {},
         }
 
-    spawn_total = sum(1 for t in traces if t.get('type') in ('RESULT', 'BLOCK', 'ERROR'))
-    spawn_ok = sum(1 for t in traces if t.get('type') == 'RESULT' and t.get('outcome') == 'OK')
+    # ── P2-6 口径修复(2026-10-15) ──────────────────────────────────
+    # 按 task_id 去重取【末态】: E1 重试(ERROR→RESULT OK)不双扣分派命中率;
+    # 返工改按「同 task_id ≥2 次 RESULT OK」判定(与文件名里的 R2 彻底解耦);
+    # 重试强度单列 retry_rate(参考项,不设门槛)。
+    by_task: dict[str, list[dict]] = defaultdict(list)
+    for t in traces:
+        tid = t.get('task_id') or ''
+        by_task[tid].append(t)
+
+    def _terminal(rows: list[dict]) -> dict:
+        """末态行: 取该 task_id 最后一行(trace 为 append-only,文件序即时间序)。"""
+        return rows[-1]
+
+    dispatched = {tid: rows for tid, rows in by_task.items()
+                  if any(r.get('type') in ('RESULT', 'BLOCK', 'ERROR') for r in rows)}
+    spawn_total = len(dispatched)
+    spawn_ok = sum(1 for rows in dispatched.values()
+                   if _terminal(rows).get('type') == 'RESULT'
+                   and _terminal(rows).get('outcome') == 'OK')
     dispatch_hit_rate = spawn_ok / spawn_total if spawn_total else None
 
-    review_tasks = [t for t in traces if (t.get('task_type') or '').startswith('review-')]
-    review_total = len(review_tasks)
-    # 返工 = 同一 task_id 出现 R2/R3/...
-    task_ids = Counter(t.get('task_id') for t in traces)
-    rework_task_ids = {tid for tid, cnt in task_ids.items() if cnt >= 2}
-    review_rework = sum(1 for t in review_tasks if t.get('task_id') in rework_task_ids)
+    retry_tasks = {tid for tid, rows in by_task.items()
+                   if any(r.get('type') in ('ERROR', 'BLOCK') for r in rows)}
+    retry_rate = (len(retry_tasks) / spawn_total) if spawn_total else None
+
+    # 返工: 同 task_id 出现 ≥2 次「RESULT outcome=OK」= 同一任务重复成功交付
+    review_task_ids = {tid for tid, rows in by_task.items()
+                       if any((r.get('task_type') or '').startswith('review-') for r in rows)}
+    rework_task_ids = {tid for tid, rows in by_task.items()
+                       if sum(1 for r in rows
+                              if r.get('type') == 'RESULT' and r.get('outcome') == 'OK') >= 2}
+    review_total = len(review_task_ids)
+    review_rework = len(review_task_ids & rework_task_ids)
     rework_rate = review_rework / review_total if review_total else None
 
     blocking_total = sum(1 for t in traces if t.get('blocking_open'))
@@ -97,9 +129,13 @@ def compute(traces: list[dict]) -> dict:
 
     return {
         'total_traces': len(traces),
+        'total_tasks': len(by_task),
+        'has_estimated_tokens': any(t.get('estimated') for t in traces),
         'spawn_total': spawn_total,
         'spawn_ok': spawn_ok,
         'dispatch_hit_rate': dispatch_hit_rate,
+        'retry_tasks': len(retry_tasks),
+        'retry_rate': retry_rate,
         'review_total': review_total,
         'review_rework': review_rework,
         'rework_rate': rework_rate,
@@ -114,17 +150,21 @@ def compute(traces: list[dict]) -> dict:
 
 def render(m: dict) -> str:
     lines = ['=' * 60, '智能体团队 5 项关键指标', '=' * 60]
-    lines.append(f'总 trace 数: {m["total_traces"]}')
+    lines.append(f'总 trace 数: {m["total_traces"]}  |  任务数(按 task_id 去重): {m["total_tasks"]}')
     lines.append('')
-    lines.append('[1] 分派命中率 (spawn RESULT OK / spawn 总数)')
+    lines.append('[1] 分派命中率 (末态 OK 任务 / 派发任务——按 task_id 去重,重试不双扣)')
     if m['dispatch_hit_rate'] is not None:
         lines.append(f'    {m["spawn_ok"]}/{m["spawn_total"]} = {m["dispatch_hit_rate"]:.3f}')
+        rr = m.get('retry_rate')
+        if rr is not None:
+            lines.append(f'    (参考) retry_rate = {m["retry_tasks"]}/{m["spawn_total"]} = {rr:.2f}'
+                         '  (E1 重试强度,不设门槛)')
         lines.append(f'    门槛 ≥ 0.80  {"✓ PASS" if m["dispatch_hit_rate"] >= 0.80 else "✗ FAIL"}')
     else:
         lines.append('    暂无数据')
 
     lines.append('')
-    lines.append('[2] 返工率 (review 任务 R2+ / review 总数)')
+    lines.append('[2] 返工率 (同 task_id ≥2 次成功交付的 review 任务 / review 任务数)')
     if m['rework_rate'] is not None:
         lines.append(f'    {m["review_rework"]}/{m["review_total"]} = {m["rework_rate"]:.3f}')
         lines.append(f'    门槛 ≤ 0.30  {"✓ PASS" if m["rework_rate"] <= 0.30 else "✗ FAIL"}')
@@ -155,6 +195,8 @@ def render(m: dict) -> str:
     if m['by_task_type']:
         for tt, info in sorted(m['by_task_type'].items(), key=lambda x: -x[1]['tokens']):
             lines.append(f'    {tt:24s}  {info["count"]:3d} spawn  {info["tokens"]:>8d} tokens')
+        if m.get('has_estimated_tokens'):
+            lines.append('    ⚠ 含估算值(estimated:true)——平台未暴露真实用量,按字符数÷3 估,不可审计')
     else:
         lines.append('    暂无数据')
 

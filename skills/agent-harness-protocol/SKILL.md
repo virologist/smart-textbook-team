@@ -308,6 +308,17 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 
 **续跑判定**：team-lead Phase A 必先读 progress.md；若存在 → 跳过已完成 phase 直接进入下一个 IN_PROGRESS。
 
+### 6.4 成员「开工三件套」（P2-7 增补，2026-10-15，e2e-p1 真实运行实证）
+
+**实证背景**：首轮 quality-examiner 运行约 15 分钟后静默结束——未落盘产物、无 SendMessage、无状态，主理人三通道全盲，只能靠文件 mtime 判死活；E1 重试轮在指令中加入「先落盘骨架再补内容」后，**90 秒即有首版可审计产物**，3m13s 完整交付。同一成员同一协议，差异只在落盘时机。
+
+**规则（成员接任务后的硬性动作序列）**：
+1. **3 步内先落盘骨架**：读任务包后，先把产出文件的骨架（全部章节标题 + 占位段）Write 到约定路径——任何时点被截断都有可审计产物；
+2. **逐段补全**：用 Edit/重写增量补内容，禁止「全憋在内存里最后一次性写」；
+3. **收尾三件套**（既有规则）：patch 黑板 + trace + progress。
+
+**编排者侧（E1 重试指令模板）**：重试 spawn 必须显式包含三条加固——① 重申落盘绝对路径；② 写明「先落盘骨架再补内容」；③ MCP 不可用时直接走 citation-verify 的 URL 降级链，不为单点卡死。
+
 ---
 
 ## 7. 交接检查表（dispatch 前逐项过）
@@ -319,6 +330,7 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 - [ ] 若是并行分支，确认与其他分支无文件写冲突
 - [ ] 若是返修任务，附上 examiner 的 blocking 原文（具体到行号/引文）
 - [ ] 指令中要求成员「执行前加载 harness §1.1 boundary filter 与 §2 token budget」（防投毒/成本底线）
+- [ ] 指令中包含「先落盘骨架再补内容」要求（§6.4 开工三件套；E1 重试时必须重申——e2e-p1 实证静默退出的唯一有效解）
 - [ ] **trace 写入强制**：指令中要求成员完成后 `python3 scripts/record_trace.py ...` 写 trace.jsonl（含 task_type + routing_confidence + blocking_open）
 - [ ] **progress.md 更新强制**：phase 完成时 `progress.py update`；H15 缺口时 `progress.py block`
 - [ ] **路由前加载 task-router**：dispatch 前 team-lead 已用 task-router 标注 task_type + 评估 routing_confidence ≥ 0.7

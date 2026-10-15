@@ -3,6 +3,45 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-15
+
+> P1 真实运行（e2e-p1：ch08 PRODUCE-R2 → VERIFY-R2，含 E1 重试）产出 5 条 LEARN 候补，
+> P2 按证据逐条落地修复。运行态证据 `tb-writer/.omc/e2e-p1/`。
+
+### Added
+- `scripts/count_net_words.py` — 净字数 SSOT 计数器（P2-4 / LE-20261015-01）：
+  口径写死为代码 + 分步明细可审计 + `--self-test` 内置夹具 + `--target` 门禁判定；
+  真实 ch08 稿三方口径 1203/1213/1329 → SSOT 终审 1213，与审查官独立复核一致
+- subject-writer / quality-examiner MD 接入 SSOT 计数器，禁止手工自报净字数
+- harness §6.4「成员开工三件套」+ §7 检查表 +1 项（P2-7 / LE-20261015-05）：
+  接任务 3 步内先落盘骨架再逐段补全；E1 重试指令模板固化三条加固
+- trace 信封新增 `estimated` 字段 + record_trace `--estimated` 旗标（P2-6 / LE-04）
+
+### Changed
+- `compute_metrics.py` 口径修复（P2-6 / LE-20261015-03）：
+  ① 分派命中率按 task_id 去重取末态（E1 重试不双扣）；② 返工率改按
+  「同 task_id ≥2 次成功交付」判定（旧口径把任务名里的 R2 第二轮审查误判为
+  返工，真实数据 2/2=1.000 恒 FAIL）；③ 新增 retry_rate 参考指标。
+  修复后 e2e-p1：1.000 / 0.000 / 0.000 / 1.5 全 PASS
+- router 评测样本 26 → 40（P2-3）：13 类每类 ≥2（12 类达 3）+ 3 升级用例；
+  检索-标准分支补中文法规关键词（兽药典/动物防疫法/畜牧法/公告）
+- `assemble_spawn_prompt.py`（shared-core，4 包同受益）正文技能路径解析
+  （P2-5 / LE-20261015-02）：成员 MD 正文声明的 `skills/*/SKILL.md` 相对路径
+  解析为绝对路径注入（仅收录真实存在的文件），「前置门禁」从不可执行变为可执行
+
+### Fixed
+- **P2-1 citation-verify v1.3**：新增「中文法规/标准/公告源核验链」——
+  国家法律法规数据库 / gov.cn / 农业农村部公告 / 国家标准全文公开系统 /
+  中国兽药信息网 / WOAH 六类权威入口 + 中文源核验三要素（源真实/版次现行/数据可定位）
+  + 时效性陷阱条款（旧版次引用 = FAIL）
+- **P2-2 规则冲突消除**：examiner 鉴别点阈值 ≥2 与 role-assembly §3 ≥3 矛盾 →
+  统一 ≥3 并互标 SSOT；role-assembly §5「examines ≥3 项否则 blocking」与
+  examiner evo-10 口径（仅全空 FAIL）矛盾 → 对齐并废止旧条款
+
+### Ops
+- V4 防漂移门禁在 P2-5 后实际拦截 vendor 漂移一次（联邦 sha 02a69d1f… ≠ vendor b808ff8d…），
+  按提示同步后 6/6 通过——设计目的首次达成
+
 ## [2.1.1] - 2026-10-15
 
 > P0 分发可安装性修复。来源：10-15 五维诊断（资源配置 3/5，「建而未用」）

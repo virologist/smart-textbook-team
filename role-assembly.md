@@ -21,13 +21,16 @@ writer 单视角写正文，易在领域术语、体例规范、学段适配三�
 | 编辑 | `textbook-senior-editor` | 教材资深编辑 | 术语一致性、引用格式、段落节奏 |
 | 学段 | `vocational-edu-adapter` | 高职学段适配 | 学段可消化性、公式最小化、案例密度 |
 
-## 3. 4 维 examines 规范（examiner R2 兜底基准）
+## 3. 4 维 examines 规范（examiner R2 兜底基准 · SSOT）
+
+> **本节是 4 维规范的唯一权威源（SSOT）**。quality-examiner.md 中的同形表格是执行副本；
+> 两处不一致时**以本节为准**，改基准先改本节，examiner 副本随改。
 
 | 维度 | 定义 | 可观察判据 |
 |------|------|-----------|
 | 术语精确性 | 学科术语规范、无口语化/自造词 | 与教材术语表 /《兽药典》/ ICTV 一致 |
 | 因果链完整性 | 病因→病理→症状→诊断→防治逻辑闭环 | 无断环、无「有因无果」 |
-| 鉴别点充分性 | 同类疾病的鉴别特征给足 | 每对易混疾病 ≥3 条鉴别点 |
+| 鉴别点充分性 | 同类疾病的鉴别特征给足 | 每对易混疾病 **≥3 条**鉴别点（2026-10-15 P2-2 统一口径，原 examiner 副本 ≥2 作废） |
 | 学段可消化性 | 高职生能读懂、复述、应用 | 段落 ≤200 字、抽象概念有实例锚点、先 How 后 Why |
 
 > examiner 的 R2 固定基准就是这 4 维。角色团的 examines 是「额外视角」，**不替代** 4 维兜底——某角色 examines 未覆盖某标准维不构成 FAIL（4 维由 examiner 兜底）。
@@ -44,7 +47,7 @@ writer 单视角写正文，易在领域术语、体例规范、学段适配三�
 2. 定「领域视角」：按知识域映射领域 role_id（见 §6）
 3. 固定「编辑视角」+「学段视角」：始终激活 `textbook-senior-editor` + `vocational-edu-adapter`
 4. 声明于 draft frontmatter（格式见 §7）
-5. 每角色 examines ≥3 项可观察维度，否则 examiner R2 判无效声明 → blocking
+5. 每角色 examines ≥1 项可观察维度（2026-10-15 P2-2 对齐 evo-10 口径：**全空 = 无效声明 → blocking**；声明 3 项但未覆盖 4 标准维**不构成 FAIL**——覆盖面由 examiner 4 维兜底，与 quality-examiner.md「examines 声明不可自证」条款一致。原「≥3 项否则 blocking」与该条款矛盾，废止）
 
 ## 6. 领域 role_id 映射表（按 knowledge_scope 扩展）
 
