@@ -221,7 +221,7 @@ CLOSED  ──E5/连续E3──▶  OPEN  ──用户处置后──▶  HALF_O
 ## 5. 降级链（工具层）
 
 ```
-PubMed MCP（须先 ToolSearch 载入 schema）
+当前环境可用的 PubMed/CrossRef MCP（ToolSearch 解析，不写死前缀 —— 2026-10-15 P0-3）
   → WebFetch https://pubmed.ncbi.nlm.nih.gov/{PMID}/
   → CrossRef https://api.crossref.org/works/{DOI}
   → WebSearch
@@ -229,6 +229,22 @@ PubMed MCP（须先 ToolSearch 载入 schema）
 ```
 
 每层失败必须如实记录，**禁止跳过失败层直接给结论**。
+
+### 5.1 工具名前缀去写死条款（2026-10-15 P0-3 增补，静态分析 + 真实运行实证）
+
+**实证背景**：scout.md / examiner.md 旧版硬编码 `mcp__paper_search_server__*` 前缀；实际工作环境（前会话 e2e-p1）挂的是 `mcp__pubmed__get_article_metadata` 与 `mcp__biomcp__*`，且前缀随 MCP 接入组合变化——硬编码等于 false assumption，每次环境变更都需改文档。
+
+**通用规则**：
+1. **禁止在任何成员 MD / skill / 装配 prompt 中出现裸 `mcp__<具体服务前缀>__<工具名>` 写死**。允许出现的是：`ToolSearch 检索当前环境可用的 <功能> 工具` 这一描述句。
+2. **首次使用任何 MCP 工具的强制动作链**（所有成员必遵守）：
+   - `ToolSearch 关键词=<功能英文/中文>` 检索 schema（例：`ToolSearch "pubmed"`, `ToolSearch "crossref"`）
+   - `DeferExecuteTool 加载 schema`
+   - 用解析出来的**实际工具名**调用（动态获取，不用历史经验）
+   - 调用前**不假定**「一定有某前缀」——ToolSearch 不到就直接降层（WebFetch URL 模板）
+3. **降级链的 URL 是唯一可写死的常值**（PubMed/CrossRef/Semantic Scholar 公共接口）；其他动态部分一律用「调用 ToolSearch 实测」描述。
+4. **测试门禁**（M 门禁扩展点，未做）：grep 成员 MD 排除裸 `mcp__[a-z_]+__[a-z_]+` 模式，命中白名单段（已在该段说明 ToolSearch 兜底）则放行。
+
+> 误报豁免白名单：本 SKILL.md §5.1 自身 + 成员 MD 中显式标注「示例/已废止」的旧前缀段，grep 门禁将排除。
 
 ---
 

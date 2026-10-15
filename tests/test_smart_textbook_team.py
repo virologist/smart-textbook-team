@@ -326,6 +326,58 @@ def check_pipeline(ck, expert_dir, plugin):
     # C6 单 agent 直调路由表
     ck.check("C6a", "C", "主理人含单 agent 直调路由表", "直调路由表" in lead or "路由表" in lead)
 
+    # C7 13 态派工覆盖（re-audit 2026-10-15 P0-2：PROOFREAD 派工不能空）
+    # 抽取主理人 SOP 中提及"spawn + 成员 ID"或"Phase X:"行,断言每态至少 1 处派工
+    # 取 13 态与主理人显式 Phase 段: B/C/D/E/PROOFREAD/CONSOLIDATION/VISUALIZE/ASSEMBLE/DELIVER/LEARN
+    dispatch_phases = [
+        ("BOOTSTRAP/INTAKE/CLARIFY", "Phase A"),  # 含续跑判定
+        ("SPECIFY", "Phase B"),                   # 设计
+        ("RETRIEVE", "Phase C"),                  # 检索
+        ("PRODUCE", "Phase D"),                   # 撰写
+        ("VERIFY", "Phase E"),                    # 审查 R1-R3
+        ("PROOFREAD", "Phase PROOFREAD"),         # 校对
+        ("CONSOLIDATION", "Phase CONSOLIDATION"), # 统稿
+        ("VISUALIZE", "Phase VISUALIZE"),         # 可视化
+        ("ASSEMBLE", "Phase ASSEMBLE"),           # 装配
+        ("DELIVER", "Phase DELIVER"),             # 交付
+        ("LEARN", "Phase LEARN"),                 # 沉淀
+    ]
+    missing_dispatch = []
+    for state, phase_label in dispatch_phases:
+        # 主理人 MD 中必须出现该 Phase 段标题
+        if phase_label + ":" not in lead:
+            missing_dispatch.append(f"{state} 缺 {phase_label} 段")
+    ck.check("C7", "C", "主理人 SOP 13 态派工段齐全（PROOFREAD 派工不能空）",
+             not missing_dispatch, f"缺失: {missing_dispatch}")
+
+    # C7a PROOFREAD 显式派给 quality-examiner（裁决：R4 风格审查归 examiner）
+    ck.check("C7a", "C", "PROOFREAD 派工对象 = quality-examiner",
+             "PROOFREAD" in lead and "quality-examiner" in lead
+             and ("R4" in lead or "风格" in lead))
+
+    # C7b P0-3: 成员 MD 不写死 mcp__ 前缀（除 harness §5.1 白名单段）
+    # 实测命中行必须在 harness §5.1 的「实证背景/通用规则/豁免白名单」三段之一内
+    harness_5_1_text = read(os.path.join(expert_dir, "skills", "agent-harness-protocol", "SKILL.md"))
+    # 找 §5.1 起止行(粗粒度:从 "5.1 工具名" 到下一个 ## 或 6. 起)
+    h511_start = harness_5_1_text.find("### 5.1 工具名")
+    h511_end = harness_5_1_text.find("\n## ", h511_start + 1) if h511_start != -1 else -1
+    whitelist_section = harness_5_1_text[h511_start: h511_end] if h511_start != -1 else ""
+    bad_hits = []
+    for md_name in ("didactic-architect", "literature-scout", "subject-writer",
+                    "quality-examiner", "visual-instructional-designer",
+                    "smart-textbook-team-team-lead"):
+        md_text = read(os.path.join(agent_dir, f"{md_name}.md"))
+        for n, line in enumerate(md_text.splitlines(), 1):
+            if re.search(r"mcp__[a-z_]+__[a-z_]+", line):
+                bad_hits.append(f"{md_name}.md:{n} 命中: {line.strip()[:60]}")
+    # citation-verify 同样约束
+    cv_text = read(os.path.join(expert_dir, "skills", "citation-verify", "SKILL.md"))
+    for n, line in enumerate(cv_text.splitlines(), 1):
+        if re.search(r"mcp__[a-z_]+__[a-z_]+", line):
+            bad_hits.append(f"citation-verify.md:{n} 命中: {line.strip()[:60]}")
+    ck.check("C7b", "C", "成员 MD/skill 不硬编码 mcp__ 前缀（P0-3）",
+             not bad_hits, f"{len(bad_hits)} 处违规: {bad_hits[:3]}{'…' if len(bad_hits)>3 else ''}")
+
 
 # ── D. 质量红线 ─────────────────────────────────────────────────────
 def check_redline(ck, expert_dir):

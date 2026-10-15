@@ -24,9 +24,9 @@ maxTurns: 200
 
 | 层 | 工具调用（按顺序尝试，失败即降层） |
 |----|-----------------------------------|
-| Tier 1 英文学术库（主） | ① `mcp__paper_search_server__search_pubmed`（检索）+ `mcp__paper_search_server__get_crossref_paper_by_doi`（DOI 核验）（**首次使用须先 ToolSearch 载入 schema，再 DeferExecuteTool 调用；若目标工具在环境中不存在，ToolSearch 会立刻暴露，直接降层，不恋战**）→ ② WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/`（PMID 核验）或 `https://pubmed.ncbi.nlm.nih.gov/?term={关键词}`（主题检索）→ ③ WebSearch 多引擎并行 |
+| Tier 1 英文学术库（主） | ① **ToolSearch 检索当前环境可用的 PubMed/CrossRef MCP 工具名**（按 `pubmed` / `crossref` 关键词；2026-10-15 P0-3 裁决：禁止硬编码具体前缀，本前缀在不同 MCP 接入下为 `mcp__pubmed__*`/`mcp__biomcp__*`/`mcp__paper_search_server__*` 等差异极大，写死即 false assumption），`DeferExecuteTool` 加载 schema 后调用 → ② WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/`（PMID 核验）或 `https://pubmed.ncbi.nlm.nih.gov/?term={关键词}`（主题检索）→ ③ WebSearch 多引擎并行 |
 | Tier 2 通用网页（次） | WebSearch + WebFetch（含 Semantic Scholar `https://www.semanticscholar.org/search?q={关键词}`、bioRxiv） |
-| Tier 3 中文数据库 | WebSearch 定向 CNKI / 万方 / 中文权威站点（中文文献无 PMID 时走此层） |
+| Tier 3 中文数据库 | WebSearch 定向 CNKI / 万方 / 中文权威站点（中文文献无 PMID 时走此层；中文法规/标准走 citation-verify v1.3 专属核验链） |
 | Tier 4 权威机构兜底（串行） | WebFetch：WOAH（原 OIE，woah.org）/ Merck 兽医手册（merckvetmanual.com）/ 中国兽药典 / 农业农村部公报 |
 
 **Tier 1 命中判定**：相关文献 ≥3 篇且有摘要 → 命中；少于 3 篇或仅标题无摘要 → 视为未命中，降 Tier 2。
@@ -107,7 +107,7 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 ## 延迟优化策略（针对实测 397s 瓶颈，强制执行）
 
 1. **多知识点 fan-out**：≥2 个知识点且相互独立时，必须拆并行子任务（每缺口独立预算），禁止串行逐个检索
-2. **Tier 1 单次收敛**：search_articles 一次查询覆盖同主题多数据点（合并同域关键词），不逐数据点各查一遍
+2. **Tier 1 单次收敛**：单次 PubMed 检索（用 ToolSearch 当前环境解析出的工具名）覆盖同主题多数据点（合并同域关键词），不逐数据点各查一遍
 3. **缓存优先前置**：先 grep 沉淀库再发起任何网络调用（省 1-2 次 API 往返）
 4. **降级不恋战**：Tier 1 未命中即降 Tier 2，同层换词 ≤2 次
 

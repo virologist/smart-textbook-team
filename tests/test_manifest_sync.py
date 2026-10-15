@@ -44,6 +44,7 @@ DEFAULT_EXPERT_DIR = (
     else _INSTALL_DIR
 )
 CB = os.path.join(".codebuddy-plugin", "plugin.json")
+TEAM_LEAD_ID = "smart-textbook-team-team-lead"  # 供 M10 体积门禁用
 CC = os.path.join(".claude-plugin", "plugin.json")
 
 
@@ -144,6 +145,41 @@ def main():
                   ok, f"metadata={mp_ver} plugin={pl0.get('version')}")
         except json.JSONDecodeError as e:
             r.add("M9a", ".claude-plugin/marketplace.json 可解析", False, str(e))
+
+    # M10 散文漂移门禁（2026-10-15 re-audit P1-1）：README 版本/技能数/常驻核心
+    # 体积与实际文件比对——所有声明必须能在磁盘即时核出,推不动就红
+    readme = os.path.join(d, "README.md")
+    if os.path.exists(readme):
+        rt = open(readme, encoding="utf-8").read()
+        # ① README 头部版本号必须等于 plugin.json version
+        m = re.search(r"版本\s*([0-9]+\.[0-9]+\.[0-9]+)", rt)
+        rv = m.group(1) if m else None
+        r.add("M10a", "README 头部版本号 == plugin.json version",
+              rv == cb.get("version"),
+              f"README={rv} plugin={cb.get('version')}")
+        # ② README 声明的技能数（如「6 个 skill」）必须与 ls skills/ 实际目录数一致
+        m2 = re.search(r"(\d+)\s*(?:个\s*)?skills?\b", rt, re.I)
+        claimed = int(m2.group(1)) if m2 else None
+        actual = sum(1 for x in os.listdir(os.path.join(d, "skills"))
+                     if os.path.isdir(os.path.join(d, "skills", x)))
+        r.add("M10b", "README 声明技能数 == skills/ 实际目录数",
+              claimed == actual,
+              f"声明 {claimed} / 实际 {actual}")
+        # ③ README 声明的「主理人常驻核心 X KB」必须与 wc -c 误差 ≤ 1KB
+        m3 = re.search(r"主理人[^。]*?([0-9]+\.?[0-9]*)\s*KB", rt)
+        claimed_kb = float(m3.group(1)) if m3 else None
+        if claimed_kb is not None:
+            lead_bytes = os.path.getsize(os.path.join(d, "agents", f"{TEAM_LEAD_ID}.md"))
+            actual_kb = lead_bytes / 1024
+            # 文档声明的 KB 通常是 13.4 / 6.8 这种粗略值,允许 ±2 KB 容差
+            r.add("M10c", "README 声明主理人体积 ≈ wc -c 实际(±2KB)",
+                  abs(actual_kb - claimed_kb) <= 2.0,
+                  f"声明 {claimed_kb} KB / 实际 {actual_kb:.1f} KB")
+        else:
+            r.add("M10c", "README 含主理人体积声明（可推断）", False, "未匹配到 KB 声明")
+    else:
+        for sub in ("M10a", "M10b", "M10c"):
+            r.add(sub, f"README.md 存在（{sub} 前置）", False, readme + " 不存在")
 
     # M9 声明路径真实存在
     miss_paths = []

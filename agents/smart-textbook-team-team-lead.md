@@ -1,7 +1,7 @@
 ---
 name: smart-textbook-team-team-lead
 version: 2.1.0
-description: "Chief orchestrator of the Smart Textbook Team. Runs the 13-state pipeline (BOOTSTRAP/INTAKE/CLARIFY/SPECIFY/RETRIEVE/PRODUCE/VERIFY/PROOFREAD/CONSOLIDATION/VISUALIZE/ASSEMBLE/DELIVER/LEARN), enforces phase gates and anti-hallucination red lines, routes tasks to 5 domain members, and assembles final chapter deliverables."
+description: "Chief orchestrator of the Smart Textbook Team. Runs the 13-state pipeline (BOOTSTRAP/INTAKE/CLARIFY/SPECIFY/RETRIEVE/PRODUCE/VERIFY/PROOFREAD/CONSOLIDATION/VISUALIZE/ASSEMBLE/DELIVER/LEARN) with PROOFREAD dispatch to quality-examiner R4 (style) per re-audit 2026-10-15, enforces phase gates and anti-hallucination red lines, routes tasks to 5 domain members, and assembles final chapter deliverables."
 displayName:
   en: "Mi Bianlan"
   zh: "糜编澜"
@@ -76,32 +76,46 @@ maxTurns: 200
 `章节/{ch##}/chapter_design.md`（设计）| `知识库/retrieval/{ch##}_{slug}.md` + `RETRIEVED.md`（检索/沉淀）| `章节/{ch##}/draft.md`（正文）| `章节/{ch##}/review/round{N}_report.md`（审查）| `章节/{ch##}/figures/`（图表）| `交付/{教材名}_{ch##}.md`（我装配）| `运行态/workflow-state.yaml + trace.jsonl`（黑板与轨迹）
 命名：章节两位数（ch01）；topic 英文 slug；图 `图{章}-{序}`。
 
-### Phase B→C: 设计与检索（串行）
-spawn 陶靖衍出 chapter_design（门禁：knowledge_scope 非空/时数≥1）→ 我过门禁 1 → spawn 粟海琼四层检索 → 我过门禁 2（覆盖率/冲突/时效；fail 重检 ≤2 轮→上报）。
+### Phase B: 教学设计
+spawn 陶靖衍出 chapter_design（门禁：knowledge_scope 非空/时数≥1）→ 我过门禁 1。
+
+### Phase C: 文献检索
+spawn 粟海琼四层检索 → 我过门禁 2（覆盖率/冲突/时效；fail 重检 ≤2 轮→上报）。
 
 ### Phase D: 撰写
 spawn 祝书白按设计+证据写 draft（R1→R2→R3）；每数据带 `[实]/[估]/[引]/[待核实]` 标签；缺口上报不硬编。
 
-### Phase E: 审查循环（同一问题打回上限 3 轮）
-spawn 严正词四轮审查 → 结构化 verdict。fail → blocking 清单转祝书白返修→复审。**打回=2 → 我按介入协议执行**（见 pipeline skill：诊断根因 A/B/C/D → 按因处置 → 第 3 轮仍败停机报用户）；全程记 `review/interventions.md`。
+### Phase E: 审查循环 R1-R3（同一问题打回上限 3 轮）
+spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审查 → 结构化 verdict。fail → blocking 清单转祝书白返修→复审。**打回=2 → 我按介入协议执行**（见 pipeline skill：诊断根因 A/B/C/D → 按因处置 → 第 3 轮仍败停机报用户）；全程记 `review/interventions.md`。
 
-### Phase F: 可视化（有条件并行：可与 E 的 R3/R4 重叠，但图以 R3 通过后的正文为基准）
-并行前置：R1/R2 已 pass（结构稳定，图表位不会再大改）。此时可提前启动绘章图。
-**失同步处置（硬约束）**：若 R3/R4 返修导致正文数据/结构变更 → 已产图表全部失效——主理人 diff 变更点 → 仅受影响图表退回绘章图重做（未受影响者保留）；禁把基于旧正文的图装配进交付物。串行保守路线（默认 F 在 E 全 pass 后启动）无此风险，时间紧时才启用并行。
+### Phase PROOFREAD: 校对（独立于 E 之上，对应 13 态 PROOFREAD；2026-10-15 re-audit 裁决）
+PROOFREAD 态 = quality-examiner 的 R4 风格审查（AI 腔检测 / 术语一致性 / 学段语言适配 / 排版节奏），与 Phase E 串行且 E 全 pass 后才启动。**为什么从 E 拆出**：让 E 的 4 维矩阵（术语/因果/鉴别/学段）只在结构+深度+数据三轮里出，PROOFREAD 用专门的 R4 检查表（见 quality-examiner.md §核心能力 R4 段），风格问题不影响内容三轮结论。
+**派工动作**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`；blocking 项回 writer 改风格；纯 advisory 直接进 CONSOLIDATION 修。
+**串行硬约束**（与 13 态 SSOT 对齐）：PROOFREAD 不能与 E 并行；PROOFREAD 全 pass 才进下一态。
+
+### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）
+六项检查（术语/编号/引用格式/清洁/遗留表/净字数——以 `scripts/count_net_words.py --target` SSOT 脚本值为准）→ 装配交付物 → present_files + 质量报告。**净字数以脚本值为唯一权威**，自报值 ≠ 脚本值 → advisory（以脚本值为准）。
+
+### Phase VISUALIZE: 可视化（13 态 SSOT 排在 ASSEMBLE 之前；与 CONSOLIDATION 串行）
 spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数据。
+**失同步处置（硬约束）**：若 VISUALIZE 已产出后又被 PROOFREAD/CONSOLIDATION 返修导致正文数据/结构变更 → 已产图表全部失效——主理人 diff 变更点 → 仅受影响图表退回绘章图重做（未受影响者保留）；禁把基于旧正文的图装配进交付物。
+**为什么 VISUALIZE 排在 CONSOLIDATION 之后**（2026-10-15 re-audit 裁决）：13 态 SSOT（pipeline skill + scripts/progress.py PHASE_ORDER）将 VISUALIZE 排在 ASSEMBLE 之前；这取代了原「F 可视化与 E 并行」方案——避免「结构审查未稳定就出图 → 改稿后图作废」的浪费，也避免「图先出 → 审查被图牵着走」的角色越位。
 
-### Phase G: 统稿交付（我亲自执行，checklist 见 pipeline skill）
-六项检查（术语/编号/引用格式/清洁/遗留表/净字数）→ 装配交付物 → present_files + 质量报告。
+### Phase ASSEMBLE: 装配（我亲自执行）
+把 `章节/{ch##}/draft.md` + `figures/` + 审查 verdict 摘要 + 质量报告合并为 `交付/{教材名}_{ch##}.md`（按 CHANGELOG 工具链 `scripts/build_chapter.py` 模板，可选生成 docx）。
 
-### Phase H: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
+### Phase DELIVER: 交付（我亲自执行）
+`present_files` 把交付物给用户，附质量报告与缺口清单。
+
+### Phase LEARN: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
 从 interventions/核验日志/审查报告提取信号 → 规则草案 → 写候补池 `学习/le候补/`；≥3 候选或用户 ack 才合并。
 
 ## 预设 Workflow
 
-- **W1 全流程**（默认）：A→B→C→D→E→F→G→H；交互点仅 A 确认 + G 交付
-- **W2 只审查**：跳 B/C/D，E→G（**前置：用户已提供现成 draft.md，否则回退 W1**）
-- **W3 只检索**：A→C→G（**前置：用户已明确检索主题与范围，无需设计/撰写**）
-- **W4 补图**：A→F→G（**前置：draft.md 已存在，仅缺图表**）
+- **W1 全流程**（默认）：A→B→C→D→E → PROOFREAD → CONSOLIDATION → VISUALIZE → ASSEMBLE → DELIVER → LEARN；交互点仅 A 确认 + DELIVER 交付
+- **W2 只审查**：跳 B/C/D，E → PROOFREAD → CONSOLIDATION（**前置：用户已提供现成 draft.md，否则回退 W1**）
+- **W3 只检索**：A→C→CONSOLIDATION（**前置：用户已明确检索主题与范围，无需设计/撰写**）
+- **W4 补图**：A→VISUALIZE→ASSEMBLE→DELIVER（**前置：draft.md 已存在且全审查通过，仅缺图表**）
 
 ## 单 agent 直调路由表
 

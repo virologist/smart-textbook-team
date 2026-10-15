@@ -72,18 +72,23 @@ install_workbuddy() {
             ok "  copied: $item"
         fi
     done
-    # 注入 marketplace 注册
-    local MKT_FILE="$WB/my-experts/marketplace.json"
-    if [[ ! -f "$MKT_FILE" && $DRY_RUN -eq 0 ]]; then
-        run "mkdir -p '$WB/my-experts'"
-        cat > "$MKT_FILE" <<'EOF'
+    # 注入 marketplace 注册（2026-10-15 P1-2 修复）
+    # v3 host 真实注册位置 = $WB/my-experts/.codebuddy-plugin/marketplace.json
+    # （老路径 $WB/my-experts/marketplace.json 是 dead 位置，register_expert 走的是新位置）
+    local mkt_dir="$WB/my-experts/.codebuddy-plugin"
+    local mkt_file="$mkt_dir/marketplace.json"
+    if [[ -d "$WB/my-experts" && ! -f "$mkt_file" && $DRY_RUN -eq 0 ]]; then
+        run "mkdir -p '$mkt_dir'"
+        cat > "$mkt_file" <<'EOF'
 {
   "name": "my-experts",
   "owner": "TZUVet",
   "plugins": []
 }
 EOF
-        ok "  created marketplace.json"
+        ok "  created marketplace.json（v3 新路径 $mkt_file）"
+    elif [[ -f "$mkt_file" ]]; then
+        ok "  marketplace.json 已存在（位置 $mkt_file）"
     fi
     warn "  启用方式：打开 WorkBuddy → 插件管理 → 启用 smart-textbook-team（如已自动发现可忽略）"
 }

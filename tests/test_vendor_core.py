@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-shared-core 分发与防漂移门禁（P0-1 配套，2026-10-15）
-=====================================================
+shared-core 分发与防漂移门禁（v3.4.2 P0-1 配套，2026-10-15 适配至本包）
+=====================================================================
 目的：修复「R9 联邦下沉后 git clone 直跑 shim 退出码 3」的可安装性回归，
       同时用哈希比对防止 vendor 兜底副本与联邦真源产生漂移。
+适配：自 smart-textbook-team/tests/test_vendor_core.py 复制，仅改
+      _INSTALL_DIR / MEMBER_IDS / V6 临时目录名三处包耦合。
 
 检查项：
   V1  vendor/shared-core/assemble_spawn_prompt.py 存在
@@ -12,7 +14,7 @@ shared-core 分发与防漂移门禁（P0-1 配套，2026-10-15）
   V3  vendor 副本 sha256 == VENDOR.json.sha256（清单自洽，任何场景都查）
   V4  联邦真源存在时 vendor == 联邦（防漂移；联邦缺失 → SKIP，git/CI 场景不误报）
   V5  冒烟：python3 scripts/assemble_spawn_prompt.py --list-members 退出码 0
-      且输出含 5 个成员 ID（真执行，非静态断言）
+      且输出含全部成员 ID（真执行，非静态断言）
   V6  冒烟：联邦缺失模拟（SHIM 隔离目录）——把包拷到临时目录跑，仍须退出码 0
       （证明 git clone 态开箱可用；这是 P0-1 的验收核心）
 
@@ -30,11 +32,12 @@ import subprocess
 import sys
 import tempfile
 
+_PKG_NAME = "triz-invention-team"
 _INSTALL_DIR = os.path.expanduser(
-    "~/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
+    "~/.workbuddy/plugins/marketplaces/my-experts/plugins/" + _PKG_NAME
 )
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 与 test_smart_textbook_team.py 同策略：CI/纯 clone 态回落到仓库自身
+# 与包内主测试同策略：CI/纯 clone 态回落到仓库自身
 DEFAULT_EXPERT_DIR = (
     _REPO_DIR
     if os.path.exists(os.path.join(_REPO_DIR, ".codebuddy-plugin", "plugin.json"))
@@ -136,16 +139,16 @@ def run_checks(expert_dir):
         out = p.stdout + p.stderr
         missing = [m for m in MEMBER_IDS if m not in out]
         ok = p.returncode == 0 and not missing
-        r.add("V5", "安装态冒烟 --list-members 退出码 0 且含 5 成员",
+        r.add("V5", "安装态冒烟 --list-members 退出码 0 且含全部成员",
               "PASS" if ok else "FAIL",
               "" if ok else f"exit={p.returncode} 缺失成员={missing} out={out[:200]}")
     except (OSError, subprocess.SubprocessError) as e:
-        r.add("V5", "安装态冒烟 --list-members 退出码 0 且含 5 成员", "FAIL", str(e))
+        r.add("V5", "安装态冒烟 --list-members 退出码 0 且含全部成员", "FAIL", str(e))
 
     # V6 git-clone 态冒烟：拷到临时目录（其父目录无 shared-core）→ 必须走 vendor 兜底
-    tmp_root = tempfile.mkdtemp(prefix="stt-clone-sim-")
+    tmp_root = tempfile.mkdtemp(prefix="trot-clone-sim-")
     try:
-        tmp_pkg = os.path.join(tmp_root, "smart-textbook-team")
+        tmp_pkg = os.path.join(tmp_root, _PKG_NAME)
         shutil.copytree(expert_dir, tmp_pkg,
                         ignore=shutil.ignore_patterns(".git"))
         if find_federal(tmp_pkg) is not None:
@@ -189,7 +192,7 @@ def main():
                          ensure_ascii=False, indent=2))
     else:
         print("=" * 62)
-        print("shared-core 分发与防漂移门禁")
+        print("shared-core 分发与防漂移门禁（triz-invention-team）")
         print("=" * 62)
         for cid, desc, status, detail in r.items:
             mark = {"PASS": "✓", "FAIL": "✗", "SKIP": "-"}[status]

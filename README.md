@@ -2,7 +2,7 @@
 
 > 转换自 content-forge v5 多 Agent 框架（tb-writer 项目），适配 WorkBuddy 专家团规范 v2.0。
 > 版本 2.2.0 | 2026-10-15 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
-> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 196 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 5 道全绿；主理人常驻核心 13.4KB；最近提交 `e150f64`（P0–P3 全量落地）
+> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 199 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 5 道全绿；**6 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / multi-agent-patterns / task-router / textbook-pipeline-workflow）；主理人常驻核心 13.4KB；最近提交 `e150f64`（P0–P3 全量落地）
 > 真实运行基线（2026-10-15 e2e-p1）：ch08 PRODUCE-R2 + VERIFY-R2 端到端，7/7 引用 PubMed 实检 PASS，dispatch 1.000 / retry 0.50 / rework 0.000
 
 ## 团队定位
