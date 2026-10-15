@@ -50,6 +50,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     ubuntu + Python 3.12.15，5 道门禁全过，router 40/40=1.000）
 - P3-1（install.sh 清单同步检查）已于 2.1.1 提前落地：tests/test_manifest_sync.py M1–M9
 
+### Re-audit（2026-10-15 独立再诊断驱动，同日第二轮）
+- 静态分析代理 12 项发现中 8 项当日修复：task-router §1「12 类」计数失真、
+  pipeline 统稿净字数「>20%」与 ±5% 门禁冲突（对齐 SSOT 脚本）、harness §6.2
+  门槛表与 compute_metrics 实现同步、writer examines「≥3 项否则 blocking」残留
+  对齐 evo-10（F21b 断言随改）、learn-protocol「环境无 tests/」失真、
+  progress.py「append-only」自述失真 + init 幂等校验、README 版本/进化状态/
+  技能清单/常驻体积失真、marketplace.json 2.0.0 漂移（M 门禁扩至 M9a，11 项）
+- 诊断「CONTRIBUTING clone 地址 biodog」经复查**不成立**（全文无 github URL），未采纳
+- 遗留进改进方案：VISUALIZE/统稿顺序双说法、PROOFREAD 无人调度、install.sh
+  注册文件路径与测试读取路径不一致、检索工具名漂移、评测双端化等
+
 ## [2.1.1] - 2026-10-15
 
 > P0 分发可安装性修复。来源：10-15 五维诊断（资源配置 3/5，「建而未用」）

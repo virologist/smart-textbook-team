@@ -131,6 +131,20 @@ def main():
               bool(m) and m.group(1) == cb.get("version"),
               f"install.sh {m.group(1) if m else None} vs plugin {cb.get('version')}")
 
+    # M9a 第三份清单 .claude-plugin/marketplace.json 版本同步（2026-10-15 独立诊断项 7）
+    mp_path = os.path.join(d, ".claude-plugin", "marketplace.json")
+    if os.path.exists(mp_path):
+        try:
+            mp = json.loads(open(mp_path, encoding="utf-8").read())
+            mp_ver = (mp.get("metadata") or {}).get("version")
+            pl0 = (mp.get("plugins") or [{}])[0]
+            ok = (mp_ver == cb.get("version") and pl0.get("version") == cb.get("version")
+                  and norm_skills(pl0.get("skills")) == s_cb)
+            r.add("M9a", ".claude-plugin/marketplace.json 版本/技能同步",
+                  ok, f"metadata={mp_ver} plugin={pl0.get('version')}")
+        except json.JSONDecodeError as e:
+            r.add("M9a", ".claude-plugin/marketplace.json 可解析", False, str(e))
+
     # M9 声明路径真实存在
     miss_paths = []
     for rel in list(cb.get("agents", [])) + list(cb.get("skills", [])):

@@ -47,7 +47,7 @@ version: 1.0.0
 ## 合并条件与流程
 
 1. **阈值**：候补池累计 ≥3 条 OPEN 且同 target，或用户明确 ack
-2. **合并 = 一次 evo 轮**：按 priority 排序落地到 target 文件 → 运行可用基准验证（当前环境无 tests/ 目录；若后续建立 `tests/test_smart_textbook_team.py` / `tests/test_orchestration_v2.py` 则必跑，未建立时以人工审查 + 抽查替代）→ 验证通过才 commit + tag evo-N
+2. **合并 = 一次 evo 轮**：按 priority 排序落地到 target 文件 → 运行包内门禁验证（2026-10-15 更新：`tests/` 已建立，四份门禁必跑——test_router_eval / test_smart_textbook_team / test_vendor_core / test_manifest_sync，全 exit 0 才可 commit + tag）→ 验证通过才 commit + tag evo-N
 3. **关闭**：落地后将对应条目就地标 `RESOLVED` + `resolution: evo-N 已落地（具体条款位置）`
 4. **铁律**：报告文字 ≠ 机制运转——「已记入候补池」必须等于实体 yaml 存在
 

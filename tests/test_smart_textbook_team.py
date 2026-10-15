@@ -481,8 +481,9 @@ def check_executability(ck, expert_dir):
     # F21 角色团声明 examines 字段强制（遗留-1 配套）
     ck.check("F21a", "F", "撰写师要求角色团 frontmatter 含 examines 字段",
              "examines" in texts["subject-writer"])
-    ck.check("F21b", "F", "撰写师要求 examines ≥3 维度",
-             "≥3 项可观察维度" in texts["subject-writer"])
+    ck.check("F21b", "F", "撰写师要求 examines 存在性门槛（≥1 项，全空才 blocking）",
+             "≥1 项可观察维度" in texts["subject-writer"]
+             and "全空 = 无效声明" in texts["subject-writer"])
     # F22 LEARN 三步曲 + 候补池（遗留-2）
     ck.check("F22a", "F", "主理人定义 LEARN 三步曲",
              ("LEARN 三步曲" in lead or ("三步曲" in lead and "候补池" in lead))

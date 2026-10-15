@@ -22,7 +22,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 1. task_type 枚举（12 类，SSOT）
+## 1. task_type 枚举（13 类，SSOT）
 
 | task_type | 中文 | 责任成员 | 输入信号 | 输出契约 |
 |-----------|------|---------|---------|---------|
@@ -40,7 +40,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | `visual-spec` | 图表规格 + 代码 | visual-instructional-designer | 图表位 `[图 X-X：...]` + `draft.md` | 规格卡 + Mermaid/SVG |
 | `visual-review` | 图表审查（图与正文一致性）| visual-instructional-designer | 已产图表 + 最终 `draft.md` | 图文一致性 verdict |
 
-> **扩展规则**：未覆盖的新场景（13+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+> **扩展规则**：未覆盖的新场景（14+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
 
 ---
 

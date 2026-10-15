@@ -272,11 +272,14 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 
 | 指标 | 计算 | 门槛 |
 |------|------|------|
-| 分派命中率 | spawn RESULT OK / spawn 总数 | ≥ 0.80 |
-| 返工率 | review R2+ / review 总数 | ≤ 0.30 |
-| blocking 占比 | blocking_open 非空 / 总 trace | ≤ 0.10 |
+| 分派命中率 | 末态 OK 任务 / 派发任务（按 task_id 去重取末态——E1 重试不双扣；P2-6 修复） | ≥ 0.80 |
+| 返工率 | 同 task_id ≥2 次成功交付的 review 任务 / review 任务数（ERROR→OK 重试不算返工，单列 retry_rate 参考列；P2-6 修复，旧口径「review R2+」会把既定第二轮审查误判为返工） | ≤ 0.30 |
+| blocking 占比 | blocking_open 非空任务 / 总任务 | ≤ 0.10 |
 | 平均轮次 | 同 task_id 的 trace 行数中位数 | ≤ 6 |
-| per-task token | in+out 累加,按 task_type 分桶 | (无硬门槛,首章采基线) |
+| per-task token | in+out 累加,按 task_type 分桶（行含 estimated:true 时报告标注「不可审计」） | (无硬门槛,首章采基线) |
+
+> 本表与 `compute_metrics.py` 实现同步维护（2026-10-15 P2-6：脚本先行修复，本表随改）；
+> 静态契约测试 F 系列不校验本表数字——两处漂移以脚本为准并回改本表。
 
 **门槛 fail 触发 LEARN 候补**：`signal_type=metric_breach`,≥3 候选或用户 ack 才合并。
 

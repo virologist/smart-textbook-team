@@ -5,7 +5,7 @@
 用途:章节跑完后被中断,重启时读此文件恢复 phase + 续 task_id。
 
 状态机:章节生命周期由 13 态管线驱动,本工具记录已完成/待续/阻塞。
-写入语义:append 模式(append-only),不覆盖历史(便于审计与回滚)。
+写入语义:按 phase 行 upsert(同 phase 更新状态/摘要/时间,不新增行);真正的 append-only 审计流是 trace.jsonl。init 幂等:文件已存在时不覆盖,若 --chapter 与现有不一致则警告。
 
 用法:
   # 写入/更新一个 phase 完成状态
@@ -41,6 +41,9 @@ def progress_file(work_root: Path) -> Path:
 def init_progress(work_root: Path, chapter: str, textbook: str, audience: str) -> Path:
     p = progress_file(work_root)
     if p.exists():
+        existing = p.read_text(encoding="utf-8")
+        if f"Progress · {chapter}" not in existing:
+            print(f"WARN  progress.md 已存在但章节不符(现有头行非 {chapter}),保持原文件未覆盖", file=sys.stderr)
         return p
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
     body = f"""# Progress · {chapter}

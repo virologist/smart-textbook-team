@@ -1,8 +1,9 @@
 # smart-textbook-team — 智能教材编写天团
 
 > 转换自 content-forge v5 多 Agent 框架（tb-writer 项目），适配 WorkBuddy 专家团规范 v2.0。
-> 版本 2.0.0 | 2026-09-01 | 作者 TZUVet
-> 进化状态：evo-2 (1.000) → evo-3/4/5/6/7/8/9/10/11/12 共 11 轮进化，154 项 → 347 项基准全绿；安全评级 C→B+；主理人 22KB→6.8KB（-69%）；最近 tag `evo-12a`（P2 候补合并）
+> 版本 2.2.0 | 2026-10-15 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
+> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 196 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 5 道全绿；主理人常驻核心 13.4KB；最近提交 `e150f64`（P0–P3 全量落地）
+> 真实运行基线（2026-10-15 e2e-p1）：ch08 PRODUCE-R2 + VERIFY-R2 端到端，7/7 引用 PubMed 实检 PASS，dispatch 1.000 / retry 0.50 / rework 0.000
 
 ## 团队定位
 
@@ -33,8 +34,9 @@
 ## Skills
 
 - `textbook-pipeline-workflow` — **13 态状态机**（A-N + H LEARN）、门禁、E1-E5 错误协议、handoff 契约、介入协议（evo-11 迁入）、统稿 checklist（evo-11 迁入）
-- `citation-verify` — PMID/DOI 零容忍核验；输入不可信原则（evo-11：指令注入防护/缓存不豁免三要素/来源分级）
-- `agent-harness-protocol` — **Harness 执行层骨架**（evo-11 自 team-lead 迁入）：消息信封、状态黑板、重试/超时/预算/熔断/trace、降级链、**角色矩阵与接口契约、任务分配三模式、冲突仲裁五类**
+- `citation-verify` — PMID/DOI 零容忍核验 + 中文法规/标准/公告源核验链（v1.3）；输入不可信原则（evo-11：指令注入防护/缓存不豁免三要素/来源分级）
+- `agent-harness-protocol` — **Harness 执行层骨架**（evo-11 自 team-lead 迁入）：消息信封、状态黑板、重试/超时/预算/熔断/trace、降级链、开工/收尾三件套（P2-7）、**角色矩阵与接口契约、任务分配三模式、冲突仲裁五类**
+- `task-router` — **13 类 task_type 路由**（v2.1 新增）：4 步路由算法、置信度合成、E1-E4 升级规则、40 用例离线评测（1.000）
 - `multi-agent-patterns` — 多代理协作公共模式（串行/并行/条件触发；铁律）
 - `learn-protocol` — **LEARN 阶段协议**（evo-11 新建）：三步曲（数据收集 → 规则草案 → 候补池）+ 合并门禁 + 反模式
 
@@ -60,7 +62,8 @@
 
 ## 使用
 
-WorkBuddy 专家中心选择「智能教材编写天团」即可启动。主理人糜编澜会先澄清需求（教材名/读者/章节/字数/时数），再按 SOP 推进。Skills 由编排者按需加载（progressive disclosure），常驻核心 ≤6KB。
+- **WorkBuddy**：专家中心选择「智能教材编写天团」即可启动。主理人糜编澜会先澄清需求（教材名/读者/章节/字数/时数），再按 SOP 推进。Skills 由编排者按需加载（progressive disclosure），常驻核心 13.4KB。
+- **跨平台**（Claude Code / Claude Desktop / Cursor）：`bash install.sh --dry-run` 预览 → `bash install.sh --target <平台>` 安装；git clone 后 `python3 scripts/assemble_spawn_prompt.py --list-members` 应列出 5 名成员（vendor 兜底开箱可用）。
 
 ## 与原 v5 框架的映射
 
