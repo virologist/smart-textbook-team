@@ -27,6 +27,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   复测：干净 HOME 端到端 exit 0 且 marketplace.json 真实落到 v3 路径
 - **P0-3 grep 门禁已入 M**：C7b 兜底 + 反向验证通过
 
+### 缺口闭环（2026-10-15 交付核查后）
+- **实锤缺口 1：导出 zip 长期过期**——`smart-textbook-team.zip` 实为 2026-08-29 的
+  **2.0.0 / 21 文件**老包，本轮全部改动（v2.2.1 / count_net_words / vendor / 两个新测试）
+  一个都不在其中；根因是**手工打包无任何门禁**，一个月无人发现
+- 新增 `scripts/package_release.sh`：版本四处自洽校验（.codebuddy-plugin / .claude-plugin /
+  marketplace.json / install.sh）→ 打包 → 回读 zip 版本自检；`--check` 只校验不打包。
+  正负样本双向验证：zip=2.0.0 时 exit 1 拒绝，zip=2.2.1 时 exit 0
+- 导出包刷新至 **2.2.1 / 71 文件**（含打包脚本本身）
+- CI 第 6 道门禁：`package_release.sh` 打包冒烟（导出物不入库，仅验脚本可跑）
+- **实锤缺口 2：4 份报告长期未入库**——tb-writer 内 09-10 红队 / 09-18 提案 /
+  10-15 诊断 / 10-15 执行报告长期 `??` 状态，已 commit（`38705a5`），
+  并把 3.6MB zip 加入 .gitignore（真源在本仓，不应二次入库）
+- 脚本自身踩坑记录：check 分支内 `ZIP_VER` 赋值后在 `set -u` 下引用报 unbound——
+  与同日 install.sh 三次踩坑同源，已用 `${VAR:-}` 显式规避
+
 ### 延后任务（evo-17 候补，LE-20261015-06）
 - P1-3 评测双端化（LLM-judge）、P1-4 整章级真实基线、P2-1 trace schema 版本化、
   P2-2 成本硬门槛、P2-3 evo-17 tag 合并、P2-4 澄清协议泛化—— 共 6 项登记候补,

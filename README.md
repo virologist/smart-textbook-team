@@ -63,6 +63,7 @@
 ## 使用
 
 - **WorkBuddy**：专家中心选择「智能教材编写天团」即可启动。主理人糜编澜会先澄清需求（教材名/读者/章节/字数/时数），再按 SOP 推进。Skills 由编排者按需加载（progressive disclosure），常驻核心 13.4KB。
+- **导出发布包**：`bash scripts/package_release.sh`（自动校验四处版本声明自洽 → 打包 → 回读自检）；`--check` 只校验既有包是否落后于源仓。导出物默认落在 `tb-writer/smart-textbook-team.zip`（不入 git，二进制 3.4MB）。
 - **跨平台**（Claude Code / Claude Desktop / Cursor）：`bash install.sh --dry-run` 预览 → `bash install.sh --target <平台>` 安装；git clone 后 `python3 scripts/assemble_spawn_prompt.py --list-members` 应列出 5 名成员（vendor 兜底开箱可用）。
 
 ## 与原 v5 框架的映射

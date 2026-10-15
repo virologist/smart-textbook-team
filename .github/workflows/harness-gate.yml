@@ -44,5 +44,10 @@ jobs:
       - name: install.sh 干跑冒烟（--dry-run，无副作用）
         run: bash install.sh --dry-run --target all
 
+      # 打包脚本冒烟（2026-10-15）：zip 曾停在 2.0.0 一个月无人发现——
+      # 这里验证 package_release.sh 自身可跑（CI 内无既有 zip，只验 build 分支退出码）
+      - name: package_release.sh 打包冒烟（导出物不入库，仅验脚本可跑）
+        run: bash scripts/package_release.sh /tmp/stt-smoke.zip
+
       # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源
       # (SSOT 在包内, tb-writer 侧为评测适配器; 任一侧修改须同步另一侧)
