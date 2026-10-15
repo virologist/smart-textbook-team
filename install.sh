@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="2.2.0"
+VERSION="2.2.1"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0
@@ -58,6 +58,10 @@ install_workbuddy() {
     local WB=""
     # 默认装到当前已存在的路径，没有则选新路径
     if [[ -d "$WB_OLD" ]]; then WB="$WB_OLD"; else WB="$WB_NEW"; fi
+    # 注入 marketplace 注册路径（v3 新路径，2026-10-15 P1-2 修复）—— 在函数顶层声明
+    # 供全函数体访问,规避 set -u 在 elif 内的作用域边界
+    local mkt_dir="$WB/my-experts/.codebuddy-plugin"
+    local mkt_file="${mkt_dir:-}/marketplace.json"
     local DEST="$WB/my-experts/plugins/smart-textbook-team"
     log "  安装到: $DEST"
     run "mkdir -p '$DEST'"
@@ -75,20 +79,20 @@ install_workbuddy() {
     # 注入 marketplace 注册（2026-10-15 P1-2 修复）
     # v3 host 真实注册位置 = $WB/my-experts/.codebuddy-plugin/marketplace.json
     # （老路径 $WB/my-experts/marketplace.json 是 dead 位置，register_expert 走的是新位置）
-    local mkt_dir="$WB/my-experts/.codebuddy-plugin"
-    local mkt_file="$mkt_dir/marketplace.json"
-    if [[ -d "$WB/my-experts" && ! -f "$mkt_file" && $DRY_RUN -eq 0 ]]; then
-        run "mkdir -p '$mkt_dir'"
-        cat > "$mkt_file" <<'EOF'
+    # 先建父目录再判 -d: 旧版只在 $WB/my-experts 已存在时建 marketplace.json,
+    # 但 v3 首次安装 my-experts/ 根目录尚未建,导致 marketplace.json 永不创建
+    if [[ ! -f "${mkt_file:-}" && $DRY_RUN -eq 0 ]]; then
+        run "mkdir -p '${mkt_dir:-}'"
+        cat > "${mkt_file:-}" <<'EOF'
 {
   "name": "my-experts",
   "owner": "TZUVet",
   "plugins": []
 }
 EOF
-        ok "  created marketplace.json（v3 新路径 $mkt_file）"
-    elif [[ -f "$mkt_file" ]]; then
-        ok "  marketplace.json 已存在（位置 $mkt_file）"
+        ok "  created marketplace.json（v3 新路径 ${mkt_file:-}）"
+    elif [[ -f "${mkt_file:-}" ]]; then
+        ok "  marketplace.json 已存在（位置 ${mkt_file:-}）"
     fi
     warn "  启用方式：打开 WorkBuddy → 插件管理 → 启用 smart-textbook-team（如已自动发现可忽略）"
 }

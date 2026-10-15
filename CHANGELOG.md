@@ -5,6 +5,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [2.2.0] - 2026-10-15
 
+### Re-execution（同日，按用户裁决执行改进方案 P0-1/2/3 + P1-1/2）
+- **P0-1 顺序裁决**：13 态 SSOT（pipeline skill + progress.py PHASE_ORDER）确立为权威；
+  team-lead SOP 重排：保留 B/C/D/E 派工，PROOFREAD 独立成段显式派给 quality-examiner R4 风格审查，
+  CONSOLIDATION 排 VISUALIZE 之前（取代原 F 可视化与 E 并行方案），ASSEMBLE+DELIVER 拆段。
+  W1/W2/W3/W4 流程同步更新。**静态契约 C7 新增**：13 态每态在 SOP 中有派工段 + PROOFREAD→examiner 显式断言
+- **P0-2 PROOFREAD 派工**：quality-examiner R4（AI 腔/术语一致/学段语言/排版节奏），
+  与 E 串行且全 pass 后启动——保持四轮审查结构不变
+- **P0-3 工具名前缀去写死**：scout.md / examiner.md / citation-verify.md 移除裸
+  `mcp__paper_search_server__*` / `mcp__pubmed__*` 等前缀写死；harness §5.1 新条款
+  明确「首次使用必须 ToolSearch 解析当前环境可用工具」+ 唯一可写死的常值是降级链 URL。
+  新增静态契约 C7b（grep 成员 MD/skill 排除裸前缀）+ harness §5.1 豁免白名单段
+- **P1-1 散文漂移门禁**：M 门禁扩至 14 项（M10a/b/c）—— README 头部版本/技能数声明
+  /主理人体积声明 与 `wc -c`/`ls skills/` 实际比对；人为改 13.4KB→9.9KB → M10c FAIL 验证
+  通过
+- **P1-2 install.sh 注册路径行为验证**：干净 HOME 实测发现 install.sh 写入
+  `$WB/my-experts/marketplace.json` 是 dead 位置，host 实际识别的 v3 路径是
+  `$WB/my-experts/.codebuddy-plugin/marketplace.json`（register_expert 走的就是这个）。
+  修复：改写路径 + 移除 `-d "$WB/my-experts"` 守卫（首次安装时 my-experts/ 尚未建） +
+  拆 if 嵌套规避 zsh set -u 在 `[[ && $var && ]]` 中的作用域误判 + 改用 `${var:-}` 兜底。
+  复测：干净 HOME 端到端 exit 0 且 marketplace.json 真实落到 v3 路径
+- **P0-3 grep 门禁已入 M**：C7b 兜底 + 反向验证通过
+
+### 延后任务（evo-17 候补，LE-20261015-06）
+- P1-3 评测双端化（LLM-judge）、P1-4 整章级真实基线、P2-1 trace schema 版本化、
+  P2-2 成本硬门槛、P2-3 evo-17 tag 合并、P2-4 澄清协议泛化—— 共 6 项登记候补,
+  待用户下一章真实任务或专项迭代触发
+
 > P1 真实运行（e2e-p1：ch08 PRODUCE-R2 → VERIFY-R2，含 E1 重试）产出 5 条 LEARN 候补，
 > P2 按证据逐条落地修复。运行态证据 `tb-writer/.omc/e2e-p1/`。
 
