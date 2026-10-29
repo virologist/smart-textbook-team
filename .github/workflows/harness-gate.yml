@@ -9,6 +9,8 @@ name: harness-gate
 #                          (V4 防漂移在 CI 无联邦 core 时自动 SKIP)
 #   4) 跨平台清单同步门禁   两份 plugin.json 必一致字段 + install.sh 技能覆盖
 #   5) install.sh 语法/干跑冒烟（防安装脚本腐化）
+#   6) package_release.sh 打包冒烟（防导出 zip 长期过期）
+#   7) 书稿交付链冒烟（build_manuscript + check_manuscript；2026-10-30 新增）
 on:
   push:
     branches: [master, main]
@@ -48,6 +50,45 @@ jobs:
       # 这里验证 package_release.sh 自身可跑（CI 内无既有 zip，只验 build 分支退出码）
       - name: package_release.sh 打包冒烟（导出物不入库，仅验脚本可跑）
         run: bash scripts/package_release.sh /tmp/stt-smoke.zip
+
+      # 书稿交付链冒烟（2026-10-30 第 7 道门禁）：
+      # md→docx 构建 + 门禁 4 校验。CI 内 mmdc/Chrome 通常不可用 → 栅格化按设计降级为
+      # 占位框，脚本仍须 exit 0（这正是「不静默丢图」降级路径的回归测试）。
+      # 判据：构建 exit 0 且 docx 落盘；校验 --strict 下结构类判据全 pass。
+      - name: 书稿交付链冒烟（build_manuscript + check_manuscript）
+        run: |
+          set -e
+          WR=/tmp/stt-ms
+          rm -rf "$WR"; mkdir -p "$WR/章节/ch01/figures" "$WR/交付"
+          cat > "$WR/章节/ch01/draft.md" <<'MD'
+          # 第1章 CI 冒烟章
+
+          ## 1.1 概述
+
+          本句为冒烟正文 [实]。交叉引用 [见 §1.2]。
+
+          [图 1-1：冒烟图]
+
+          图 1-1 冒烟图
+
+          ```mermaid
+          graph LR
+            A[起点] --> B[终点]
+          ```
+
+          ## 1.2 小结
+
+          结论句 [实]。
+
+          ## 参考文献
+
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2.
+          MD
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble \
+            --report "$WR/运行态_build.json" || python3 scripts/build_manuscript.py \
+            --work-root "$WR" --chapter ch01 --assemble
+          test -f "$WR/交付/教材_ch01.docx"
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
 
       # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源
       # (SSOT 在包内, tb-writer 侧为评测适配器; 任一侧修改须同步另一侧)

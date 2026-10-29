@@ -48,7 +48,13 @@ function Install-WorkBuddy {
     Write-Log "  安装到: $DEST"
     Run "New-Item -ItemType Directory -Force -Path '$DEST'"
     # 复制核心目录与文件
-    $items = @('agents','skills','.codebuddy-plugin','role-assembly.md','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','.gitignore')
+    # v2.2.2 同步（与 install.sh 同纪律，2026-10-30）：
+    #   + references  —— role-assembly.md（角色团 SSOT）与 path-ownership.md（路径归属表）
+    #                    已迁入该目录，由装配器 resolve_shared_refs() 注入；漏复制 = 安装态死链
+    #   + scripts/tests/vendor/.claude-plugin —— 与 install.sh 对齐（此前 PowerShell 路径
+    #                    长期落后，安装态连 assemble_spawn_prompt.py / progress.py 都缺失）
+    #   - role-assembly.md —— 已迁走，Test-Path 判假会静默跳过，属死条目，移除
+    $items = @('agents','skills','scripts','tests','vendor','references','.codebuddy-plugin','.claude-plugin','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','.gitignore')
     foreach ($item in $items) {
         $src = Join-Path $REPO_DIR $item
         if (Test-Path $src) {

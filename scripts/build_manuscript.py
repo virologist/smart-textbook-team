@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+build_manuscript.py — 大学教材书稿构建器（md 源 → docx 交付）
+
+==============================================================================
+为什么有这个脚本（2026-10-29 实测背景）
+------------------------------------------------------------------------------
+team-lead.md Phase ASSEMBLE 曾写「按 CHANGELOG 工具链 scripts/build_chapter.py
+模板，可选生成 docx」。实测：
+  - scripts/ 无 build_chapter.py
+  - CHANGELOG/README/AGENTS/CONTRIBUTING 全文 grep docx|pandoc|build_chapter = 0 命中
+  - git 全历史 --diff-filter=AD 查 *build_chapter* = 0 结果
+即引用了不存在的文件并虚构了出处。本脚本用真实实现兑现该承诺。
+
+设计原则（对齐 manuscript-delivery skill）
+------------------------------------------------------------------------------
+1. **md 是源，docx 是一次性派生产物**——禁止手改 docx，改则回 md 重建
+2. **双轨图表**：md 保留可渲染源码；docx 嵌栅格化 PNG
+3. **栅格化三级降级**，绝不静默丢图（mmdc → npx → 占位框 + 报告）
+4. **零硬编码**：路径/字体/字号全部可配（--config 或内置默认常量集中在 CONFIG 区）
+
+用法
+------------------------------------------------------------------------------
+  # 从已装配的交付 md 构建 docx
+  python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter ch01
+
+  # 从 章节/ 目录先装配 md，再构建 docx
+  python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter ch01 --assemble
+
+  # 只做干跑（不落盘产物，打印计划）
+  python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter ch01 --dry-run
+
+  # 指定版式模板（覆写内置默认，pandoc --reference-doc）
+  python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter ch01 \
+      --reference-doc /path/to/template.docx
+
+退出码
+------------------------------------------------------------------------------
+  0 成功（含带降级告警的成功）
+  2 输入缺失（交付 md 找不到且未给 --assemble）
+  3 依赖缺失（pandoc 或 python-docx 不可用）—— 硬失败，不静默降级
+  4 构建失败（pandoc 返回非 0 / 产物不可读）
+==============================================================================
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# ──────────────────────────────────────────────────────────── CONFIG（可覆写）
+# 版式默认（对应 manuscript-delivery skill §3.1；--reference-doc 优先于本区）
+TYPESET = {
+    "body_font": "宋体",
+    "body_size_pt": 12,
+    "line_spacing": 1.5,
+    "first_line_indent_pt": 24,      # = 2 字符（12pt × 2）
+    "h1_font": "黑体", "h1_size_pt": 16,
+    "h2_font": "黑体", "h2_size_pt": 14,
+    "h3_font": "黑体", "h3_size_pt": 12,
+    "caption_size_pt": 10.5,
+    "page_margins_cm": {"top": 2.54, "bottom": 2.54, "left": 3.17, "right": 3.17},
+}
+# 栅格化参数
+RASTER = {"width": 1024, "height": 768, "background": "white", "timeout_sec": 120}
+# 图位 / 题注 / 代码块 正则
+RE_FIGURE_SLOT = re.compile(r"\[图\s*(\d+)-(\d+)：([^\]]*)\]")
+# 题注行：允许带 `[` 前缀（图位占位与题注被合并进同一段落时 pandoc 会保留方括号）
+RE_CAPTION = re.compile(r"^\s*\[?(图|表)\s*\d+-\d+")
+RE_FENCE = re.compile(r"```(mermaid|svg)\s*\n(.*?)```", re.S)
+RE_TABLE_FENCE = re.compile(r"```table\s*\n(.*?)```", re.S)
+
+
+def log(msg: str, level: str = "INFO") -> None:
+    print(f"[{level}] {msg}", file=sys.stderr)
+
+
+# ──────────────────────────────────────────────────────────── 依赖检查
+def check_deps() -> dict:
+    """返回依赖可用情况。pandoc/python-docx 缺失 = 硬失败；mmdc 缺失 = 可降级。"""
+    deps = {
+        "pandoc": shutil.which("pandoc"),
+        "mmdc": shutil.which("mmdc"),
+        "npx": shutil.which("npx"),
+        "python_docx": None,
+    }
+    try:
+        import docx  # noqa: F401
+        deps["python_docx"] = "ok"
+    except ImportError:
+        deps["python_docx"] = None
+    return deps
+
+
+# ──────────────────────────────────────────────────────────── 装配（可选）
+def find_delivery_md(work_root: Path, chapter: str) -> Path | None:
+    d = work_root / "交付"
+    if not d.is_dir():
+        return None
+    hits = sorted(d.glob(f"*_{chapter}.md"))
+    return hits[0] if hits else None
+
+
+def assemble_md(work_root: Path, chapter: str, textbook: str) -> Path:
+    """从 章节/{ch##}/draft.md + figures/*.md 装配出交付 md。
+
+    装配是确定性的：draft 正文 + 按图号排序的图表块。不做内容改写。
+    """
+    ch_dir = work_root / "章节" / chapter
+    draft = ch_dir / "draft.md"
+    if not draft.is_file():
+        log(f"装配失败：{draft} 不存在", "ERROR")
+        sys.exit(2)
+    body = draft.read_text(encoding="utf-8")
+
+    fig_dir = ch_dir / "figures"
+    blocks = []
+    if fig_dir.is_dir():
+        for f in sorted(fig_dir.glob("*.md")):
+            blocks.append(f.read_text(encoding="utf-8"))
+
+    out_dir = work_root / "交付"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{textbook}_{chapter}.md"
+    parts = [body.rstrip()]
+    if blocks:
+        parts.append("\n\n---\n\n## 本章图表\n")
+        parts.extend(blocks)
+    out.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+    log(f"装配完成：{out}（正文 + {len(blocks)} 个图表块）")
+    return out
+
+
+# ──────────────────────────────────────────────────────────── 图表栅格化
+def write_source_assets(text: str, chapter: str, asset_dir: Path) -> list[dict]:
+    """把 md 中的 mermaid/svg 代码块落盘为源码文件，返回资产清单。
+
+    与图位按出现顺序配对；数量不等时只配对前 N 个并记录告警（不静默）。
+    """
+    slots = RE_FIGURE_SLOT.findall(text)
+    fences = RE_FENCE.findall(text)
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    assets = []
+
+    if slots and len(slots) != len(fences):
+        log(f"图位数({len(slots)}) 与代码块数({len(fences)}) 不等 → 只处理可配对的前 "
+            f"{min(len(slots), len(fences))} 个，其余保留代码块", "WARN")
+
+    for i, (kind, code) in enumerate(fences):
+        if i < len(slots):
+            ch_no, seq, title = slots[i]
+            stem = f"{ch_no}-{seq}"
+        else:
+            stem = f"{chapter}-{i+1:02d}"
+            title = ""
+        ext = "mmd" if kind == "mermaid" else "svg"
+        src = asset_dir / f"{stem}.{ext}"
+        src.write_text(code.strip() + "\n", encoding="utf-8")
+        assets.append({"stem": stem, "kind": kind, "src": str(src),
+                       "title": title, "png": None, "raster": None})
+
+    if assets:
+        log(f"图表源码落盘 {len(assets)} 个 → {asset_dir}")
+    return assets
+
+
+def rasterize(assets: list[dict], asset_dir: Path, deps: dict) -> list[dict]:
+    """三级降级栅格化：mmdc → npx mermaid-cli → 保留源码（占位框）。"""
+    failed = []
+    for a in assets:
+        png = asset_dir / f"{a['stem']}.png"
+        cmd = None
+        if deps.get("mmdc"):
+            cmd = ["mmdc", "-i", a["src"], "-o", str(png),
+                   "-w", str(RASTER["width"]), "-H", str(RASTER["height"]),
+                   "-b", RASTER["background"]]
+        elif deps.get("npx"):
+            cmd = ["npx", "-y", "@mermaid-js/mermaid-cli", "-i", a["src"], "-o", str(png),
+                   "-w", str(RASTER["width"]), "-H", str(RASTER["height"]),
+                   "-b", RASTER["background"]]
+
+        if cmd is None:
+            a["raster"] = "no-tool"
+            failed.append(a["stem"])
+            continue
+
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True,
+                               timeout=RASTER["timeout_sec"])
+            if r.returncode == 0 and png.is_file():
+                a["png"] = str(png)
+                a["raster"] = "ok"
+            else:
+                a["raster"] = "failed"
+                failed.append(a["stem"])
+                log(f"栅格化失败 {a['stem']}（exit {r.returncode}）："
+                    f"{(r.stderr or '').strip()[:200]}", "WARN")
+        except subprocess.TimeoutExpired:
+            a["raster"] = "timeout"
+            failed.append(a["stem"])
+            log(f"栅格化超时 {a['stem']}（>{RASTER['timeout_sec']}s）", "WARN")
+        except OSError as e:
+            a["raster"] = "error"
+            failed.append(a["stem"])
+            log(f"栅格化异常 {a['stem']}：{e}", "WARN")
+
+    ok = sum(1 for a in assets if a["raster"] == "ok")
+    log(f"栅格化结果：成功 {ok} / {len(assets)}；未栅格化 {len(failed)}"
+        + (f" → {failed}" if failed else ""))
+    return assets
+
+
+# ──────────────────────────────────────────────────────────── 生成 docx 用 md
+def build_intermediate_md(text: str, assets: list[dict]) -> str:
+    """把代码块替换为图片引用或占位框，产出 pandoc 输入（docx 专用中间稿）。
+
+    两处与交付 md 的**有意差异**（md 是源，docx 是渲染态）：
+      1. Mermaid/SVG 代码块 → 图片引用 或 降级占位框
+      2. 图位占位标记 `[图 X-Y：...]` → **移除**
+         理由：该标记是写作期内部标记（指示"此处放图"）。docx 里图已插入，
+         保留会让读者看到 `[图 1-1：xxx]` 与题注 `图 1-1 xxx` 重复两遍。
+         md 中保留（供校验与溯源），docx 中移除。
+    """
+    out = text
+    fences = list(RE_FENCE.finditer(text))
+
+    # 逆序替换，避免位移影响后续匹配
+    for a, m in zip(reversed(assets), reversed(fences)):
+        if a.get("png"):
+            repl = f"![]({a['png']})"
+        else:
+            repl = (f"> **［图 {a['stem']}：栅格化工具不可用，"
+                    f"矢量源码见交付 md 源文件］**\n>\n> 源码文件：`{a['src']}`")
+        out = out[:m.start()] + repl + out[m.end():]
+
+    # 移除图位占位标记（docx 渲染态不需要；md 源仍保留）
+    out = RE_FIGURE_SLOT.sub("", out)
+    # 清理因移除产生的连续空行（>2 行 → 2 行）
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out
+
+
+# ──────────────────────────────────────────────────────────── pandoc 构建
+def run_pandoc(md_path: Path, docx_path: Path, reference_doc: str | None) -> bool:
+    cmd = ["pandoc", str(md_path), "-f", "markdown", "-t", "docx",
+           "-o", str(docx_path), "--toc", "--toc-depth=3"]
+    if reference_doc:
+        cmd += [f"--reference-doc={reference_doc}"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        log(f"pandoc 失败（exit {r.returncode}）：{(r.stderr or '').strip()[:400]}", "ERROR")
+        return False
+    return docx_path.is_file()
+
+
+# ──────────────────────────────────────────────────────────── docx 后处理
+def postprocess_docx(docx_path: Path, chapter_title: str) -> bool:
+    """python-docx 后处理：中文字体 / 字号 / 行距 / 缩进 / 题注居中 / 页眉页脚。"""
+    try:
+        from docx import Document
+        from docx.shared import Pt, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+    except ImportError:
+        log("python-docx 不可用，跳过后处理（docx 仍可用 pandoc 默认样式）", "WARN")
+        return True
+
+    def set_font(style, name: str, size: float, bold: bool | None = None):
+        style.font.name = name
+        style.font.size = Pt(size)
+        if bold is not None:
+            style.font.bold = bold
+        # 中文字体必须设 eastAsia，否则 Word 里回落成西文字体
+        rpr = style.element.get_or_add_rPr()
+        rfonts = rpr.get_or_add_rFonts()
+        rfonts.set(qn("w:eastAsia"), name)
+
+    try:
+        doc = Document(str(docx_path))
+    except Exception as e:
+        log(f"docx 打开失败：{e}", "ERROR")
+        return False
+
+    # 正文
+    try:
+        normal = doc.styles["Normal"]
+        set_font(normal, TYPESET["body_font"], TYPESET["body_size_pt"])
+        pf = normal.paragraph_format
+        pf.line_spacing = TYPESET["line_spacing"]
+        pf.first_line_indent = Pt(TYPESET["first_line_indent_pt"])
+    except KeyError:
+        pass
+
+    # 标题
+    for style_name, font, size in (
+        ("Heading 1", TYPESET["h1_font"], TYPESET["h1_size_pt"]),
+        ("Heading 2", TYPESET["h2_font"], TYPESET["h2_size_pt"]),
+        ("Heading 3", TYPESET["h3_font"], TYPESET["h3_size_pt"]),
+    ):
+        try:
+            set_font(doc.styles[style_name], font, size, bold=True)
+        except KeyError:
+            pass
+
+    # 题注居中 + 五号
+    for p in doc.paragraphs:
+        if RE_CAPTION.match(p.text.strip()):
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for r in p.runs:
+                r.font.size = Pt(TYPESET["caption_size_pt"])
+
+    # 页边距
+    m = TYPESET["page_margins_cm"]
+    for sec in doc.sections:
+        sec.top_margin = Cm(m["top"])
+        sec.bottom_margin = Cm(m["bottom"])
+        sec.left_margin = Cm(m["left"])
+        sec.right_margin = Cm(m["right"])
+        # 页眉：章标题；页脚：页码
+        try:
+            hp = sec.header.paragraphs[0]
+            hp.text = chapter_title or ""
+            hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except (IndexError, AttributeError):
+            pass
+        try:
+            fp = sec.footer.paragraphs[0]
+            fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # 插入 PAGE 域（Word 打开时自动更新）
+            run = fp.add_run()
+            fld_begin = run._r.add_fldChar("begin")
+            instr = run._r.add_instrText("PAGE")
+            fld_end = run._r.add_fldChar("end")
+        except (IndexError, AttributeError):
+            pass
+
+    doc.save(str(docx_path))
+    return True
+
+
+# ──────────────────────────────────────────────────────────── main
+def main() -> int:
+    ap = argparse.ArgumentParser(description="大学教材书稿构建器（md 源 → docx 交付）")
+    ap.add_argument("--work-root", required=True, help="WORK_ROOT 路径")
+    ap.add_argument("--chapter", required=True, help="如 ch01")
+    ap.add_argument("--textbook", default="教材", help="教材名（--assemble 时用于产物命名）")
+    ap.add_argument("--assemble", action="store_true",
+                    help="交付 md 不存在时，从 章节/{ch##}/ 装配")
+    ap.add_argument("--format", default="md,docx", help="构建格式，逗号分隔（默认 md,docx）")
+    ap.add_argument("--reference-doc", default=None, help="pandoc 版式模板（覆写内置默认）")
+    ap.add_argument("--dry-run", action="store_true", help="只打印计划，不落盘产物")
+    ap.add_argument("--report", default=None, help="构建报告 JSON 落盘路径")
+    args = ap.parse_args()
+
+    work_root = Path(args.work_root).expanduser()
+    if not work_root.is_dir():
+        log(f"WORK_ROOT 不存在：{work_root}", "ERROR")
+        return 2
+
+    chapter = args.chapter
+    chapter_dir = work_root / "章节" / chapter
+    asset_dir = chapter_dir / "figures" / "assets"
+
+    # 依赖
+    deps = check_deps()
+    log(f"依赖检查：pandoc={deps['pandoc'] or 'MISSING'} "
+        f"python-docx={deps['python_docx'] or 'MISSING'} "
+        f"mmdc={deps['mmdc'] or 'MISSING'} npx={deps['npx'] or 'MISSING'}")
+    if not deps["pandoc"] or not deps["python_docx"]:
+        log("硬依赖缺失（pandoc / python-docx）——不降级，直接失败"
+            "（装法：brew install pandoc && pip install python-docx）", "ERROR")
+        return 3
+
+    # 输入
+    md_path = find_delivery_md(work_root, chapter)
+    if md_path is None:
+        if not args.assemble:
+            log(f"未找到 交付/*_{chapter}.md；加 --assemble 可从 章节/{chapter}/ 装配", "ERROR")
+            return 2
+        md_path = assemble_md(work_root, chapter, args.textbook)
+    log(f"输入 md：{md_path}")
+
+    text = md_path.read_text(encoding="utf-8")
+    slots = RE_FIGURE_SLOT.findall(text)
+    log(f"扫描到图位 {len(slots)} 个")
+
+    if args.dry_run:
+        print(json.dumps({
+            "input_md": str(md_path),
+            "figure_slots": [f"{c}-{s}" for c, s, _ in slots],
+            "planned_assets_dir": str(asset_dir),
+            "planned_docx": str(md_path.with_suffix(".docx")),
+            "deps": deps,
+            "dry_run": True,
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    # 图表：落盘源码 → 栅格化
+    assets = write_source_assets(text, chapter, asset_dir)
+    if assets:
+        assets = rasterize(assets, asset_dir, deps)
+
+    report = {
+        "chapter": chapter,
+        "input_md": str(md_path),
+        "figure_slots": len(slots),
+        "assets": assets,
+        "rasterized": sum(1 for a in assets if a.get("raster") == "ok"),
+        "not_rasterized": [a["stem"] for a in assets if a.get("raster") != "ok"],
+    }
+
+    # docx
+    if "docx" in args.format:
+        inter_md = build_intermediate_md(text, assets)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="build_manuscript_"))
+        tmp_md = tmp_dir / f"{md_path.stem}__docx_src.md"
+        tmp_md.write_text(inter_md, encoding="utf-8")
+
+        docx_path = md_path.with_suffix(".docx")
+        if not run_pandoc(tmp_md, docx_path, args.reference_doc):
+            return 4
+
+        # 章标题取第一个 # 行
+        m = re.search(r"^#\s+(.+)$", text, re.M)
+        chapter_title = m.group(1).strip() if m else ""
+        if not postprocess_docx(docx_path, chapter_title):
+            return 4
+
+        report["docx"] = str(docx_path)
+        report["docx_bytes"] = docx_path.stat().st_size
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        log(f"docx 构建完成：{docx_path}（{report['docx_bytes']} 字节）")
+
+    if args.report:
+        Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2),
+                                     encoding="utf-8")
+        log(f"构建报告：{args.report}")
+
+    if report["not_rasterized"]:
+        log(f"⚠️  {len(report['not_rasterized'])} 个图表未栅格化（已保留源码 + 占位框，"
+            f"质量报告必须显式列出）：{report['not_rasterized']}", "WARN")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

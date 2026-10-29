@@ -2,7 +2,8 @@
 
 > 转换自 content-forge v5 多 Agent 框架（tb-writer 项目），适配 WorkBuddy 专家团规范 v2.0。
 > 版本 2.2.2 | 2026-10-30 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
-> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 213 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 5 道全绿；**6 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / multi-agent-patterns / task-router / textbook-pipeline-workflow）；主理人常驻核心 13.4KB；最近提交 `e150f64`（P0–P3 全量落地）
+> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 214 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 6 道全绿；**7 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / task-router / textbook-pipeline-workflow）；主理人常驻核心 13.4KB
+> **交付形态（v2.2.2）**：大学教材**书稿** —— `.md`（源，唯一编辑入口）+ `.docx`（交付格式，由 md 生成，禁止手改），规格见 `skills/manuscript-delivery/SKILL.md`
 > 真实运行基线（2026-10-15 e2e-p1）：ch08 PRODUCE-R2 + VERIFY-R2 端到端，7/7 引用 PubMed 实检 PASS，dispatch 1.000 / retry 0.50 / rework 0.000
 
 ## 团队定位
@@ -39,6 +40,7 @@
 - `task-router` — **13 类 task_type 路由**（v2.1 新增）：4 步路由算法、置信度合成、E1-E4 升级规则、40 用例离线评测（1.000）
 - `multi-agent-patterns` — 多代理协作公共模式（串行/并行/条件触发；铁律）
 - `learn-protocol` — **LEARN 阶段协议**（evo-11 新建）：三步曲（数据收集 → 规则草案 → 候补池）+ 合并门禁 + 反模式
+- `manuscript-delivery` — **书稿交付规格**（v2.2.2 新增）：**md 为源、docx 为交付**的双格式铁律、md 结构契约、内置教材版式 + 三级覆写、**双轨图表**（md 保留可渲染源码 / docx 嵌栅格化 PNG，栅格化三级降级不静默丢图）、门禁 4 七项判据
 
 ## 预设 Workflow
 

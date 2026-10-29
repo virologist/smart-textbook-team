@@ -102,10 +102,23 @@ spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数�
 **为什么 VISUALIZE 排在 CONSOLIDATION 之后**（2026-10-15 re-audit 裁决）：13 态 SSOT（pipeline skill + scripts/progress.py PHASE_ORDER）将 VISUALIZE 排在 ASSEMBLE 之前；这取代了原「F 可视化与 E 并行」方案——避免「结构审查未稳定就出图 → 改稿后图作废」的浪费，也避免「图先出 → 审查被图牵着走」的角色越位。
 
 ### Phase ASSEMBLE: 装配（我亲自执行）
-把 `章节/{ch##}/draft.md` + `figures/` + 审查 verdict 摘要 + 质量报告合并为 `交付/{教材名}_{ch##}.md`（按 CHANGELOG 工具链 `scripts/build_chapter.py` 模板，可选生成 docx）。
+把 `章节/{ch##}/draft.md` + `figures/` + 审查 verdict 摘要 + 质量报告合并为 `交付/{教材名}_{ch##}.md`。
+
+**书稿双格式构建**（规格 SSOT = `skills/manuscript-delivery/SKILL.md`）：
+```bash
+python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
+    [--assemble] [--reference-doc <版式模板.docx>] --report 运行态/build_{ch##}.json
+```
+> **勘误（2026-10-29 实测）**：本行此前写「按 CHANGELOG 工具链 `scripts/build_chapter.py` 模板，可选生成 docx」——
+> 实测 `scripts/` 无该文件、CHANGELOG 全文 0 命中 `docx|pandoc|build_chapter`、git 全历史无此文件。
+> **该引用指向不存在的文件且伪造了出处**。现改为 `scripts/build_manuscript.py` 的真实调用。
+
+**交付形态铁律**：`.md` = 源（唯一编辑入口）；`.docx` = 交付格式（由 md 生成，**禁止手改**，改则回 md 重建）。
 
 ### Phase DELIVER: 交付（我亲自执行）
-`present_files` 把交付物给用户，附质量报告与缺口清单。
+1. **先过门禁 4**：`python3 scripts/check_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} --strict`（7 项判据；FAIL 不得交付）
+2. `present_files` 交付 **md + docx 双格式**，附质量报告与缺口清单
+3. **质量报告必须显式列出「未栅格化图表数」**（栅格化工具不可用时降级为占位框 + 保留源码，绝不静默丢图）
 
 ### Phase LEARN: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
 从 interventions/核验日志/审查报告提取信号 → 规则草案 → 写候补池 `学习/le候补/`；≥3 候选或用户 ack 才合并。

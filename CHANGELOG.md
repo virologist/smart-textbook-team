@@ -38,6 +38,57 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   验**可达性与可执行性**（路径是否位于可注入区 / 引用是否指向真实文件 / CLI 是否受理该状态）。
   静态契约计分项 199 → **213**，4 道门禁全绿
 
+## [2.2.2] - 2026-10-30（续）
+
+### 批次 2：书稿交付链（docx + md｜按用户拍板 Q1 重做的能力补齐）
+> **背景与勘误（实测）**：`team-lead.md:105` 曾写「按 CHANGELOG 工具链 `scripts/build_chapter.py`
+> 模板，可选生成 docx」。实测 `scripts/` 无该文件、CHANGELOG/README/AGENTS/CONTRIBUTING 全文
+> `grep docx|pandoc|build_chapter` **0 命中**、git 全历史无此文件 → **引用了不存在的文件且伪造了出处**。
+> 批次 2 用真实实现兑现该承诺，并在 team-lead / pipeline 两处留下勘误说明（不抹除原文痕迹）。
+
+- **A1′ 新增 `skills/manuscript-delivery/SKILL.md`（第 7 个 skill）**：书稿交付规格 SSOT——
+  ① **md 为源、docx 为交付**双格式铁律（docx 禁止手改，改则回 md 重建）；
+  ② md 结构契约（标题层级禁跳级 / frontmatter 7 项 / 图位·题注·习题位·思政标记 / **交叉引用可解析** / GB/T 7714 参考文献）；
+  ③ 内置教材版式默认 + 三级覆写（--reference-doc > 学科 profile > 内置）；
+  ④ **双轨图表**：md 保留可渲染源码（可编辑复用），docx 嵌栅格化 PNG；
+  ⑤ 门禁 4 七项判据
+- **A2′ 新增 `scripts/build_manuscript.py`**（兑现虚构的 build_chapter.py）：
+  pandoc 转 docx + python-docx 后处理（中文字体 eastAsia / 字号 / 行距 / 首行缩进 /
+  题注居中 / 页眉章标题 / 页脚 PAGE 域 / 页边距）+ Mermaid 源码落盘 + 三级降级栅格化。
+  **实测**：端到端构建成功（12.2KB docx 回读验证 H1/H2 层级、宋体12pt/黑体16pt/14pt eastAsia、
+  题注 CENTER、页眉章标题、页脚 PAGE 域、页边距 2.54/3.17cm 全部正确）
+- **A3′ 新增 `scripts/check_manuscript.py`（门禁 4）**：7 项判据（标题跳级 / 题注连续与配对 /
+  交叉引用悬空 / 参考文献编号与年份 / docx 可打开与层级 / md-docx 图数一致 / 净字数 ±5%）。
+  **双向验证**：正向 12 PASS exit 0；构造坏稿 → 跳级·断号·悬空节引用·悬空图引用·
+  参考文献断裂·字数偏差 **6 项全部正确 FAIL**，exit 1
+- **实测修正 1（空行强制）**：图位/题注/规格卡三行连写无空行 → pandoc 按 Markdown 合并为
+  同一段落，题注居中**实测 0 命中**。已在 skill 立规「三者必须空行分隔」并纳入校验 4.2
+- **实测修正 2（docx 渲染态清理）**：图位占位标记 `[图 X-Y：…]` 在 docx 中会让读者看到
+  占位符与题注重复两遍 → 构建时移除（md 源保留，docx 属渲染态）
+- **栅格化环境实测**：本机 `mmdc` 因 Chrome 版本不匹配（期望 148，缓存为 131/156）不可用 →
+  **三级降级实战生效**：保留源码 + 醒目占位框 + 显式 WARN「未栅格化 N 个」，**未静默丢图**。
+  已在 skill §2.0 记录运维前提与排障命令
+- **流程接入**：team-lead Phase ASSEMBLE（构建）/ DELIVER（先过门禁 4 再交付，双格式 +
+  质量报告须列未栅格化图表数）；pipeline 目录树改为 `交付/{md,docx}` 双档、状态机 ASSEMBLE/DELIVER
+  门禁列更新、「与原 v5 差异」段补勘误
+- **CI 第 7 道门禁**：书稿交付链冒烟（build_manuscript --assemble → docx 落盘 → check_manuscript --strict）。
+  本地复现 exit 0 / FAIL 0（CI 内 mmdc 不可用，正好回归「降级路径不阻断交付」）
+
+### 批次 1 复查后的修正（独立复查代理查出，均已修）
+- **install.ps1 完全未同步（高）**：此前**无任何门禁覆盖** PowerShell 安装路径——清单既无
+  `references`，又长期缺 `scripts`/`tests`/`vendor`/`.claude-plugin`，还留着已迁走的
+  `role-assembly.md` 死条目 → **Windows 安装态连 assemble_spawn_prompt.py 都不存在且无人报警**。
+  修复：清单与 install.sh 对齐；新增 M12a/b/c 三条门禁（含两安装器核心目录集合一致性）
+- **恒真断言修复（中，3 条）**：复查代理用「父提交回退法」实测——
+  ① `F24a` 原为全文子串匹配，义务行被挪进代码块仍 PASS → 改为**位置敏感**（只认注意事项段内、排除代码块内），
+     负向实验（挪进代码块）正确 FAIL；
+  ② `F26b` 父提交 pipeline:151 已提及 count_net_words.py → 改为**只认门禁 3 小节内**，负向实验正确 FAIL；
+  ③ `F29a` 父提交 progress.py:119 已有该字面量 → 改为**解析 argparse choices**（并加 F29b 校验解析本身未失效），
+     负向实验正确 FAIL
+- **M11 重构**：原 M11c 与 M11a 判据重复（同一条件计数两次）→ 改为 M11c 校验 `scripts/` 运行期可达
+- **README 同步**：技能数 6→7、计分项 213→214、CI 门禁 5→6→7 道；新增交付形态说明行
+  （M10b 门禁实际拦截一次，证明散文漂移门禁有效）
+
 ## [2.2.0] - 2026-10-15
 
 ### Re-execution（同日，按用户裁决执行改进方案 P0-1/2/3 + P1-1/2）

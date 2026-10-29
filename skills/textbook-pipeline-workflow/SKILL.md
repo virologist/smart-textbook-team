@@ -29,8 +29,15 @@ version: 1.2.0
 ├── 知识库/retrieval/
 │   ├── {ch##}_{英文slug}.md       # 检索摘要（literature-scout）
 │   └── RETRIEVED.md               # 知识沉淀库（append，缓存优先来源）
-└── 交付/{教材名}_{ch##}.md         # 最终交付稿（主理人装配）
+└── 交付/
+    ├── {教材名}_{ch##}.md         # 书稿【源格式】（主理人装配；唯一编辑入口）
+    └── {教材名}_{ch##}.docx       # 书稿【交付格式】（由 md 生成，禁止手改）
 ```
+
+> **交付形态（2026-10-30 修订）**：交付物是**大学教材书稿**，`.md` 为源、`.docx` 为交付格式。
+> 规格 SSOT = `skills/manuscript-delivery/SKILL.md`；构建 = `scripts/build_manuscript.py`；
+> 校验 = `scripts/check_manuscript.py`（门禁 4）。
+> 原目录树只有 `.md` 一档，docx 长期只是「按需转」的软承诺且无实现（实测包内 0 命中 docx）。
 
 命名规则：章节号两位数字（`ch01`）；topic 用英文小写连字符 slug；图按 `图 {章}-{序}` 编号。
 
@@ -53,8 +60,8 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | PROOFREAD | quality-examiner | 校对后稿 | CONSOLIDATION | 清洁无流程标注 |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
 | VISUALIZE | visual-instructional-designer | 图表代码包 | ASSEMBLE | 图文一致 |
-| ASSEMBLE | 主理人 | 装配稿 | DELIVER | 组件齐全 |
-| DELIVER | 主理人 | 交付物 + 质量报告 | LEARN | present_files 完成 |
+| ASSEMBLE | 主理人 | 装配稿 + docx（md 源 → 双格式） | DELIVER | 组件齐全 + docx 构建成功 |
+| DELIVER | 主理人 | 交付物 + 质量报告 | LEARN | **门禁 4 全 pass** + present_files 完成 |
 | LEARN | 主理人 | 经验沉淀记录 | （终态） | — |
 
 ### VERIFY 内部 4 轮循环（不是 4 个独立态）
@@ -112,7 +119,10 @@ VERIFY R3 → citation-verify 逐条核验 → 查无此文即删
 
 - 原 `tb-educator`/`designer` 两角色合并为 `visual-instructional-designer` 单成员
 - 原 `tb-question-bank` 题库生成并入 subject-writer 职责（习题位标注 + 按需生成）
-- 原 `tb-export-docx`（pandoc 导出）由主理人在 DELIVER 阶段按需执行，不设独立成员
+- 原 `tb-export-docx`（pandoc 导出）由主理人在 **ASSEMBLE** 阶段执行，不设独立成员；
+  实现为 `scripts/build_manuscript.py`（pandoc + python-docx + mermaid 栅格化，含三级降级）。
+  （2026-10-30 修订：该职责此前被写成「按需执行」但无任何实现，且 team-lead 引用了
+  不存在的 `scripts/build_chapter.py` 与虚构的 CHANGELOG 出处——现已兑现并勘误）
 - 13 态 SSOT 映射关系保留，成员职责按 WorkBuddy 团队协作模型（SendMessage 回传）重排
 
 ---

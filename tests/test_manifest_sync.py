@@ -206,12 +206,32 @@ def main():
     dead = [it for it in items if not os.path.exists(os.path.join(d, it))]
     r.add("M11b", "install.sh 复制清单无死条目（源仓已不存在的路径）",
           not dead, f"死条目: {dead}")
-    # 装配器可注入区的所有文件，都必须被 install.sh 带到安装态
-    refs_dir = os.path.join(d, "references")
-    if os.path.isdir(refs_dir):
-        r.add("M11c", "references/ 下全部文件均被 install.sh 覆盖",
-              "references" in items,
-              f"references/ 含 {len(os.listdir(refs_dir))} 项但 install.sh 未复制该目录")
+    # 运行期依赖：scripts/ 缺失会让 assemble/progress/record_trace 全部不可用
+    r.add("M11c", "install.sh 复制清单含 scripts/（运行期脚本可达）",
+          "scripts" in items, f"清单实际: {items}")
+
+    # ── M12：PowerShell 安装路径（2026-10-30 补）─────────────────────────
+    # 实测教训：install.ps1 此前**完全未被任何门禁覆盖**，清单里既无 references，
+    # 又缺 scripts/tests/vendor/.claude-plugin，还留着已迁走的 role-assembly.md。
+    # → Windows 安装态连 assemble_spawn_prompt.py 都不存在，且无人报警。
+    ps1 = os.path.join(d, "install.ps1")
+    ps1_txt = ""
+    if os.path.isfile(ps1):
+        with open(ps1, encoding="utf-8") as f:
+            ps1_txt = f.read()
+    m_ps = re.search(r"\$items\s*=\s*@\((.*?)\)", ps1_txt, re.S)
+    ps_items = re.findall(r"'([\w./\-]+)'", m_ps.group(1)) if m_ps else []
+    r.add("M12a", "install.ps1 复制清单含 references/ 与 scripts/",
+          "references" in ps_items and "scripts" in ps_items,
+          f"清单实际: {ps_items}")
+    dead_ps = [it for it in ps_items if not os.path.exists(os.path.join(d, it))]
+    r.add("M12b", "install.ps1 复制清单无死条目",
+          not dead_ps, f"死条目: {dead_ps}")
+    # 与 install.sh 的核心目录集合对齐（防止两个安装器长期分叉）
+    core = {"agents", "skills", "scripts", "references"}
+    r.add("M12c", "install.ps1 与 install.sh 核心目录集合一致",
+          core.issubset(set(ps_items)) and core.issubset(set(items)),
+          f"ps1 缺 {sorted(core - set(ps_items))}；sh 缺 {sorted(core - set(items))}")
 
     return emit(r, args.json)
 

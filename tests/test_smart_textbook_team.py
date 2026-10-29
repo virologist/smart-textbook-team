@@ -554,10 +554,38 @@ def check_executability(ck, expert_dir):
     # 正是此前 5 例同型缺口全部漏检的根因（只做 `X in text`，不做「X 能被拿到」）。
 
     # F24 boundary filter 义务成员侧落地（P18 升级：此前 5 成员 MD 命中 0）
-    missing_bf = [aid for aid in MEMBER_IDS
-                  if "boundary filter 义务" not in texts.get(aid, "")]
-    ck.check("F24a", "F", "全部成员 MD 自带 boundary filter 义务行（不依赖派单复述）",
-             not missing_bf, f"缺失: {missing_bf}")
+    # 位置敏感：只认「注意事项」段内的义务行——否则义务被挪进代码块（不当作规则执行）
+    # 也会被判 PASS（2026-10-30 复查发现的恒真风险）。
+    missing_bf, misplaced_bf = [], []
+    for aid in MEMBER_IDS:
+        t = texts.get(aid, "")
+        lines = t.splitlines()
+        seg, in_seg = [], False
+        for ln in lines:
+            if ln.startswith("## 注意事项"):
+                in_seg = True
+                continue
+            if in_seg and ln.startswith("## ") and not ln.startswith("## 注意事项"):
+                break
+            if in_seg:
+                seg.append(ln)
+        # 代码块内的行不算（缩进或三反引号内）
+        in_fence = False
+        plain = []
+        for ln in seg:
+            if ln.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if not in_fence:
+                plain.append(ln)
+        if not any("boundary filter 义务" in ln for ln in plain):
+            if "boundary filter 义务" in t:
+                misplaced_bf.append(aid)
+            else:
+                missing_bf.append(aid)
+    ck.check("F24a", "F", "全部成员 MD 在注意事项段内自带 boundary filter 义务行",
+             not missing_bf and not misplaced_bf,
+             f"缺失: {missing_bf}；位置不合规(在代码块内): {misplaced_bf}")
 
     # F25 可达性：契约引用的包级对象必须位于装配器可注入区（references/）
     refs_dir = os.path.join(expert_dir, "references")
@@ -576,8 +604,13 @@ def check_executability(ck, expert_dir):
     pipeline = read(os.path.join(expert_dir, "skills", "textbook-pipeline-workflow", "SKILL.md"))
     ck.check("F26a", "F", "pipeline 定义门禁 3 且给出可计算判据",
              "门禁 3" in pipeline and "净字数" in pipeline and "角色团声明完整" in pipeline)
-    ck.check("F26b", "F", "门禁 3 的净字数判据锚定脚本而非自报",
-             "count_net_words.py" in pipeline)
+    # F26b 必须锚定「门禁 3 小节内」的脚本引用——父提交 pipeline:151 已在别处提及
+    # count_net_words.py，只查全文会让本断言在改动前也 PASS（恒真，2026-10-30 复查修正）
+    m_g3 = re.search(r"###\s*门禁\s*3(.+?)(?=\n###\s|\n##\s|\Z)", pipeline, re.S)
+    g3 = m_g3.group(1) if m_g3 else ""
+    ck.check("F26b", "F", "门禁 3 小节内净字数判据锚定脚本而非自报",
+             "count_net_words.py" in g3,
+             "门禁 3 小节内未出现 count_net_words.py（全文命中不算）")
     ck.check("F26c", "F", "门禁 3 有明确 fail 处置（不得带 fail 进 VERIFY）",
              "不得带着 fail 进 VERIFY" in pipeline)
 
@@ -597,10 +630,21 @@ def check_executability(ck, expert_dir):
              and "next_agent_hint" in harness)
 
     # F29 阻塞解除通路可达（A5：CLI choices 曾漏收 BLOCKED_RESOLVED → 分支死代码）
-    prog = read(os.path.join(expert_dir, "scripts", "progress.py"))
-    ck.check("F29a", "F", "progress CLI 受理 BLOCKED_RESOLVED（阻塞可标记解除）",
-             "'BLOCKED_RESOLVED'" in prog)
-    ck.check("F29b", "F", "progress init 章节不符时硬失败而非仅告警（防多章串档）",
+    # 判据必须**解析 argparse choices**，不能只查字符串——父提交 progress.py:119 的
+    # update_status 分支里已有该字面量，只查字符串会在改动前也 PASS（恒真，2026-10-30 复查修正）
+    prog_path = os.path.join(expert_dir, "scripts", "progress.py")
+    prog = read(prog_path)
+    m_ch = re.search(r"add_argument\(\s*['\"]--status['\"].*?choices\s*=\s*\[(.*?)\]",
+                     prog, re.S)
+    choices = re.findall(r"['\"]([A-Z_]+)['\"]", m_ch.group(1)) if m_ch else []
+    ck.check("F29a", "F", "progress CLI --status choices 受理 BLOCKED_RESOLVED",
+             "BLOCKED_RESOLVED" in choices,
+             f"解析到的 choices: {choices}（源码字面量命中不算，须在 CLI 白名单内）")
+    # 反向确认：解析失败（脚本结构变化）不得静默判 PASS
+    ck.check("F29b", "F", "progress CLI choices 可解析（判据本身未失效）",
+             bool(choices),
+             "未能解析 --status choices —— 判据失效，须人工修断言而非放行")
+    ck.check("F29c", "F", "progress init 章节不符时硬失败而非仅告警（防多章串档）",
              "sys.exit(2)" in prog)
 
 
