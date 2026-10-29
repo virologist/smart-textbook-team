@@ -123,11 +123,18 @@ graph LR
 ### 2.0 栅格化环境准备（运维前提）
 
 ```bash
+# macOS
 brew install pandoc            # 必需
 pip install python-docx        # 必需
-npm i -g @mermaid-js/mermaid-cli   # 可选：Mermaid → PNG
+# Debian/Ubuntu / CI
+sudo apt-get install -y pandoc && python3 -m pip install python-docx
+# 可选（仅双轨图表的栅格化轨道需要）
+npm i -g @mermaid-js/mermaid-cli
 npx puppeteer browsers install chrome   # mmdc 依赖 Chrome，版本须与 mmdc 期望一致
 ```
+
+> **依赖缺失行为**：`build_manuscript.py` 对 pandoc / python-docx **exit 3 硬失败，不降级**——
+> 宁可明确报错也不产出「缺 docx 的半成品交付物」。mmdc 缺失则可降级（见 §2.1）。
 
 > **实测坑（2026-10-30，本机 macOS）**：`mmdc` 已安装、`npx puppeteer browsers install chrome`
 > 也已执行，但 mmdc 仍报 `Could not find Chrome (ver. 148.0.7778.97)`——缓存里装的是 131/156，

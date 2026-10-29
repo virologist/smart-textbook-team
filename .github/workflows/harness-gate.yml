@@ -51,6 +51,15 @@ jobs:
       - name: package_release.sh 打包冒烟（导出物不入库，仅验脚本可跑）
         run: bash scripts/package_release.sh /tmp/stt-smoke.zip
 
+      # 书稿交付链依赖（pandoc / python-docx）：ubuntu-latest 默认不带。
+      # 脚本在硬依赖缺失时 exit 3 硬失败（不静默降级成"没有 docx 也算过"），
+      # 因此 CI 必须先装。与本机装法（brew install pandoc && pip install python-docx）等价。
+      - name: 安装书稿链依赖（pandoc / python-docx）
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc
+          python3 -m pip install --quiet python-docx
+
       # 书稿交付链冒烟（2026-10-30 第 7 道门禁）：
       # md→docx 构建 + 门禁 4 校验。CI 内 mmdc/Chrome 通常不可用 → 栅格化按设计降级为
       # 占位框，脚本仍须 exit 0（这正是「不静默丢图」降级路径的回归测试）。
