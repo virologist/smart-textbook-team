@@ -222,9 +222,17 @@ def check_structure(ck, expert_dir):
     ck.check("A6d", "A", "members[] 含主理人且 role=lead",
              any(m.get("id") == TEAM_LEAD_ID and m.get("role") == "lead"
                  for m in plugin.get("members", [])))
-    ck.check("A6e", "A", "memberAgents 与 MEMBER_IDS 完全匹配",
-             sorted(ti.get("memberAgents", [])) == sorted(MEMBER_IDS),
-             f"{sorted(ti.get('memberAgents', []))}")
+    # A6e（C3 改造，2026-10-30）：原断言 `memberAgents == MEMBER_IDS` 硬编码 5 人，
+    # 动态成员层（批次 4）落地后，静态层增员/换员都会误红。改为「声明一致性」：
+    # plugin.json 声明的成员 ⊆ agents/ 目录实际文件，且都含 lead。
+    declared = set(ti.get("memberAgents", [])) | {TEAM_LEAD_ID}
+    agents_dir = os.path.join(expert_dir, "agents")
+    actual = {f[:-3] for f in os.listdir(agents_dir) if f.endswith(".md")}
+    miss_md = sorted(declared - actual)
+    undeclared_lead = TEAM_LEAD_ID not in declared
+    ck.check("A6e", "A", "声明的每个成员都有 agents/*.md 文件（声明一致性，不锁死人数）",
+             not miss_md and not undeclared_lead,
+             f"缺 MD: {miss_md}" if miss_md else "")
 
     # A7 skill frontmatter
     for sp in plugin.get("skills", []):
@@ -695,6 +703,37 @@ def check_executability(ck, expert_dir):
                  expert_dir, "skills", "citation-verify", "SKILL.md")),
              "方法 4 仍隐含兽医专属")
 
+    # ── F33：动态成员层（批次 4，2026-10-30）─────────────────────────────
+    tg = read(os.path.join(expert_dir, "skills", "team-generation", "SKILL.md"))
+    gen = read(os.path.join(expert_dir, "scripts", "generate_team.py"))
+    vendor_core = os.path.join(expert_dir, "vendor", "shared-core",
+                               "assemble_spawn_prompt.py")
+    core = read(vendor_core) if os.path.isfile(vendor_core) else ""
+    ck.check("F33a", "F", "team-generation skill 定义「先对齐后生效」硬闸门",
+             "先对齐" in tg and "确认" in tg and "confirmed_by_user" in tg,
+             "闸门缺失 = 误配团队直接生效，整章返工")
+    ck.check("F33b", "F", "generate_team.py 只出提案、不写注册表",
+             "confirmed_by_user: false" in gen
+             # 行为级判据（按行，防 re.S 跨越全文件误连）：同一行内既出现注册表
+             # 文件名又出现写入动作，才算违规——文档字符串的说明性提及不触发
+             and not any(("dynamic-members.yaml" in ln
+                          and ("write_text" in ln or "yaml.dump" in ln
+                               or re.search(r"open\(.*['\"]w", ln)))
+                         for ln in gen.splitlines()),
+             "提案器不得直接落盘注册表")
+    ck.check("F33c", "F", "装配器动态通道默认关闭（--allow-dynamic-members 显式开启）",
+             "--allow-dynamic-members" in core, "默认开启会让未确认成员悄悄可用")
+    ck.check("F33d", "F", "装配器只收录 confirmed_by_user: true 的动态成员",
+             "confirmed_by_user" in core and "true" in core,
+             "闸门失效 = 未对齐成员进入 spawn")
+    ck.check("F33e", "F", "动态成员角色由注册表即时合成（无静态 MD 依赖）",
+             "build_dynamic_member_md" in core, "合成缺失 = 动态成员无法 spawn")
+    ck.check("F33f", "F", "E3 替补机制定义（换等价成员 + 换人不洗计数）",
+             "E3 替补" in tg and "换人不重置计数" in tg.replace("换人不洗计数", "换人不重置计数"),
+             "缺替补通路 = 单成员阻塞即全队停")
+    ck.check("F33g", "F", "动态成员被禁止代行审查职责（生成者/审查者分离不可绕过）",
+             "quality-examiner" in tg, "缺该条款 = 动态层绕过审查分离")
+
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
     # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。
@@ -715,6 +754,7 @@ def check_executability(ck, expert_dir):
                      "未匹配到「静态契约基准 N 计分项」")
     else:
         ck.check("F32a", "F", "README.md 存在（F32 前置）", False, readme_p)
+
 
 
 # ── E. 注册状态（环境观测·不计分）──────────────────────────────────

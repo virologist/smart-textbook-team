@@ -157,6 +157,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 **新增守护门禁**：`F32a`（README 声明的静态契约计分项 == 实际，放进测试自身 → 漂移必被抓，
 实测声明 226 vs 实际 227 立即 FAIL）。静态契约 **227 项全绿**
 
+### 批次 4：动态成员层（C1+C2+C3+C11 同批落地；Q2=B 运行时真生成）
+> **为什么四项必须同批**：C3 门禁改造（解锁人数硬编码）必须与 C1/C2（动态生成）同批——
+> 否则门禁先红或能力先上而门禁不认；C11（E3 替补）依赖动态层存在才有「等价成员」可换。
+
+- **C1 新增 `skills/team-generation/SKILL.md`（第 8 个 skill）**：
+  **双层成员架构**（静态层 5 人常驻 + 动态层按章节生成）；**「先对齐后生效」硬闸门**
+  （构成表 → 用户对齐三问 → confirmed_by_user: true 才可注册——未经确认的提案成员
+  在装配器层面就被拒绝，不只靠自觉）；三维评估（覆盖深度/领域匹配度/准确性保障）；
+  E3 替补机制（examines 覆盖不缩水 + 换人不洗计数）；动态成员**禁止代行审查职责**（契约三原则不可被动态层绕过）
+- **C2 新增 `scripts/generate_team.py`**：读 chapter_design 的 knowledge_scope +
+  学科 profile 映射表 → 产团队构成提案（`confirmed_by_user: false`，**只出提案不落盘注册表**）。
+  实测修复：不同知识域构造出重名 ID（「病毒学/病毒」「病毒」均落 `domain-specialist`）
+  → 加序号去重（`domain-specialist-2`）。正/负样本验证：未命中映射表的域由命名约定构造并 WARN
+- **装配器动态通道（联邦件改动，vendor 已同步，VENDOR sha 已更新 02a69d1f→3a502d93）**：
+  新增 `--work-root` + `--allow-dynamic-members`（**默认关闭**）；注册表只收录
+  `confirmed_by_user: true` 条目；动态成员角色由 `build_dynamic_member_md()` 从注册表条目
+  **即时合成**（无静态 agents/*.md 依赖）——这正是「运行时真生成」的实现。
+  **闸门三态实测**：false → exit 2 拒绝；true → exit 0 合成角色（含 examines/收尾三件套/资源注入）；
+  无 --work-root → exit 2。**首版手搓 YAML 状态机解析器有顺序 bug 导致闸门失效**
+  （false 态也放行，实测抓出）→ 重写为「正则判确认标志 + PyYAML 全量解析」两段式
+- **C3 门禁 A6e 改造**：`memberAgents == MEMBER_IDS`（锁死 5 人）→ **声明一致性**
+  （声明的每个成员都有 agents/*.md；不锁人数）——静态层增员不再误红
+- **C11 E3 替补通路**：task-router E3 处置由「换等价成员（无）」改为按序
+  ①换等价成员（examines ⊇ 原成员；动态层优先；新提案过闸门；interventions 记账；
+  打回计数跨成员累计）②无可换再上报用户
+- **流程接入**：team-lead 新增 Phase B0（动态团队生成四步，闸门在第③步）；
+  plugin.json ×3 / install.sh ×3 / install.ps1 ×3 / README 全量同步第 8 个 skill
+  （上一轮 manuscript-delivery 漏登记的教训，本轮**主动**同步）
+- **新增门禁 F33a-g（7 条）**：闸门定义、提案器不落盘注册表（行为级按行判据——
+  首版 `re.S` 判据跨全文件误报文档字符串，已修）、装配器默认关闭、
+  confirmed_by_user 过滤、角色即时合成、E3 替补、审查分离不可绕过。
+  **F32a 自指序修复**：F32（README 计分项守护）必须排在所有断言之后，否则算不准总数——
+  F33 移至 F32 前。静态契约 **237 项全绿**
+
 ## [2.2.0] - 2026-10-15
 
 ### Re-execution（同日，按用户裁决执行改进方案 P0-1/2/3 + P1-1/2）

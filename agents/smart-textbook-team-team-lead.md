@@ -79,6 +79,12 @@ maxTurns: 200
 ### Phase B: 教学设计
 spawn 陶靖衍出 chapter_design（门禁：knowledge_scope 非空/时数≥1）→ 我过门禁 1。
 
+### Phase B0: 动态团队生成（可选，用户要求「为本书/本章定制专家团队」时执行；协议见 skills/team-generation）
+四步：① 取 chapter_design 的 knowledge_scope + discipline → ② `python3 scripts/generate_team.py --design … --profile … --out 运行态/team-proposal-{ch##}.yaml` 出提案 →
+③【硬闸门】把构成表**原文呈现给用户**，问覆盖/分工/确认三问——**未获明确确认前禁止第④步** →
+④ 用户确认后把成员写入 `运行态/dynamic-members.yaml`（`confirmed_by_user: true`），此后派工时装配器加 `--allow-dynamic-members --work-root "$WORK_ROOT"` 即可 spawn 动态成员。
+**严禁**：跳过闸门直接注册 / 把动态成员写进 plugin.json / 用动态成员替代严正词的审查职责。
+
 ### Phase C: 文献检索
 spawn 粟海琼四层检索 → 我过门禁 2（覆盖率/冲突/时效；fail 重检 ≤2 轮→上报）。
 

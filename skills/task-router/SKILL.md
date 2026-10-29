@@ -109,7 +109,15 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ### E3: 成员当前阻塞（blocking_open 非空）
 
-**处置**：换等价成员（无）+ 在 trace 记录 `outcome=BLOCKED` + 上报用户。
+**处置（2026-10-30 批次 4 更新，原「换等价成员（无）」已失效）**：
+按序尝试，逐级上报：
+
+1. **换等价成员**（新增，依赖动态成员层——`skills/team-generation` §4）：
+   - 等价判定：候选成员的 `examines ⊇` 原成员 examines（覆盖不缩水）
+   - 来源优先：动态层已确认成员 > 生成新提案（**新提案仍要过用户闸门**）
+   - 换人记账：`interventions.md` 记 `{原成员, 新成员, 等价依据, 用户是否确认}`
+   - **换人不重置计数**：打回计数按 `correlation_id + 问题指纹` 跨成员累计（防换人洗计数）
+2. 无等价成员可换 → 在 trace 记录 `outcome=BLOCKED` + 上报用户（原行为兜底）
 
 ### E4: 跨 task_type 复合任务
 
