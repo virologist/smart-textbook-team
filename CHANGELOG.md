@@ -3,6 +3,41 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-10-30
+
+### 批次 1：机制补强（独立从零诊断后，按用户拍板 Q1-Q5 执行；低风险项先行）
+- **A5 阻塞解除通路修复（P7）**：`scripts/progress.py` CLI `choices` 漏收 `BLOCKED_RESOLVED`
+  → 阻塞登记后**无法标记为已解除**（`:104` 分支是死代码）。修复后 5 用例正负样本验证通过
+  （init 新章 / update BLOCKED_RESOLVED / 换章 exit 2 / 同章幂等 / 非法状态仍拒）
+- **A6 多章串档修复（P17）**：`progress.py init` 遇章节不符原只 WARN 后 return（调用方误判成功，
+  `show` 仍返回旧章）→ 改为 `exit 2` 硬失败并报出现有章节
+- **C15 role-assembly 可达性修复（横向归因 ①）**：`references/role-assembly.md` ← 原位于包根，
+  成员需从 scripts 路径 `dirname` 两次反推包根（未声明推导链）。移入 `references/` 后由装配器
+  `resolve_shared_refs()` 自动注入——**零代码改动，不碰联邦 shared-core**（实测装配产物资源清单
+  已含该绝对路径）。同步更新 subject-writer / quality-examiner / CONTRIBUTING 三处引用；
+  role-assembly 升 v1.1.0
+- **C4 路径归属表补建（横向归因 ②，P10）**：`references/path-ownership.md` 新建（15 条路径 +
+  4 条仲裁规则）。此前 harness §0「并行安全：路径表唯一归属」与「资源冲突」两条仲裁**指向空气**
+- **C5 门禁 3 判据（P9）**：pipeline skill 补 PRODUCE 后内容门禁四项（数据标签完整率 /
+  净字数脚本值 ±5% / 角色团声明完整 / 图表位编号连续）+ fail 一律回 PRODUCE 返修
+- **C6 LEARN 信号枚举对齐（P16）**：harness §2 用 `token_overrun`、§7 用 `metric_breach`，
+  均不在 learn-protocol 枚举内 → 枚举扩至 7 值并标为 SSOT
+- **C7 预算优先级（P12）**：harness §3.1 新增五档（P0 RETRIEVE → P4 PROOFREAD）+ 硬规则
+  「禁止为保 P1/P3 削减 P0」+ 削减须记黑板 `budget.cuts` 并在质量报告声明
+- **C12 工具健康检查（P19）**：harness §3.2 新增静默失败 5 条判定（空返回/零结果/条数腰斩/
+  主题无关/授权包装成成功）+ 记 `outcome=SILENT_FAILURE`（对标 arXiv 2603.01548）
+- **C8 冗余度与可执行性（P13）**：harness §8 新增上下文三档裁剪 + 响应可执行性 4 判据
+  （产物路径 / 结论可判定 / 下一步动作 / 异常已声明）；§7 检查表 +2 项
+- **C13 boundary filter 落地（P18 实证升级）**：实测 5 个成员 MD 中 `boundary filter` **命中 0**
+  （只在 team-lead dispatch 检查表出现）→ 义务完全依赖派单复述，而 evo-16 已实证「不复述必漏」。
+  给 5 个成员 MD「注意事项」段补**成员自身义务行** + 门禁断言 F24a
+- **B5 英文/国际标准核验链（citation-verify v1.4.0）**：方法 4 的 7 行权威源**全为中文且全兽医域**
+  → 新增方法 4b（DOI/Crossref/ISBN/ISO/IEEE/WHO/FAO/EU/预印本 8 类，**学科中立**），
+  三要素与中文源同构；预印本必须标明身份不得冒充已发表
+- **C15b 可达性门禁（总纲级，P22）**：新增 F24a–F29b 共 14 条断言，特点是不验「字符串存在」、
+  验**可达性与可执行性**（路径是否位于可注入区 / 引用是否指向真实文件 / CLI 是否受理该状态）。
+  静态契约计分项 199 → **213**，4 道门禁全绿
+
 ## [2.2.0] - 2026-10-15
 
 ### Re-execution（同日，按用户裁决执行改进方案 P0-1/2/3 + P1-1/2）

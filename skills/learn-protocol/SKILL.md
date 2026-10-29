@@ -31,12 +31,12 @@ version: 1.0.0
 
 ### 3. 存入候补池
 
-写入 `学习/le候补/{日期}_{ch##}_候补.yaml`，格式：
+写入 `学习/le候补/{日期}_{ch##}_候补.yaml`，格式（**`signal_type` 枚举为 SSOT，7 值**：`反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach`——后两个是 2026-10-29 补入，此前 `agent-harness-protocol` §2 与 §7 分别引用了它们但本枚举未收录，导致候补池分类错乱）：
 
 ```yaml
 - date: YYYY-MM-DD
   chapter: ch##        # 真实章节；self-evo 表示自我进化留档
-  signal_type: 反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算
+  signal_type: 反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach
   observed_pattern: {具体描述，含证据文件与行号}
   proposed_rule: {一句可执行规则}
   target: {待修改的 agent ID 或 skill 名}

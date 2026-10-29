@@ -48,7 +48,7 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | CLARIFY | 主理人 | 3 句话需求摘要 | SPECIFY | 关键信息齐全 |
 | SPECIFY | didactic-architect | chapter_design.md | RETRIEVE | 门禁 1：设计覆盖知识域 |
 | RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性 |
-| PRODUCE | subject-writer | draft.md（R1→R2→R3） | VERIFY | 数据标签齐全 |
+| PRODUCE | subject-writer | draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
 | VERIFY | quality-examiner | 4 轮审查报告 + verdict | PROOFREAD / RETRIEVE / PRODUCE | 4 轮全 pass |
 | PROOFREAD | quality-examiner | 校对后稿 | CONSOLIDATION | 清洁无流程标注 |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
@@ -69,6 +69,21 @@ R1 结构 → R2 深度 → R3 数据+引用 → R4 风格。任一轮 fail → 
   - 冲突率：多源冲突数据 <20%，冲突项已列明
   - 时效性：流行病学数据近 10 年占比 ≥80%
   - fail → 换关键词重检（≤2 轮）→ 仍 fail → 转用户手动指定
+
+### 门禁 3（PRODUCE 后 · 内容门禁，2026-10-29 补）
+
+> 此前 13 态表里 PRODUCE 行写「数据标签齐全」但**无判据、无 fail 处置**，VERIFY 的 4 轮审查实际承担了本应在进审查前就拦掉的低级缺陷（结构不全/字数不达/角色团未声明）→ 审查轮次被浪费。门禁 3 是可计算的前置闸。
+
+主理人在 PRODUCE 收产出后、spawn examiner 之前**必须**过这四项，全 pass 才进 VERIFY：
+
+| # | 判据 | 可计算口径 | fail 处置 |
+|---|------|-----------|----------|
+| 3.1 | **数据标签完整率** | 正文中凡含数值触发词（发病率/病死率/死亡率/剂量/浓度/免疫程序/日龄/效价/阳性率 等）的陈述，必须带 `[实]`/`[估]`/`[引]`/`[待核实]` 之一；**无标签率 = 0** | 回 writer 补标签；**禁止**由主理人代标 |
+| 3.2 | **净字数达标** | `python3 scripts/count_net_words.py --target <目标> <draft.md>`，偏差 ≤±5%。**脚本值为唯一权威**，writer 自报值不作为判据 | 超 ±5% → 回 writer 补齐/删减；或经用户同意放宽并记录 |
+| 3.3 | **角色团声明完整** | draft frontmatter 含 `角色团:`，每角色必带 `role_id`（kebab-case）+ `role_name` + `examines`（≥1 项）；role_id 取自 `references/role-assembly.md` | 缺/空 → blocking（role-assembly §5） |
+| 3.4 | **图表位与习题位编号连续** | `[图 {章}-{序}]` 无跳号；习题位节号与设计 §C 一致 | 回 writer 对齐 |
+
+**fail 一律回 PRODUCE 返修，不得带着 fail 进 VERIFY**；同一项 fail 2 次 → 按介入协议（A/B/C/D 根因）处置。门禁 3 结论记入 `运行态/progress.md` 的 PRODUCE 行摘要。
 
 ## 错误升级协议（E1-E5）
 

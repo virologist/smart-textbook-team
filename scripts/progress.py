@@ -5,7 +5,12 @@
 用途:章节跑完后被中断,重启时读此文件恢复 phase + 续 task_id。
 
 状态机:章节生命周期由 13 态管线驱动,本工具记录已完成/待续/阻塞。
-写入语义:按 phase 行 upsert(同 phase 更新状态/摘要/时间,不新增行);真正的 append-only 审计流是 trace.jsonl。init 幂等:文件已存在时不覆盖,若 --chapter 与现有不一致则警告。
+写入语义:按 phase 行 upsert(同 phase 更新状态/摘要/时间,不新增行);真正的 append-only 审计流是 trace.jsonl。init 幂等:文件已存在且章节一致时直接返回(不覆盖);章节不一致则 exit 2 硬失败(防止多章串档)。
+
+状态取值:DONE / IN_PROGRESS / BLOCKED / BLOCKED_RESOLVED / SKIPPED。
+  BLOCKED_RESOLVED = 该 phase 曾阻塞、现已解除,阶段可继续推进;
+  它只改阶段行状态,不自动清"## 阻塞清单"(清哪一条由人判定)。
+  (2026-10-29 修复:此前 CLI choices 未收录该值 → 该分支是死代码,阻塞登记后无法标解除)
 
 用法:
   # 写入/更新一个 phase 完成状态
@@ -43,7 +48,15 @@ def init_progress(work_root: Path, chapter: str, textbook: str, audience: str) -
     if p.exists():
         existing = p.read_text(encoding="utf-8")
         if f"Progress · {chapter}" not in existing:
-            print(f"WARN  progress.md 已存在但章节不符(现有头行非 {chapter}),保持原文件未覆盖", file=sys.stderr)
+            # P17 修复(2026-10-29):原实现只 WARN 后 return,调用方误以为 init 成功,
+            # 随后 show 仍返回旧章 → 同一 WORK_ROOT 跑多章必然串档。改为硬失败。
+            m = re.search(r'^# Progress · (\S+)', existing, re.M)
+            cur = m.group(1) if m else '(未知)'
+            print(
+                f"ERROR  progress.md 已存在且章节不符:现有={cur} 请求={chapter}。"
+                f"同一 WORK_ROOT 只服务一章;换章请另建 WORK_ROOT 或先归档旧文件。",
+                file=sys.stderr)
+            sys.exit(2)
         return p
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
     body = f"""# Progress · {chapter}
@@ -100,9 +113,10 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path
         else:
             text += '\n' + new_row + '\n'
 
-    # 阻塞清单追加
+    # 阻塞清单:由调用方用 `block` 子命令 / 手工维护"## 阻塞清单"段,此处不自动增删。
+    # BLOCKED_RESOLVED(2026-10-29 可达性修复)= 该 phase 曾阻塞、现已解除:
+    # 语义是"阶段状态可恢复推进",不自动改阻塞清单(解除哪一条由人判定,避免误清)。
     if status in ('BLOCKED', 'BLOCKED_RESOLVED'):
-        # 由调用方手动管理"## 阻塞清单"段
         pass
 
     p.write_text(text, encoding='utf-8')
@@ -160,7 +174,8 @@ def main() -> int:
 
     p_up = sub.add_parser('update', help='更新某 phase 状态')
     p_up.add_argument('--phase', required=True)
-    p_up.add_argument('--status', required=True, choices=['DONE', 'IN_PROGRESS', 'BLOCKED', 'SKIPPED'])
+    p_up.add_argument('--status', required=True, choices=[
+        'DONE', 'IN_PROGRESS', 'BLOCKED', 'BLOCKED_RESOLVED', 'SKIPPED'])
     p_up.add_argument('--summary', required=True)
 
     p_blk = sub.add_parser('block', help='登记 H15 缺口')

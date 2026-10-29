@@ -1,13 +1,15 @@
 ---
 name: role-assembly
 description: "角色团组装规格——subject-writer 写作视角声明的团队内唯一权威源。定义角色团目的、4 维 examines 规范、kebab-case 命名约定、按 knowledge_scope 的组装算法与标准角色示例。writer 写 draft frontmatter 前必读。"
-version: 1.0.0
+version: 1.1.0
 ---
 
 # 角色团组装规格（role-assembly）
 
 > 本文件是「多专家角色组装」的**团队内 SSOT**。subject-writer（祝书白）写作前按本规格组装角色团并声明于 draft frontmatter，供 quality-examiner（严正词）R2 复核对照。
 > 角色团是**写作视角声明**（writer 内部多视角自检），**不是真实 spawn 子代理**——无需任何外部 agent 或外部文件。
+>
+> **可达性（v1.1.0，2026-10-29）**：本文件位于 `references/`，由装配器 `resolve_shared_refs()` 自动收录并注入成员 spawn 文案的【专家包资源绝对路径】清单——成员可直接 Read，禁止从 scripts 路径反推包根。此前位于包根时该注入位为空（横向归因 ①）。
 
 ## 1. 目的
 
@@ -84,3 +86,4 @@ writer 单视角写正文，易在领域术语、体例规范、学段适配三�
 ## 8. 变更记录
 
 - v1.0.0 [2026-09-03] 初版：从 content-forge 旧 `expert-pool.yaml` 解耦，团队内自包含 SSOT；消除外部路径依赖、双命名体系（连字符 vs 下划线）与 examines 字段缺失三类断链
+- v1.1.0 [2026-10-29] 从包根移入 `references/`：修复「SSOT 可达性依赖未声明推导链」缺陷（成员需从 scripts 路径 dirname 两次反推包根）。移动后由装配器自动注入，零代码改动

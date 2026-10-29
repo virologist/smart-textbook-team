@@ -549,6 +549,60 @@ def check_executability(ck, expert_dir):
                  os.path.exists(os.path.join(FIXTURE_ROOT, "README.md")),
                  f"未找到: {FIXTURE_ROOT}（可用 STT_FIXTURE_ROOT 覆盖）")
 
+    # ── F24-F28：2026-10-29 批次1（横向归因「协议引用载体但载体未接入」总纲门禁）──
+    # 设计原则：这些断言不验「字符串存在」，验**可达性与可执行性**——
+    # 正是此前 5 例同型缺口全部漏检的根因（只做 `X in text`，不做「X 能被拿到」）。
+
+    # F24 boundary filter 义务成员侧落地（P18 升级：此前 5 成员 MD 命中 0）
+    missing_bf = [aid for aid in MEMBER_IDS
+                  if "boundary filter 义务" not in texts.get(aid, "")]
+    ck.check("F24a", "F", "全部成员 MD 自带 boundary filter 义务行（不依赖派单复述）",
+             not missing_bf, f"缺失: {missing_bf}")
+
+    # F25 可达性：契约引用的包级对象必须位于装配器可注入区（references/）
+    refs_dir = os.path.join(expert_dir, "references")
+    ck.check("F25a", "F", "role-assembly SSOT 位于 references/（可被 resolve_shared_refs 注入）",
+             os.path.isfile(os.path.join(refs_dir, "role-assembly.md")),
+             "包根残留会导致成员需从 scripts 路径反推包根（未声明推导链）")
+    ck.check("F25b", "F", "harness 引用的路径归属表实际存在",
+             os.path.isfile(os.path.join(refs_dir, "path-ownership.md")))
+    ck.check("F25c", "F", "harness 的路径表引用指向真实文件（非空气）",
+             "references/path-ownership.md" in read(
+                 os.path.join(expert_dir, "skills", "agent-harness-protocol", "SKILL.md")))
+    ck.check("F25d", "F", "subject-writer 引用的 role-assembly 路径与实际位置一致",
+             "references/role-assembly.md" in texts.get("subject-writer", ""))
+
+    # F26 门禁 3 判据（PRODUCE 后内容门禁）
+    pipeline = read(os.path.join(expert_dir, "skills", "textbook-pipeline-workflow", "SKILL.md"))
+    ck.check("F26a", "F", "pipeline 定义门禁 3 且给出可计算判据",
+             "门禁 3" in pipeline and "净字数" in pipeline and "角色团声明完整" in pipeline)
+    ck.check("F26b", "F", "门禁 3 的净字数判据锚定脚本而非自报",
+             "count_net_words.py" in pipeline)
+    ck.check("F26c", "F", "门禁 3 有明确 fail 处置（不得带 fail 进 VERIFY）",
+             "不得带着 fail 进 VERIFY" in pipeline)
+
+    # F27 预算优先级 / 工具健康检查（P12 / P19）
+    harness = read(os.path.join(expert_dir, "skills", "agent-harness-protocol", "SKILL.md"))
+    ck.check("F27a", "F", "定义预算优先级序列（紧张时先保什么）",
+             "预算优先级" in harness and "RETRIEVE" in harness
+             and "禁止" in harness and "削减 P0" in harness)
+    ck.check("F27b", "F", "定义工具静默失败判定（防 success 包装的空返回）",
+             "静默失败" in harness and "SILENT_FAILURE" in harness)
+
+    # F28 冗余度控制与响应可执行性（P13）
+    ck.check("F28a", "F", "定义上下文冗余控制三档裁剪",
+             "冗余度控制" in harness and "增量传递" in harness and "摘要降级" in harness)
+    ck.check("F28b", "F", "定义响应可执行性判据（产物路径/结论可判定/下一步动作）",
+             "响应可执行性" in harness and "产物路径明确" in harness
+             and "next_agent_hint" in harness)
+
+    # F29 阻塞解除通路可达（A5：CLI choices 曾漏收 BLOCKED_RESOLVED → 分支死代码）
+    prog = read(os.path.join(expert_dir, "scripts", "progress.py"))
+    ck.check("F29a", "F", "progress CLI 受理 BLOCKED_RESOLVED（阻塞可标记解除）",
+             "'BLOCKED_RESOLVED'" in prog)
+    ck.check("F29b", "F", "progress init 章节不符时硬失败而非仅告警（防多章串档）",
+             "sys.exit(2)" in prog)
+
 
 # ── E. 注册状态（环境观测·不计分）──────────────────────────────────
 # E 类整体降级为环境项（P0-2b, 2026-10-15）：marketplace.json 位于【包外】的

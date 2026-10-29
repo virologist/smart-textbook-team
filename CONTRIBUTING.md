@@ -10,7 +10,7 @@ Thank you for your interest in contributing to **smart-textbook-team**.
 
 This is a **domain-rich multi-agent orchestration system**. Contributions must respect three layers:
 
-1. **Domain layer** (`role-assembly.md`, agent MDs) — 学科 SOP 与领域知识
+1. **Domain layer** (`references/role-assembly.md`, agent MDs) — 学科 SOP 与领域知识
 2. **Orchestration layer** (`agent-harness-protocol`, `textbook-pipeline-workflow`) — 跨 agent 调度与门禁
 3. **Verification layer** (`citation-verify`, `multi-agent-patterns`) — 防幻觉与协作模式
 
