@@ -123,32 +123,16 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 ### ACP 回传格式（v2.0 统一协议）
 
 与主理人通信使用结构化信封，禁止纯自然语言传参：
-### 回传信封（统一协议 result_envelope v2.4）
 
-> 跨团队统一标准：6必填字段对齐（与 triz-invention-team / viral-evo-lab / vet-med-ppt-team 一致）。
-> 保留 ACP 扩展能力（evidence GRADE分级 / trace_id 追踪链 / payload 角色定制）。
+### 回传信封（C14 统一裁决 · 引用 harness §1 唯一 SSOT）
 
-```json
-{
-  "agent_id": "literature-scout",
-  "task_id": "<由主理人下发·与trace_id对应>",
-  "phase": "<阶段号或WF编号>",
-  "status": "success|partial|failed|blocked",
-  "confidence": 0-100,
-  "deliverable_summary": "<一句话摘要>",
-  "evidence": [
-    {"type": "source|skill_ref|prior_artifact", "ref": "<PMID|DOI|arXiv ID|URL|路径>",
-     "used_for": "<该证据支撑的结论>", "grade": "<GRADE 1a-5 或 顶会|期刊|预印本>", "recency": "<近6月|近12月|>12月>"}
-  ],
-  "issues": ["<自评发现的问题>"],
-  "next_agent_hint": "<建议下游成员>",
-  "metrics": {"duration_ms": 0, "retry_count": 0},
-  "trace_id": "trace-<task>-<seq>",
-  "payload": {
-    "core_output": "<检索结果>", "evidence_or_basis": "<PMID/DOI清单>", "open_questions": []
-  }
-}
-```
+> **2026-10-30**：本成员旧模板的字段集与 harness §1 / team-lead / 其他成员三套互不相同
+> （上行16/下行13/成员12），回传无法机械校验；且旧模板缺 `from`/`to`——
+> 而反投毒对账恰以 `from` 为锚（规则恒误杀）。
+> **现统一引用 `skills/agent-harness-protocol/SKILL.md` §1 的唯一模板**，
+> 不再在本文件复制字段表；两处不一致时以 harness §1 为准。
+> 填写要点：`agent_id`/`from` = 本成员 ID；`to` = `smart-textbook-team-team-lead`；
+> 6 必填 + 8 扩展字段一个不少；`status` 用 `success|partial|failed|blocked`。
 
 **status取值**（原ACP UPPERCASE已弃用）：`success` / `partial` / `failed` / `blocked`。
 

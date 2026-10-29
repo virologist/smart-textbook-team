@@ -48,11 +48,53 @@ def main() -> int:
     ap.add_argument('--estimated', action='store_true',
                     help='tokens 为估算值(字符数÷3 口径)——平台未暴露真实用量时必须打此标,'
                          'compute_metrics 报告将标注「不可审计」(P2-6/LE-20261015-04)')
+    ap.add_argument('--from-envelope', default=None,
+                    help='成员回传信封 JSON 文件路径——传入后 from/to/task_id/type 以信封为准'
+                         '(C14, 2026-10-30): CLI 自填值与信封不一致时以信封为准并 WARN,'
+                         '消除「trace 与信封两张皮」;信封缺 from/to 时拒收(exit 2)')
     args = ap.parse_args()
+
+    # ── C14: 信封优先解析（2026-10-30）──────────────────────────────────
+    env = None
+    if args.from_envelope:
+        env_path = Path(args.from_envelope).expanduser()
+        if not env_path.is_file():
+            print(f"[ERROR] 信封文件不存在: {env_path}", file=sys.stderr)
+            return 2
+        try:
+            env = json.loads(env_path.read_text(encoding='utf-8'))
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] 信封不是合法 JSON: {e}", file=sys.stderr)
+            return 2
+        missing = [k for k in ('from', 'to') if not env.get(k)]
+        if missing:
+            print(f"[ERROR] 信封缺必填字段 {missing} ——来源不可验证,按不可信回传拒收"
+                  f"(harness §安全对账)", file=sys.stderr)
+            return 2
 
     # correlation_id 推断
     corr = args.correlation_id or args.task_id.split('-')[0]
     msg_id = args.msg_id or f"{args.task_id}-{args.src}-{int(datetime.now(timezone.utc).timestamp())}"
+
+    # 信封字段覆盖（C14: trace 与信封同源；不一致以信封为准并 WARN）
+    if env:
+        overrides = {}
+        if env.get('from') and env['from'] != args.src:
+            overrides['from'] = f"{args.src} → {env['from']}"
+        if env.get('to') and env['to'] != args.dst:
+            overrides['to'] = f"{args.dst} → {env['to']}"
+        if env.get('task_id') and env['task_id'] != args.task_id:
+            overrides['task_id'] = f"{args.task_id} → {env['task_id']}"
+        if env.get('type') and env['type'] != args.type:
+            overrides['type'] = f"{args.type} → {env['type']}"
+        for k, v in overrides.items():
+            print(f"[WARN] 信封与 CLI 自填不一致（{k}: {v}）——以信封为准", file=sys.stderr)
+        args.src = env['from']
+        args.dst = env['to']
+        args.task_id = env.get('task_id') or args.task_id
+        if env.get('type') in ('RESULT', 'BLOCK', 'ERROR', 'STATUS', 'NEED_INPUT'):
+            args.type = env['type']
+        corr = env.get('correlation_id') or corr
 
     rec = {
         'msg_id': msg_id,

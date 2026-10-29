@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""compute_metrics.py — 5 指标计算器
+"""compute_metrics.py — 过程指标(1-5) + 整章产物质量(6) 计算器
 
-读取 {WORK_ROOT}/运行态/trace.jsonl,计算:
+读取 {WORK_ROOT}/运行态/trace.jsonl + 工作区产物,计算:
   1. 分派命中率  (末态 outcome=OK 的任务数 / 派发任务总数——按 task_id 去重取末态,
                   E1 重试的 ERROR 被后续 RESULT 覆盖时不双扣; P2-6 口径修复)
   2. 返工率      (同 task_id 出现 ≥2 次 RESULT OK——同一任务重复成功交付才算返工;
@@ -12,6 +12,10 @@
   3. blocking 占比 (blocking_open 非空任务 / 总任务)
   4. 平均轮次    (同 task_id 的 trace 行数中位数; 自报 turns 仅作参考列 — evo-16 口径修复)
   5. per-task token (in+out 累加,按 task_type; 行内 estimated:true 时报告标注)
+  6. 整章产物质量 (C9, 2026-10-30 批次5)——过程指标只答「流程顺不顺」,
+     本指标答「产物好不好」: ① 结构完整率(5 类必备段) ② 数据标签完整率
+     (数值陈述带 [实]/[估]/[引]/[待核实]) ③ 引用核验通过率(R3 报告汇总)。
+     数据源缺失 → 整体 N/A,不阻塞
 
 输出: 文本报告 + 可选 JSON
 
@@ -21,6 +25,7 @@
 from __future__ import annotations
 import argparse
 import json
+import re
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -44,8 +49,9 @@ def load_traces(work_root: Path) -> list[dict]:
     return out
 
 
-def compute(traces: list[dict]) -> dict:
+def compute(traces: list[dict], work_root: Path | None = None) -> dict:
     if not traces:
+        # 无 trace 不代表无产物：产物质量（[6]）仍应计算（C9）
         return {
             'total_traces': 0,
             'total_tasks': 0,
@@ -64,6 +70,7 @@ def compute(traces: list[dict]) -> dict:
             'self_reported_turns_median': None,
             'tokens_per_task': {},
             'by_task_type': {},
+            'product_quality': _product_quality(work_root) if work_root else None,
         }
 
     # ── P2-6 口径修复(2026-10-15) ──────────────────────────────────
@@ -127,6 +134,11 @@ def compute(traces: list[dict]) -> dict:
         by_task_type[tt]['count'] += 1
         by_task_type[tt]['tokens'] += (t.get('tokens_in', 0) + t.get('tokens_out', 0))
 
+    # ── [6] 整章产物质量（C9，2026-10-30 批次 5）─────────────────────────
+    # 过程指标（[1]-[5]）只回答「流程跑得顺不顺」，不回答「产物好不好」。
+    # 本指标从工作区产物直接计算三个结构化维度；数据源缺失时整体 N/A（不阻塞）。
+    product = _product_quality(work_root)
+
     return {
         'total_traces': len(traces),
         'total_tasks': len(by_task),
@@ -145,6 +157,91 @@ def compute(traces: list[dict]) -> dict:
         'self_reported_turns_median': self_reported_turns,
         'tokens_per_task': dict(tokens_per_task),
         'by_task_type': dict(by_task_type),
+        'product_quality': product,
+    }
+
+
+def _product_quality(work_root: Path) -> dict | None:
+    """整章产物质量三维度（C9）。数据不全 → 返回 None（N/A，不阻塞）。"""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from count_net_words import count_net_words
+    except ImportError:
+        return None
+
+    chapters = sorted((work_root / '章节').glob('ch*')) if (work_root / '章节').is_dir() else []
+    if not chapters:
+        return None
+
+    chapters_out = []
+    n_struct_total = n_struct_ok = 0
+    n_label_total = n_label_ok = 0
+
+    for ch in chapters:
+        draft = ch / 'draft.md'
+        if not draft.is_file():
+            continue
+        text = draft.read_text(encoding='utf-8')
+        entry: dict = {'chapter': ch.name}
+
+        # ① 结构完整率：5 类必备段各自存在即 +1
+        #    （章标题 / ≥1 节标题 / 图表位或图表 / 习题位 / 参考文献）
+        required = {
+            '章标题': re.search(r'^#\s+', text, re.M),
+            '节标题': re.search(r'^##\s+', text, re.M),
+            '图表': re.search(r'\[图\s*\d+-\d+|^\s*图\s*\d+-\d+', text, re.M),
+            '习题位': re.search(r'\[习题\s*\d+-\d+', text),
+            '参考文献': re.search(r'^##\s*参考文献', text, re.M),
+        }
+        ok = sum(1 for v in required.values() if v)
+        n_struct_total += len(required)
+        n_struct_ok += ok
+        entry['structure'] = f'{ok}/{len(required)}'
+
+        # ② 数据标签完整率：数值触发词陈述句带 [实]/[估]/[引]/[待核实] 的比例
+        trigger = re.compile(
+            r'[^。！？\n]*(?:发病率|病死率|死亡率|阳性率|检出率|有效|剂量|浓度|'
+            r'效价|比例|[%％]|\d+(\.\d+)?\s*(?:%|％|倍|次|天|日|周|年|mg|ml|ug))[^。！？\n]*[。！？]', re.I)
+        label = re.compile(r'\[(?:实|估|引|待核实)[^\]]*\]')
+        sents = [s for s in trigger.findall(text + '。') if s]
+        # findall 返回 tuple（含捕获组），回原文找
+        sents = trigger.findall(text)
+        n_trig = 0
+        n_lab = 0
+        for mt in trigger.finditer(text):
+            n_trig += 1
+            if label.search(mt.group(0)):
+                n_lab += 1
+        n_label_total += n_trig
+        n_label_ok += n_lab
+        entry['labels'] = f'{n_lab}/{n_trig}' if n_trig else 'N/A(无数值陈述)'
+
+        # ③ 引用核验通过率：从 R3 审查报告抓核验汇总（无报告 → N/A）
+        pass_rate = None
+        for rep in sorted((ch / 'review').glob('round*_report.md')) if (ch / 'review').is_dir() else []:
+            rt = rep.read_text(encoding='utf-8')
+            m = re.search(r'核验\s*(\d+)\s*条\s*\|?\s*通过\s*(\d+)', rt)
+            if m and int(m.group(1)) > 0:
+                pass_rate = int(m.group(2)) / int(m.group(1))
+        if pass_rate is not None:
+            entry['citation_pass'] = f'{pass_rate:.2f}'
+        else:
+            entry['citation_pass'] = 'N/A(无审查报告)'
+        chapters_out.append(entry)
+
+    if not chapters_out:
+        return None
+    struct_rate = n_struct_ok / n_struct_total if n_struct_total else None
+    label_rate = n_label_ok / n_label_total if n_label_total else None
+    rates = [float(c['citation_pass']) for c in chapters_out
+             if not str(c['citation_pass']).startswith('N/A')]
+    citation = sum(rates) / len(rates) if rates else None
+    return {
+        'chapters': chapters_out,
+        'structure_rate': struct_rate,
+        'label_rate': label_rate,
+        'citation_pass_rate': citation,
+        'thresholds': {'structure_rate': 1.00, 'label_rate': 0.95, 'citation_pass_rate': 0.95},
     }
 
 
@@ -200,6 +297,26 @@ def render(m: dict) -> str:
     else:
         lines.append('    暂无数据')
 
+    lines.append('')
+    pq = m.get('product_quality')
+    lines.append('[6] 整章产物质量 (C9: 结构完整率 / 数据标签完整率 / 引用核验通过率)')
+    if pq:
+        sr, lr, cr = pq['structure_rate'], pq['label_rate'], pq['citation_pass_rate']
+        th = pq['thresholds']
+        lines.append(f'    ① 结构完整率   : '
+                     + (f'{sr:.3f}  门槛 ≥{th["structure_rate"]:.2f}  '
+                        f'{"✓ PASS" if sr >= th["structure_rate"] else "✗ FAIL"}' if sr is not None else 'N/A'))
+        lines.append(f'    ② 标签完整率   : '
+                     + (f'{lr:.3f}  门槛 ≥{th["label_rate"]:.2f}  '
+                        f'{"✓ PASS" if lr >= th["label_rate"] else "✗ FAIL"}' if lr is not None else 'N/A(无数值陈述)'))
+        lines.append(f'    ③ 引用核验通过 : '
+                     + (f'{cr:.3f}  门槛 ≥{th["citation_pass_rate"]:.2f}  '
+                        f'{"✓ PASS" if cr >= th["citation_pass_rate"] else "✗ FAIL"}' if cr is not None else 'N/A(无审查报告)'))
+        for c in pq['chapters']:
+            lines.append(f'      - {c["chapter"]}: 结构 {c["structure"]} | 标签 {c["labels"]} | 核验 {c["citation_pass"]}')
+    else:
+        lines.append('    N/A（工作区无 章节/ 产物，不阻塞）')
+
     lines.append('=' * 60)
     return '\n'.join(lines)
 
@@ -211,7 +328,7 @@ def main() -> int:
     args = ap.parse_args()
 
     traces = load_traces(Path(args.work_root))
-    m = compute(traces)
+    m = compute(traces, work_root=Path(args.work_root))
     print(render(m))
 
     if args.json:
