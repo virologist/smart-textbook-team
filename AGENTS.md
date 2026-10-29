@@ -1,6 +1,6 @@
 # AGENTS.md — Smart Textbook Team (Cursor)
 
-This project uses the Smart Textbook Team (6 agents + 6 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
+This project uses the Smart Textbook Team (6 agents + 7 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
 
 ## Quick start
 

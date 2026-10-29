@@ -46,13 +46,24 @@ except ImportError:  # pragma: no cover
     count_net_words = None
 
 # 必须 re.M：`^…$` 缺省只匹配整串首尾，标题行将永不命中
+# 多行模式说明：凡用 `^…$` 且需逐行判定的正则，一律带 re.M。
+# 缺省时 `^`/`$` 只匹配整串首尾 → 判据静默失效（曾致 4.1「无任何标题」误报）。
 RE_HEADING = re.compile(r"^(#{1,6})\s+(.*)$", re.M)
 RE_FIGURE_SLOT = re.compile(r"\[图\s*(\d+)-(\d+)：([^\]]*)\]")
-RE_CAPTION_LINE = re.compile(r"^\s*(图|表)\s*(\d+)-(\d+)\s")
+RE_TABLE_SLOT = re.compile(r"\[表\s*(\d+)-(\d+)：([^\]]*)\]")
+# 题注行：行首直接是「图/表」+ 编号。**不允许 `[` 前缀**——
+# 否则图位行 `[图 1-1：标题]` 会被同时计为「图位」和「题注」，
+# 造成重复计数 → 4.2b 误报断号（实测：断号处 [(1,1)]）。
+# 图位由 RE_FIGURE_SLOT / RE_TABLE_SLOT 单独识别，两者互不重叠。
+RE_CAPTION_LINE = re.compile(r"^\s*(图|表)\s*(\d+)-(\d+)", re.M)
 RE_XREF_SEC = re.compile(r"\[见\s*§(\d+(?:\.\d+)*)\]")
 RE_XREF_FIG = re.compile(r"\[见图\s*(\d+)-(\d+)\]")
-RE_REF_ITEM = re.compile(r"^\[(\d+)\]\s+(.*)$")
+RE_REF_ITEM = re.compile(r"^\[(\d+)\]\s+(.*)$", re.M)
 RE_YEAR = re.compile(r"(1[89]\d{2}|20\d{2})")
+RE_EXERCISE = re.compile(r"\[习题\s*(\d+)-(\d+)\]")
+RE_IDEOLOGY = re.compile(r"\[思政·([^\]]+)\]")
+# frontmatter 七项（书稿元数据，见 manuscript-delivery §1.2）
+FM_REQUIRED = ["教材名", "章节号", "章节标题", "字数目标", "实际净字数", "版本", "学科profile"]
 
 
 class Result:
@@ -76,11 +87,30 @@ class Result:
 
 
 def find_delivery(work_root: Path, chapter: str, suffix: str) -> Path | None:
+    """定位交付物。多命中 = 歧义，报错而非静默取第一个（2026-10-30 修复）。"""
     d = work_root / "交付"
-    if not d.is_dir():
+    hits = sorted(d.glob(f"*_{chapter}.{suffix}")) if d.is_dir() else []
+    if not hits:
         return None
-    hits = sorted(d.glob(f"*_{chapter}.{suffix}"))
-    return hits[0] if hits else None
+    if len(hits) > 1:
+        print(f"[ERROR] 交付目录下 *_{chapter}.{suffix} 命中 {len(hits)} 个："
+              f"{[h.name for h in hits]}；请清理重名文件后重跑", file=sys.stderr)
+        sys.exit(2)
+    return hits[0]
+
+
+# ── 4.0 frontmatter 七项必填
+def check_frontmatter(text: str, r: Result):
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.S)
+    if not m:
+        r.add("4.0", "md 含 frontmatter（书稿元数据）", False,
+              "文件未以 --- frontmatter 开头")
+        return
+    fm = m.group(1)
+    missing = [k for k in FM_REQUIRED
+               if not re.search(rf"^{re.escape(k)}\s*:", fm, re.M)]
+    r.add("4.0", f"frontmatter 七项齐全（{'/'.join(FM_REQUIRED)}）",
+          not missing, f"缺: {missing}")
 
 
 # ── 4.1 标题层级
@@ -96,30 +126,39 @@ def check_headings(text: str, r: Result):
 
 
 # ── 4.2 题注编号连续 + 与图位一一对应
-def check_captions(text: str, r: Result):
-    slots = [(f"{a}-{b}", t.strip()) for a, b, t in RE_FIGURE_SLOT.findall(text)]
-    caps = []
-    for line in text.splitlines():
-        m = RE_CAPTION_LINE.match(line)
-        if m and m.group(1) == "图":
-            caps.append(f"{m.group(2)}-{m.group(3)}")
+def _seq_gaps(nums: list[int]) -> list[tuple]:
+    gaps = []
+    for i, v in enumerate(nums):
+        if i > 0 and v != nums[i - 1] + 1:
+            gaps.append((nums[i - 1], v))
+    return gaps
 
-    # 图位与图题注一一对应
-    missing_cap = [s for s, _ in slots if s not in caps]
-    r.add("4.2a", "每个图位都有对应图题注", not missing_cap, f"缺题注的图位: {missing_cap}")
 
-    # 序号连续（按章内序号递增，步长为 1）
-    seqs = []
-    for s in caps:
+def _nums(pairs: list[str]) -> list[int]:
+    out = []
+    for s in pairs:
         try:
-            seqs.append(int(s.split("-")[1]))
+            out.append(int(s.split("-")[1]))
         except (IndexError, ValueError):
             pass
-    gaps = []
-    for i, v in enumerate(seqs):
-        if i > 0 and v != seqs[i - 1] + 1:
-            gaps.append((seqs[i - 1], v))
-    r.add("4.2b", "图题注编号连续（步长 1，无跳号）", not gaps, f"断号处: {gaps}")
+    return out
+
+
+def check_captions(text: str, r: Result):
+    """图 + 表双向校验（2026-10-30：原实现只查图，表题注与 [表 X-Y] 完全未覆盖）。"""
+    for kind, slot_re in (("图", RE_FIGURE_SLOT), ("表", RE_TABLE_SLOT)):
+        slots = [f"{a}-{b}" for a, b, _ in slot_re.findall(text)]
+        caps = [f"{m.group(2)}-{m.group(3)}"
+                for m in RE_CAPTION_LINE.finditer(text) if m.group(1) == kind]
+        if not slots and not caps:
+            r.add(f"4.2-{kind}", f"{kind}：无 {kind}位（N/A）", True)
+            continue
+        missing_cap = [s for s in slots if s not in caps]
+        r.add(f"4.2a-{kind}", f"每个{kind}位都有对应{kind}题注",
+              not missing_cap, f"缺题注的{kind}位: {missing_cap}")
+        gaps = _seq_gaps(_nums(caps))
+        r.add(f"4.2b-{kind}", f"{kind}题注编号连续（步长 1，无跳号）",
+              not gaps, f"断号处: {gaps}")
 
 
 # ── 4.3 交叉引用可解析
@@ -162,6 +201,21 @@ def check_refs(text: str, r: Result):
     r.add("4.4a", "参考文献编号从 1 连续递增", seq_ok, f"实际编号: {nums}")
     r.add("4.4b", "每条参考文献含出版年份（GB/T 7714 基本合规）", not bad_year,
           f"缺年份条目: {bad_year}")
+
+
+# ── 4.8 习题位 / 思政融入点（落实 manuscript-delivery §1.3 的标记要求）
+def check_exercise_ideology(text: str, r: Result):
+    exs = [f"{a}-{b}" for a, b in RE_EXERCISE.findall(text)]
+    if exs:
+        gaps = _seq_gaps(_nums(exs))
+        r.add("4.8", f"习题位编号连续（{len(exs)} 个）", not gaps, f"断号处: {gaps}")
+    else:
+        r.warn("4.8", "存在习题位", "本章无 [习题 X-Y] 标记（教材通常需要）")
+    ide = RE_IDEOLOGY.findall(text)
+    if ide:
+        r.add("4.9", f"思政融入点已标注（{len(ide)} 处）", True)
+    else:
+        r.warn("4.9", "存在思政融入点标记", "无 [思政·主题] 标记（教材通常要求 2-3% 占比）")
 
 
 # ── 4.5 docx 可打开 + 标题层级
@@ -236,10 +290,12 @@ def main() -> int:
     text = md_path.read_text(encoding="utf-8")
 
     r = Result()
+    check_frontmatter(text, r)
     check_headings(text, r)
     check_captions(text, r)
     check_xrefs(text, r)
     check_refs(text, r)
+    check_exercise_ideology(text, r)
     check_words(md_path, args.target, r)
 
     docx_path = find_delivery(work_root, args.chapter, "docx")
@@ -247,13 +303,22 @@ def main() -> int:
     if docx_path is None:
         r.warn("4.6", "docx 产物存在（图数一致性依赖）", "未构建 docx，跳过 4.6")
 
-    # 4.6 图数一致：docx 媒体数 == 栅格化成功数
+    # 4.6 图数一致：docx 媒体数 == 本次栅格化成功数
+    # 关键（2026-10-30 修复）：assets/ 可能残留**上一章的陈旧资产**（如 9-9.png），
+    # 直接数 PNG 个数会把陈旧资产算进来，导致 4.6a 误判为「一致」而实际缺图。
+    # 判据改为：只统计 stem 属于**本章图位集合**的资产。
     asset_dir = work_root / "章节" / args.chapter / "figures" / "assets"
-    n_slots = len(RE_FIGURE_SLOT.findall(text))
+    slot_stems = {f"{a}-{b}" for a, b, _ in RE_FIGURE_SLOT.findall(text)}
+    n_slots = len(slot_stems)
+    pngs = []
     if asset_dir.is_dir():
-        pngs = sorted(asset_dir.glob("*.png"))
-    else:
-        pngs = []
+        for p in sorted(asset_dir.glob("*.png")):
+            if p.stem in slot_stems:
+                pngs.append(p)
+        stale = [p.name for p in sorted(asset_dir.glob("*.png")) if p.stem not in slot_stems]
+        if stale:
+            r.warn("4.6c", "assets/ 无不属于本章的陈旧资产",
+                   f"残留: {stale}（已忽略，不计入图数；建议清理）")
     n_png = len(pngs)
 
     if media >= 0:

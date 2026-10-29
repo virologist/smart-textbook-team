@@ -93,9 +93,9 @@ jobs:
 
           [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2.
           MD
+          # 单次调用即可（原实现带 `|| 再跑一次` 的兜底，掩盖真实失败原因且拖慢 CI）
           python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble \
-            --report "$WR/运行态_build.json" || python3 scripts/build_manuscript.py \
-            --work-root "$WR" --chapter ch01 --assemble
+            --report "$WR/build_report.json"
           test -f "$WR/交付/教材_ch01.docx"
           python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
 

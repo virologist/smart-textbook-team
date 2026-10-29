@@ -15,8 +15,11 @@ param(
     [switch]$Help
 )
 
-$VERSION = '2.0.0'
-$REPO_DIR = $PSScriptRoot | Split-Path -Parent
+$VERSION = '2.2.2'
+# 仓库根 = 本脚本所在目录（install.ps1 就在仓库根，不要再取父目录）。
+# 2026-10-30 修复：原实现多取一次 -Parent 指向了仓库的**父目录**，
+# 导致所有 Test-Path 判假 → 逐个静默跳过，WorkBuddy 安装态实际什么都不装且不报错。
+$REPO_DIR = $PSScriptRoot
 if (-not $REPO_DIR) { $REPO_DIR = (Get-Location).Path }
 $HOME_DIR = $HOME
 
@@ -151,7 +154,7 @@ function Install-Cursor {
             @'
 # AGENTS.md — Smart Textbook Team (Cursor)
 
-This project uses the Smart Textbook Team (6 agents + 5 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
+This project uses the Smart Textbook Team (6 agents + 7 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
 
 ## Quick start
 

@@ -166,15 +166,25 @@ def main():
               claimed == actual,
               f"声明 {claimed} / 实际 {actual}")
         # ③ README 声明的「主理人常驻核心 X KB」必须与 wc -c 误差 ≤ 1KB
-        m3 = re.search(r"主理人[^。]*?([0-9]+\.?[0-9]*)\s*KB", rt)
-        claimed_kb = float(m3.group(1)) if m3 else None
-        if claimed_kb is not None:
+        # 校验**所有**主理人体积声明（2026-10-30 修正：原用 search 只查第一个，
+        # README 正文别处出现旧值 13.4KB 时不会被发现 —— 实测确实存在第二处残留）。
+        # 排除表格行：里程碑表里的 "team-lead 22.1KB→6.8KB" 是**历史数值**，
+        # 不是当前态声明，拿它比对会把历史演进记录误判为漂移。
+        claims: list[float] = []
+        for ln in rt.splitlines():
+            if ln.lstrip().startswith("|"):
+                continue
+            claims += [float(x) for x in re.findall(
+                r"主理人[^。\n]*?([0-9]+\.?[0-9]*)\s*KB", ln)]
+        if claims:
             lead_bytes = os.path.getsize(os.path.join(d, "agents", f"{TEAM_LEAD_ID}.md"))
             actual_kb = lead_bytes / 1024
             # 文档声明的 KB 通常是 13.4 / 6.8 这种粗略值,允许 ±2 KB 容差
-            r.add("M10c", "README 声明主理人体积 ≈ wc -c 实际(±2KB)",
-                  abs(actual_kb - claimed_kb) <= 2.0,
-                  f"声明 {claimed_kb} KB / 实际 {actual_kb:.1f} KB")
+            bad = [(c, round(actual_kb, 1)) for c in claims
+                   if abs(actual_kb - c) > 2.0]
+            r.add("M10c", "README 全部主理人体积声明 ≈ wc -c 实际(±2KB)",
+                  not bad,
+                  f"实际 {actual_kb:.1f} KB；不符声明: {bad}" if bad else "")
         else:
             r.add("M10c", "README 含主理人体积声明（可推断）", False, "未匹配到 KB 声明")
     else:

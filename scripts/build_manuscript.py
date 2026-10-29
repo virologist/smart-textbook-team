@@ -75,7 +75,8 @@ RE_FIGURE_SLOT = re.compile(r"\[图\s*(\d+)-(\d+)：([^\]]*)\]")
 # 题注行：允许带 `[` 前缀（图位占位与题注被合并进同一段落时 pandoc 会保留方括号）
 RE_CAPTION = re.compile(r"^\s*\[?(图|表)\s*\d+-\d+")
 RE_FENCE = re.compile(r"```(mermaid|svg)\s*\n(.*?)```", re.S)
-RE_TABLE_FENCE = re.compile(r"```table\s*\n(.*?)```", re.S)
+# 注：Markdown 表格不栅格化——pandoc 会转成 docx 原生表格（可编辑、可选中）。
+# （原 RE_TABLE_FENCE 常量从未被使用，属死代码，已删除）
 
 
 def log(msg: str, level: str = "INFO") -> None:
@@ -100,12 +101,19 @@ def check_deps() -> dict:
 
 
 # ──────────────────────────────────────────────────────────── 装配（可选）
-def find_delivery_md(work_root: Path, chapter: str) -> Path | None:
+def find_delivery_md(work_root: Path, chapter: str) -> Path:
+    """定位交付 md。多命中属于**歧义**，必须报错而非静默取第一个
+    （2026-10-30 修复：同名前缀多个文件时会悄悄选错章节稿）。"""
     d = work_root / "交付"
-    if not d.is_dir():
+    hits = sorted(d.glob(f"*_{chapter}.md")) if d.is_dir() else []
+    if not hits:
         return None
-    hits = sorted(d.glob(f"*_{chapter}.md"))
-    return hits[0] if hits else None
+    if len(hits) > 1:
+        log(f"交付目录下 *_{chapter}.md 命中 {len(hits)} 个，无法判定目标章节稿："
+            f"{[h.name for h in hits]}", "ERROR")
+        log("请清理重名文件（如旧版 教材_ch01_v1.md）或改用明确的 --chapter 名称", "ERROR")
+        sys.exit(2)
+    return hits[0]
 
 
 def assemble_md(work_root: Path, chapter: str, textbook: str) -> Path:
@@ -142,30 +150,63 @@ def assemble_md(work_root: Path, chapter: str, textbook: str) -> Path:
 def write_source_assets(text: str, chapter: str, asset_dir: Path) -> list[dict]:
     """把 md 中的 mermaid/svg 代码块落盘为源码文件，返回资产清单。
 
-    与图位按出现顺序配对；数量不等时只配对前 N 个并记录告警（不静默）。
+    **配对策略：按位置就近匹配，不是按下标顺序配对**（2026-10-30 修复）。
+    旧实现用 `zip(slots, fences)` 按下标配——只要某图位前置了额外代码块
+    （如表格/示例），后续全部错位，会把第 2 张图的源码挂到 `图 1-1` 名下。
+    教材插错图属于硬伤，且此类错位不会报错，只会静默产出错误的书稿。
+
+    新策略：每个图位取其**之后、下一个图位之前**的第一个未被占用的代码块。
+    匹配不上的两侧（无源码的图位 / 无图位的代码块）分别落盘并 WARN，绝不静默。
     """
-    slots = RE_FIGURE_SLOT.findall(text)
-    fences = RE_FENCE.findall(text)
+    slot_ms = list(RE_FIGURE_SLOT.finditer(text))
+    fence_ms = list(RE_FENCE.finditer(text))
     asset_dir.mkdir(parents=True, exist_ok=True)
-    assets = []
+    assets: list[dict] = []
 
-    if slots and len(slots) != len(fences):
-        log(f"图位数({len(slots)}) 与代码块数({len(fences)}) 不等 → 只处理可配对的前 "
-            f"{min(len(slots), len(fences))} 个，其余保留代码块", "WARN")
+    used: set[int] = set()
+    orphan_slots: list[str] = []
 
-    for i, (kind, code) in enumerate(fences):
-        if i < len(slots):
-            ch_no, seq, title = slots[i]
-            stem = f"{ch_no}-{seq}"
-        else:
-            stem = f"{chapter}-{i+1:02d}"
-            title = ""
+    for i, sm in enumerate(slot_ms):
+        ch_no, seq, title = sm.group(1), sm.group(2), sm.group(3)
+        stem = f"{ch_no}-{seq}"
+        # 搜索窗口：本图位之后 → 下一个图位之前（没有下一个则到文末）
+        window_end = slot_ms[i + 1].start() if i + 1 < len(slot_ms) else len(text)
+        pick = None
+        for j, fm in enumerate(fence_ms):
+            if j in used:
+                continue
+            if sm.end() <= fm.start() < window_end:
+                pick = j
+                break
+        if pick is None:
+            orphan_slots.append(stem)
+            continue
+        used.add(pick)
+        fm = fence_ms[pick]
+        kind, code = fm.group(1), fm.group(2)
         ext = "mmd" if kind == "mermaid" else "svg"
         src = asset_dir / f"{stem}.{ext}"
         src.write_text(code.strip() + "\n", encoding="utf-8")
         assets.append({"stem": stem, "kind": kind, "src": str(src),
                        "title": title, "png": None, "raster": None})
 
+    # 未匹配到任何图位的代码块：仍落盘（不丢内容），但显式告警
+    orphan_fences = [j for j in range(len(fence_ms)) if j not in used]
+    for n, j in enumerate(orphan_fences, 1):
+        kind, code = fence_ms[j].group(1), fence_ms[j].group(2)
+        ext = "mmd" if kind == "mermaid" else "svg"
+        stem = f"{chapter}-orphan{n:02d}"
+        src = asset_dir / f"{stem}.{ext}"
+        src.write_text(code.strip() + "\n", encoding="utf-8")
+        assets.append({"stem": stem, "kind": kind, "src": str(src),
+                       "title": "", "png": None, "raster": None, "orphan": True})
+
+    if orphan_slots:
+        log(f"⚠️  {len(orphan_slots)} 个图位在其后未找到图表源码（docx 中将只有题注、无图）："
+            f"{orphan_slots} ——请检查 draft 是否漏贴代码块", "WARN")
+    if orphan_fences:
+        log(f"⚠️  {len(orphan_fences)} 个图表代码块未归属任何图位（已落盘为 "
+            f"{chapter}-orphanNN，docx 中按独立图处理）", "WARN")
     if assets:
         log(f"图表源码落盘 {len(assets)} 个 → {asset_dir}")
     return assets
@@ -176,6 +217,13 @@ def rasterize(assets: list[dict], asset_dir: Path, deps: dict) -> list[dict]:
     failed = []
     for a in assets:
         png = asset_dir / f"{a['stem']}.png"
+        # SVG 不走 mmdc（mmdc 只吃 .mmd）。SVG 本身是矢量格式，
+        # 直接交由 pandoc 嵌入 docx——Word 支持 SVG，且优于二次栅格化。
+        # （旧实现把 svg 也送进 mmdc，必然 exit 1 → 无谓触发降级占位）
+        if a["kind"] == "svg":
+            a["png"] = a["src"]
+            a["raster"] = "ok-vector"
+            continue
         cmd = None
         if deps.get("mmdc"):
             cmd = ["mmdc", "-i", a["src"], "-o", str(png),

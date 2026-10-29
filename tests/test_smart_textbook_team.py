@@ -695,6 +695,27 @@ def check_executability(ck, expert_dir):
                  expert_dir, "skills", "citation-verify", "SKILL.md")),
              "方法 4 仍隐含兽医专属")
 
+    # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
+    # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
+    # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。
+    readme_p = os.path.join(expert_dir, "README.md")
+    if os.path.isfile(readme_p):
+        rt = read(readme_p)
+        m = re.search(r"静态契约基准\s*(\d+)\s*计分项", rt)
+        if m:
+            # 计分项 = 已登记项（ck.items），在 main() 汇总前用 len 近似读取
+            declared_n = int(m.group(1))
+            # 用 Checker 已登记项数（含本条之前的所有项）
+            actual_n = len(ck.items) + 1  # +1 = 本条 F32 自身
+            ck.check("F32a", "F", "README 声明的静态契约计分项 == 实际",
+                     declared_n == actual_n,
+                     f"README 声明 {declared_n} / 实际 {actual_n}（新增断言后须同步 README）")
+        else:
+            ck.check("F32a", "F", "README 含静态契约计分项声明", False,
+                     "未匹配到「静态契约基准 N 计分项」")
+    else:
+        ck.check("F32a", "F", "README.md 存在（F32 前置）", False, readme_p)
+
 
 # ── E. 注册状态（环境观测·不计分）──────────────────────────────────
 # E 类整体降级为环境项（P0-2b, 2026-10-15）：marketplace.json 位于【包外】的
