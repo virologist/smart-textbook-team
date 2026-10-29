@@ -89,6 +89,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **README 同步**：技能数 6→7、计分项 213→214、CI 门禁 5→6→7 道；新增交付形态说明行
   （M10b 门禁实际拦截一次，证明散文漂移门禁有效）
 
+### 批次 3：学科解耦（唯一重构项，按 Q3=A 保留兽医为默认 profile）
+> **问题（实测）**：`role-assembly.md` §6 是一张**写死的 10 行兽医映射表**，§3 术语判据
+> 写死《兽药典》+ ICTV；`citation-verify` 方法 4 的权威源表全为兽医域。
+> 跨专业（法学/计算机/经济）复用时**这些表整体失效，而规范本身对换专业毫无提示**——
+> 「看起来通用、实际单学科」的隐性耦合。
+
+- **B1 `role-assembly.md` v1.1.0 → v2.0.0**：§6 改为 **profile 加载协议**
+  （取 `discipline` → 读 `references/profiles/{discipline}.md` → 缺失回落 `veterinary`
+  并**在 issues 显式声明，禁止静默换学科**）；§3 术语判据改为引用 profile §2；
+  §7 frontmatter 示例改为学科中立 `{domain}-specialist`；命名约定示例同步去兽医化
+  → **规范本体零学科常量**（门禁 F30c 校验）
+- **B2 新增 3 个学科 profile**（`references/profiles/`）：
+  `veterinary.md`（默认，原 10 行表迁入 + 术语源 + 核验源 + 版式）、
+  `computer-science.md`、`law.md`。每个统一四节结构（映射表 / 术语权威源 / 核验源清单 / 版式 preference）。
+  **实测 3 个文件均被装配器 `resolve_shared_refs()` 递归注入**（rglob 生效，无需改代码）
+- **B4 citation-verify 学科源分层**：方法 4 表头声明分层——中国区通用源（任何专业）
+  + 🐾 兽医域默认源（2 行标注）；**学科专属源由 profile §3 提供**，换专业以 profile 为准；
+  法律行举例改为跨专业并列（兽医：动物防疫法 / 法学：民法典）
+- **B7 外部学科规范注入协议**：pipeline 新增「外部学科规范注入协议」——
+  三来源（profile §2/§3 > 用户 `{WORK_ROOT}/学科标准/` > profile-overrides），
+  门禁 **3.5 专业规范符合性**（未提供可判定条目时自动 N/A，**不得因此阻塞交付**）；
+  硬规则「外部规范只作判据不作内容来源」（涉著作权）
+- **新增门禁 F30a-e / F31a-d（9 条）**：校验解耦**实质**而非形式——
+  加载协议存在、≥3 个 profile（含默认）、**正文无学科专属 role_id**、
+  回落规则存在、术语判据不写死、profile 位于可注入区、四节结构完整、
+  pipeline 有 3.5、citation-verify 声明 profile 来源。
+  **负向实验**：把兽医 role_id 写回正文定义区 → F30c 正确 FAIL
+
 ## [2.2.0] - 2026-10-15
 
 ### Re-execution（同日，按用户裁决执行改进方案 P0-1/2/3 + P1-1/2）

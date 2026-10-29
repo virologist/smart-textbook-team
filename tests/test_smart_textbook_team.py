@@ -647,6 +647,54 @@ def check_executability(ck, expert_dir):
     ck.check("F29c", "F", "progress init 章节不符时硬失败而非仅告警（防多章串档）",
              "sys.exit(2)" in prog)
 
+    # ── F30-F31：学科解耦（批次 3，2026-10-30）───────────────────────────
+    # 判据不是「有没有提到 profile」，而是「学科常量是否已移出规范本体」——
+    # 否则改个标题就 PASS，表里仍写死兽医术语。
+    ra_path = os.path.join(expert_dir, "references", "role-assembly.md")
+    ra = read(ra_path) if os.path.isfile(ra_path) else ""
+    prof_dir = os.path.join(expert_dir, "references", "profiles")
+    profs = sorted(os.listdir(prof_dir)) if os.path.isdir(prof_dir) else []
+
+    ck.check("F30a", "F", "role-assembly §6 已改为 profile 加载协议（非写死映射表）",
+             "profile 加载协议" in ra and "references/profiles/" in ra,
+             "未找到加载协议")
+    ck.check("F30b", "F", "内置 ≥3 个学科 profile（含默认 veterinary）",
+             len(profs) >= 3 and "veterinary.md" in profs, f"实际: {profs}")
+    # 反向：规范正文不得再出现学科专属 role_id（否则解耦名存实亡）。
+    # 剔除注释行（# / >）与「变更记录」段——那些位置提到旧值是**说明性**的，
+    # 不应判违规；只看正文定义区（2026-10-30 修正：初版断言连变更说明都命中）。
+    ra_body = ra.split("## 8.")[0]
+    ra_body = "\n".join(ln for ln in ra_body.splitlines()
+                        if not ln.lstrip().startswith(("#", ">")))
+    vet_ids = ["poultry-pathologist-vet", "swine-pathologist-vet",
+               "ruminant-pathologist-vet", "small-animal-clinician-vet"]
+    leaked = [v for v in vet_ids if v in ra_body]
+    ck.check("F30c", "F", "role-assembly 正文无学科专属 role_id（已全部下沉到 profile）",
+             not leaked, f"仍写死: {leaked}")
+    ck.check("F30d", "F", "role-assembly 声明了 profile 缺失时的回落规则（不静默换学科）",
+             "回落" in ra and "veterinary" in ra,
+             "缺回落条款会导致换专业时静默错配")
+    ck.check("F30e", "F", "§3 术语判据不再写死《兽药典》（改为引用 profile §2）",
+             "兽药典" not in ra or "profile" in ra,
+             "术语判据仍写死兽医权威源")
+
+    # F31 学科 profile 的可达性：必须能被装配器注入（位于 references/ 下递归区）
+    ck.check("F31a", "F", "profiles 位于 references/ 下（装配器 rglob 可递归注入）",
+             os.path.isdir(prof_dir), f"未找到: {prof_dir}")
+    ck.check("F31b", "F", "每个 profile 含四节结构（映射表/术语源/核验源/版式）",
+             all(("## 1." in read(os.path.join(prof_dir, f))
+                  and "## 2." in read(os.path.join(prof_dir, f))
+                  and "## 3." in read(os.path.join(prof_dir, f)))
+                 for f in profs) if profs else False,
+             f"profile: {profs}")
+    ck.check("F31c", "F", "pipeline 定义了外部学科规范注入协议（门禁 3.5）",
+             "外部学科规范注入协议" in pipeline and "3.5" in pipeline,
+             "跨专业时专业准确性无人看守")
+    ck.check("F31d", "F", "citation-verify 声明学科源由 profile 提供",
+             "profiles/{discipline}.md" in read(os.path.join(
+                 expert_dir, "skills", "citation-verify", "SKILL.md")),
+             "方法 4 仍隐含兽医专属")
+
 
 # ── E. 注册状态（环境观测·不计分）──────────────────────────────────
 # E 类整体降级为环境项（P0-2b, 2026-10-15）：marketplace.json 位于【包外】的

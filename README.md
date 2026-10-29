@@ -4,6 +4,7 @@
 > 版本 2.2.2 | 2026-10-30 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
 > 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 214 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 6 道全绿；**7 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / task-router / textbook-pipeline-workflow）；主理人常驻核心 16.0KB
 > **交付形态（v2.2.2）**：大学教材**书稿** —— `.md`（源，唯一编辑入口）+ `.docx`（交付格式，由 md 生成，禁止手改），规格见 `skills/manuscript-delivery/SKILL.md`
+> **跨专业（v2.2.2）**：学科知识已外置为 profile —— `references/profiles/{veterinary|computer-science|law}.md`，新增学科只需复制改写该文件，**规范本体零学科常量**（默认 veterinary）
 > 真实运行基线（2026-10-15 e2e-p1）：ch08 PRODUCE-R2 + VERIFY-R2 端到端，7/7 引用 PubMed 实检 PASS，dispatch 1.000 / retry 0.50 / rework 0.000
 
 ## 团队定位
