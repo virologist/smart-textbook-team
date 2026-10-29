@@ -188,6 +188,31 @@ def main():
             miss_paths.append(rel)
     r.add("M9", "声明的 agents/skills 路径均存在", not miss_paths, f"缺失: {miss_paths}")
 
+    # ── M11：安装态可达性（2026-10-29 补，横向归因总纲）───────────────────
+    # 判据不是「源文件存在」，而是「install.sh 会把它带到安装态」。
+    # 实测教训：role-assembly.md 迁入 references/ 后源仓一切正常、4 道门禁全绿，
+    # 但 install.sh 复制清单不含 references/ → 安装态资源清单全是死链，
+    # 且 [[ -e ]] 对已迁走的包根条目判假后**静默跳过**，无任何报错。
+    inst = os.path.join(d, "install.sh")
+    inst_txt = ""
+    if os.path.isfile(inst):
+        with open(inst, encoding="utf-8") as f:
+            inst_txt = f.read()
+    m_for = re.search(r"for item in ([^;]*?);\s*do", inst_txt, re.S)
+    items = re.findall(r"[\w./\-]+", m_for.group(1)) if m_for else []
+    r.add("M11a", "install.sh 复制清单含 references/（安装态资源不丢）",
+          "references" in items, f"清单实际: {items}")
+    # 死条目检测：清单里列出的条目必须在源仓存在，否则静默跳过、永不报错
+    dead = [it for it in items if not os.path.exists(os.path.join(d, it))]
+    r.add("M11b", "install.sh 复制清单无死条目（源仓已不存在的路径）",
+          not dead, f"死条目: {dead}")
+    # 装配器可注入区的所有文件，都必须被 install.sh 带到安装态
+    refs_dir = os.path.join(d, "references")
+    if os.path.isdir(refs_dir):
+        r.add("M11c", "references/ 下全部文件均被 install.sh 覆盖",
+              "references" in items,
+              f"references/ 含 {len(os.listdir(refs_dir))} 项但 install.sh 未复制该目录")
+
     return emit(r, args.json)
 
 

@@ -68,8 +68,12 @@ install_workbuddy() {
     # 复制核心目录与文件
     # v2.1: 补 scripts/tests/vendor/.claude-plugin —— 缺 scripts 会导致
     # trace/progress/assemble_spawn_prompt 全部不可用（P0-1 连带修复）
-    for item in agents skills scripts tests vendor .codebuddy-plugin .claude-plugin \
-                role-assembly.md README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
+    # v2.2.2: 补 references/ —— role-assembly.md（角色团 SSOT）与 path-ownership.md
+    # （路径归属表）均迁移至此，由装配器 resolve_shared_refs() 自动注入成员 spawn 文案。
+    # 漏掉本目录 = 安装态下资源清单全是死链（源仓态一切正常，安装态静默失效，最难排查）。
+    # 同时移除已迁走的包根 role-assembly.md 条目（[[ -e ]] 判假会静默跳过，属死条目）。
+    for item in agents skills scripts tests vendor references .codebuddy-plugin .claude-plugin \
+                README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
         if [[ -e "$REPO_DIR/$item" ]]; then
             run "rm -rf '$DEST/$item'"
             run "cp -R '$REPO_DIR/$item' '$DEST/$item'"
