@@ -116,33 +116,77 @@ def find_delivery_md(work_root: Path, chapter: str) -> Path:
     return hits[0]
 
 
+def _split_frontmatter(text: str) -> tuple[str, str]:
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.S)
+    if m:
+        return m.group(1), text[m.end():]
+    return "", text
+
+
 def assemble_md(work_root: Path, chapter: str, textbook: str) -> Path:
     """从 章节/{ch##}/draft.md + figures/*.md 装配出交付 md。
 
-    装配是确定性的：draft 正文 + 按图号排序的图表块。不做内容改写。
+    装配是确定性的：书稿 frontmatter + draft 正文 + 按文件名排序的图表块。不做内容改写。
+
+    **frontmatter 生成（2026-10-30 补）**：交付书稿必须携带七项元数据
+    （manuscript-delivery §1.2，校验判据 4.0）。此前装配器直接把 draft 原文搬过去，
+    draft 若没写 frontmatter，交付稿就没有 → 4.0 恒 FAIL。
+    现按「draft 已有值优先，缺失项推导/取默认」生成；推导不出的（字数目标）
+    置 0 并 WARN，不编造。
     """
     ch_dir = work_root / "章节" / chapter
     draft = ch_dir / "draft.md"
     if not draft.is_file():
         log(f"装配失败：{draft} 不存在", "ERROR")
         sys.exit(2)
-    body = draft.read_text(encoding="utf-8")
+
+    fm_src, body = _split_frontmatter(draft.read_text(encoding="utf-8"))
+    existing = dict(re.findall(r"^([^\s:#]+)\s*:\s*(.*)$", fm_src, re.M))
+
+    m_title = re.search(r"^#\s+(.*)$", body, re.M)
+    title = (m_title.group(1).strip() if m_title else "")
+
+    net = 0
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from count_net_words import count_net_words
+        net = count_net_words(body).get("net_final", 0)
+    except Exception as e:
+        log(f"净字数计算失败（置 0）：{e}", "WARN")
+
+    fm = {
+        "教材名": existing.get("教材名") or textbook,
+        "章节号": existing.get("章节号") or chapter,
+        "章节标题": existing.get("章节标题") or title,
+        "字数目标": existing.get("字数目标") or "0",
+        "实际净字数": str(net),
+        "版本": existing.get("版本") or "R3",
+        "学科profile": existing.get("学科profile") or "veterinary",
+    }
+    if not existing:
+        log("draft 无 frontmatter → 已按推导值生成书稿元数据", "WARN")
+    if fm["字数目标"] == "0":
+        log("字数目标缺失（置 0）——请在 draft frontmatter 或设计文件中给出，"
+            "否则门禁 4.7 无法判定字数达标", "WARN")
+    if fm["学科profile"] == "veterinary" and "学科profile" not in existing:
+        log("学科 profile 未声明 → 回落默认 veterinary（换专业请在 frontmatter 显式声明）",
+            "WARN")
 
     fig_dir = ch_dir / "figures"
-    blocks = []
-    if fig_dir.is_dir():
-        for f in sorted(fig_dir.glob("*.md")):
-            blocks.append(f.read_text(encoding="utf-8"))
+    blocks = [f.read_text(encoding="utf-8") for f in sorted(fig_dir.glob("*.md"))] \
+        if fig_dir.is_dir() else []
 
     out_dir = work_root / "交付"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{textbook}_{chapter}.md"
-    parts = [body.rstrip()]
+
+    head = "---\n" + "\n".join(f"{k}: {v}" for k, v in fm.items()) + "\n---\n"
+    parts = [head, body.strip()]
     if blocks:
         parts.append("\n\n---\n\n## 本章图表\n")
         parts.extend(blocks)
     out.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
-    log(f"装配完成：{out}（正文 + {len(blocks)} 个图表块）")
+    log(f"装配完成：{out}（frontmatter 七项 + 正文 + {len(blocks)} 个图表块）")
     return out
 
 
