@@ -29,6 +29,7 @@
     "./skills/agent-harness-protocol",
     "./skills/citation-verify",
     "./skills/learn-protocol",
+    "./skills/manuscript-delivery",
     "./skills/multi-agent-patterns",
     "./skills/task-router",
     "./skills/textbook-pipeline-workflow"

@@ -119,7 +119,7 @@ install_claude_code() {
     # skills 复制到 ~/.claude/skills/（Claude Code 自 v2.1.32+ 支持 skills frontmatter 字段）
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
-    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns task-router textbook-pipeline-workflow; do
+    for s in agent-harness-protocol citation-verify learn-protocol manuscript-delivery multi-agent-patterns task-router textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
@@ -147,7 +147,7 @@ install_claude_desktop() {
     done
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
-    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns task-router textbook-pipeline-workflow; do
+    for s in agent-harness-protocol citation-verify learn-protocol manuscript-delivery multi-agent-patterns task-router textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
@@ -169,7 +169,7 @@ install_cursor() {
             ok "  .cursor/agents/$a.md"
         fi
     done
-    for s in agent-harness-protocol citation-verify learn-protocol multi-agent-patterns task-router textbook-pipeline-workflow; do
+    for s in agent-harness-protocol citation-verify learn-protocol manuscript-delivery multi-agent-patterns task-router textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$TARGET_DIR/skills/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$TARGET_DIR/skills/$s'"

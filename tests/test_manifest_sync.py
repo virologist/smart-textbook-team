@@ -233,6 +233,49 @@ def main():
           core.issubset(set(ps_items)) and core.issubset(set(items)),
           f"ps1 缺 {sorted(core - set(ps_items))}；sh 缺 {sorted(core - set(items))}")
 
+    # ── M13：skills 声明 ↔ 实际目录 双向一致（2026-10-30 补）──────────────
+    # 实测教训：新增 skills/manuscript-delivery/ 后只改了 README，三处 plugin.json
+    # 与 marketplace.json 的 skills 数组全部漏声明 → 安装态不会加载该 skill，
+    # 而既有门禁全部放行：M7 只查「install.sh 覆盖了【已声明】的技能」，
+    # M10b 只查「README 声明数 == 目录数」。**「目录里有但未声明」这一侧无人看守**。
+    skills_dir = os.path.join(d, "skills")
+    actual_skills = {x for x in os.listdir(skills_dir)
+                     if os.path.isdir(os.path.join(skills_dir, x))} if os.path.isdir(skills_dir) else set()
+    declared_skills = {s.strip("./").split("/")[-1] for s in cb.get("skills", [])}
+    undeclared = sorted(actual_skills - declared_skills)
+    r.add("M13a", "skills/ 下每个目录都被 plugin.json 声明（防新增技能漏登记）",
+          not undeclared, f"目录存在但未声明: {undeclared}")
+    missing_dir = sorted(declared_skills - actual_skills)
+    r.add("M13b", "plugin.json 声明的每个 skill 都有实际目录（防声明死链）",
+          not missing_dir, f"已声明但目录缺失: {missing_dir}")
+    # 与 M7（install.sh 技能覆盖）对称的 PowerShell 版本
+    # 实测教训：install.ps1 三处技能循环长期只有 5 个（连 task-router 都缺），
+    # 而 M7 只查 install.sh → PowerShell 安装态技能缺失无人报警。
+    ps_skill_lists = re.findall(
+        r"foreach\s*\(\$s\s+in\s+@\((.*?)\)\s*\)", ps1_txt, re.S)
+    declared = {s.strip("./").split("/")[-1] for s in cb.get("skills", [])}
+    short_ps = []
+    for i, lst in enumerate(ps_skill_lists, 1):
+        got = set(re.findall(r"'([^']+)'", lst))
+        miss = sorted(declared - got)
+        if miss:
+            short_ps.append(f"第{i}处循环缺 {miss}")
+    r.add("M12d", "install.ps1 每个平台循环均覆盖全部声明技能（M7 的 PowerShell 版）",
+          bool(ps_skill_lists) and not short_ps,
+          "；".join(short_ps) if short_ps else "未找到任何技能循环")
+
+    # marketplace.json 与 plugin.json 的 skills 集合也必须一致
+    try:
+        mkp_skills = {s.strip("./").split("/")[-1]
+                      for s in json.load(open(os.path.join(d, ".claude-plugin", "marketplace.json"),
+                                              encoding="utf-8"))["plugins"][0].get("skills", [])}
+        r.add("M13c", "marketplace.json 与 plugin.json 的 skills 集合一致",
+              mkp_skills == declared_skills,
+              f"marketplace 独有: {sorted(mkp_skills - declared_skills)}；"
+              f"plugin 独有: {sorted(declared_skills - mkp_skills)}")
+    except (OSError, KeyError, json.JSONDecodeError) as e:
+        r.add("M13c", "marketplace.json 可解析且含 plugins[0].skills", False, str(e)[:120])
+
     return emit(r, args.json)
 
 
