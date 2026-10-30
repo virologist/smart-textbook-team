@@ -272,13 +272,17 @@ def rasterize(assets: list[dict], asset_dir: Path, deps: dict) -> list[dict]:
             continue
         cmd = None
         if deps.get("mmdc"):
-            cmd = ["mmdc", "-i", a["src"], "-o", str(png),
-                   "-w", str(RASTER["width"]), "-H", str(RASTER["height"]),
-                   "-b", RASTER["background"]]
+            # 宽度/高度参数部分 mmdc 版本不支持（unknown option '-w'）→ 失败即重试
+            # 无尺寸参数的最简命令（尺寸由 mermaid 默认视图决定）。降级纪律同 §2.1。
+            base = ["mmdc", "-i", a["src"], "-o", str(png), "-b", RASTER["background"]]
+            with_size = base + ["-w", str(RASTER["width"]), "-H", str(RASTER["height"])]
+            cmd = ("with-fallback", with_size, base)
         elif deps.get("npx"):
-            cmd = ["npx", "-y", "@mermaid-js/mermaid-cli", "-i", a["src"], "-o", str(png),
-                   "-w", str(RASTER["width"]), "-H", str(RASTER["height"]),
-                   "-b", RASTER["background"]]
+            base = ["npx", "-y", "@mermaid-js/mermaid-cli", "-i", a["src"],
+                    "-o", str(png), "-b", RASTER["background"]]
+            cmd = ("with-fallback",
+                   base + ["-w", str(RASTER["width"]), "-H", str(RASTER["height"])],
+                   base)
 
         if cmd is None:
             a["raster"] = "no-tool"
@@ -286,8 +290,18 @@ def rasterize(assets: list[dict], asset_dir: Path, deps: dict) -> list[dict]:
             continue
 
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True,
-                               timeout=RASTER["timeout_sec"])
+            # 参数容错（E-3）：带尺寸参数失败时重试一次最简命令（部分 mmdc 版本
+            # 不支持 -w/-H，报 unknown option）。两次都失败才算失败。
+            if isinstance(cmd, tuple) and cmd[0] == "with-fallback":
+                r = subprocess.run(cmd[1], capture_output=True, text=True,
+                                   timeout=RASTER["timeout_sec"])
+                if r.returncode != 0 or not png.is_file():
+                    log(f"带尺寸参数失败（{(r.stderr or '').strip()[:80]}），重试最简命令", "WARN")
+                    r = subprocess.run(cmd[2], capture_output=True, text=True,
+                                       timeout=RASTER["timeout_sec"])
+            else:
+                r = subprocess.run(cmd, capture_output=True, text=True,
+                                   timeout=RASTER["timeout_sec"])
             if r.returncode == 0 and png.is_file():
                 a["png"] = str(png)
                 a["raster"] = "ok"
