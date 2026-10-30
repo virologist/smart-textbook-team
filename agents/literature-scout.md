@@ -24,7 +24,12 @@ maxTurns: 200
 
 | 层 | 工具调用（按顺序尝试，失败即降层） |
 |----|-----------------------------------|
-| **Tier 0 本地知识源（最优先，2026-10-30 批次 C6 新增）** | ① **ima 知识库**：ToolSearch 检索 `ima` 关键词取 MCP 工具名（如知识库列表/检索），搜到的库（如《禽病》Avian Disease 等权威策展库）**先于一切外网检索**；② **Obsidian vault**：读 `$TB_VAULT_PATH`（缺省 `~/OneDrive-Personal/Obsidian_vault/wiki`，**以任务包显式给出的路径为准，禁止猜**）下知识页；③ **书籍 md**：`{WORK_ROOT}/知识库/books/*.md`（markitdown 转换的中英文参考书）。Tier 0 命中 → 回传「来源路径 + 页码/笔记名」，与 PMID 同等地位；Tier 0 未命中才降 Tier 1（外网）。 rationale：本地权威资料最可信、最快、零幻觉面，旧链全走外网属资源错配 |
+| **Tier 0 本地知识源（最优先，2026-10-30 批次 C6 新增）** | ① **ima 知识库**：ToolSearch 检索 `ima` 关键词取 MCP 工具名，**两段式检索**——
+   先 `search_knowledge_base`（库级，按关键词命中权威策展库，如实测 `ima_kb_KulSqcqD`《禽病》Avian Disease），
+   命中库后**优先用库内文档级检索工具**（ToolSearch 以 `ima + kb/文档/内容` 再探一次；
+   **若环境只提供库级 API，则如实记录「库级命中 + 无法文档级定位」并把该库作为 Tier 0.5 来源**：
+   引用格式写 `来源: ima库《禽病》Avian Disease (kb_id)`，置信度按「中」起步、需 Tier 1 交叉确认数值；
+   **禁止把库级命中伪装成文档级精确定位**）；ima 命中先于一切外网检索；② **Obsidian vault**：读 `$TB_VAULT_PATH`（缺省 `~/OneDrive-Personal/Obsidian_vault/wiki`，**以任务包显式给出的路径为准，禁止猜**）下知识页；③ **书籍 md**：`{WORK_ROOT}/知识库/books/*.md`（markitdown 转换的中英文参考书）。Tier 0 命中 → 回传「来源路径 + 页码/笔记名」，与 PMID 同等地位；Tier 0 未命中才降 Tier 1（外网）。 rationale：本地权威资料最可信、最快、零幻觉面，旧链全走外网属资源错配 |
 | Tier 1 英文学术库（主） | ① **ToolSearch 检索当前环境可用的 PubMed/CrossRef MCP 工具名**（按 `pubmed` / `crossref` 关键词；2026-10-15 P0-3 裁决：禁止硬编码具体前缀，本前缀在不同 MCP 接入下为 `mcp__pubmed__*`/`mcp__biomcp__*`/`mcp__paper_search_server__*` 等差异极大，写死即 false assumption），`DeferExecuteTool` 加载 schema 后调用 → ② WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/`（PMID 核验）或 `https://pubmed.ncbi.nlm.nih.gov/?term={关键词}`（主题检索）→ ③ WebSearch 多引擎并行 |
 | Tier 2 通用网页（次） | WebSearch + WebFetch（含 Semantic Scholar `https://www.semanticscholar.org/search?q={关键词}`、bioRxiv） |
 | Tier 3 中文数据库 | WebSearch 定向 CNKI / 万方 / 中文权威站点（中文文献无 PMID 时走此层；中文法规/标准走 citation-verify v1.3 专属核验链） |

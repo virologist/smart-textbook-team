@@ -214,6 +214,11 @@ python3 scripts/check_manuscript.py \
 
 **校验项（门禁 4）**：
 
+> **判据数说明（2026-10-31）**：本表列**判据族**（4.1–4.11）;
+> 脚本实跑会产生更细的子判据 ID（如 4.2a/4.2b/4.5a…，实测 19+ 个）——
+> **以 `check_manuscript.py` 实跑输出为准**，本表与脚本由 CI 第 7 道（书稿链冒烟）联动守护；
+> 新增判据须同步本表（漏同步会被验收审计抓）。
+
 | # | 判据 | FAIL 处置 |
 |---|------|----------|
 | 4.1 | md 标题层级无跳级 | 回 ASSEMBLE 修结构 |
@@ -225,6 +230,7 @@ python3 scripts/check_manuscript.py \
 | 4.7 | 净字数 ±5%（`count_net_words.py` 脚本值） | 回 writer 或经用户同意放宽 |
 | 4.8 | 习题位编号连续 | 回 writer |
 | 4.9 | 思政融入点已标注（存在性） | 回 writer |
+| 4.10 | **数据图 notebook**（`assets/{图号}.ipynb` 存在且可执行，配对每个数据图位；见 `skills/scientific-figure`） | 补建或回 designer |
 | 4.11 | **术语一致性**（对照 `references/terminology-table.md`：禁用写法零出现 / 同概念多写法未并存 / 首见位置正确） | 回 writer |
 
 ## 4.1 溯源表（交付物必含，批次 C3）

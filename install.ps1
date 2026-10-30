@@ -1,4 +1,7 @@
 # install.ps1 — Smart Textbook Team cross-platform installer (Windows PowerShell)
+# 【验证状态】本脚本仅经静态语法自检（install.sh --lint-ps1），未经真机 PowerShell 实跑——
+# 开发/CI 环境无 pwsh。要求 PowerShell 5.1+（$HOME 在 5.1 可用；避免依赖 PS6+ 专有变量）。
+# 首次 Windows 实机运行请先: powershell -ExecutionPolicy Bypass -File install.ps1 -DryRun
 # Supports: WorkBuddy / Claude Code / Claude Desktop / Cursor
 # 用法:
 #   .\install.ps1 -Target workbuddy          # 仅 WorkBuddy

@@ -122,7 +122,7 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 **交付形态铁律**：`.md` = 源（唯一编辑入口）；`.docx` = 交付格式（由 md 生成，**禁止手改**，改则回 md 重建）。
 
 ### Phase DELIVER: 交付（我亲自执行）
-1. **先过门禁 4**：`python3 scripts/check_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} --strict`（7 项判据；FAIL 不得交付）
+1. **先过门禁 4**：`python3 scripts/check_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} --strict`（校验表 10 行判据 4.0-4.11+4.8/4.9；FAIL 不得交付——判据 SSOT 见 manuscript-delivery §4）
 2. `present_files` 交付 **md + docx 双格式**，附质量报告与缺口清单
 3. **质量报告必须显式列出「未栅格化图表数」**（栅格化工具不可用时降级为占位框 + 保留源码，绝不静默丢图）
 

@@ -44,7 +44,9 @@ jobs:
         run: python3 tests/test_manifest_sync.py
 
       - name: install.sh 干跑冒烟（--dry-run，无副作用）
-        run: bash install.sh --dry-run --target all
+        run: |
+          bash install.sh --lint-ps1
+          bash install.sh --dry-run --target all
 
       # 打包脚本冒烟（2026-10-15）：zip 曾停在 2.0.0 一个月无人发现——
       # 这里验证 package_release.sh 自身可跑（CI 内无既有 zip，只验 build 分支退出码）

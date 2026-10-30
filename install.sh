@@ -15,7 +15,93 @@ DRY_RUN=0
 
 usage() {
     sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'
+    echo "  --lint-ps1   对 install.ps1 做静态语法自检（无 pwsh 环境的替代验证）"
     exit "${1:-0}"
+}
+
+# ---------- install.ps1 静态语法自检（残留1：无 pwsh 环境的替代验证）----------
+# 背景：开发/CI 均无 PowerShell → ps1 此前零验证。真机实跑仍不可替代，
+# 但本自检能拦住「括号不配平 / here-string 未闭合 / 引号计数错乱 / 关键结构缺失」
+# 这类会在 PowerShell 解析期直接炸掉的错误（历史上 M 系列门禁抓过此类）。
+lint_ps1() {
+    local PS1_FILE="$REPO_DIR/install.ps1"
+    if [[ ! -f "$PS1_FILE" ]]; then err "install.ps1 不存在"; return 1; fi
+    python3 - "$PS1_FILE" <<'PYEOF'
+import re, sys
+from pathlib import Path
+
+t = Path(sys.argv[1]).read_text(encoding="utf-8")
+lines = t.splitlines()
+errors = []
+
+# 1) 花括号配平（剔除 here-string 与注释与字符串字面量后计数）
+def strip_noise(text: str) -> str:
+    # 去 here-string @'...'@（其内容为字面量）
+    text = re.sub(r"@'\r?\n.*?\r?\n'@", "", text, flags=re.S)
+    # 去行注释与块注释
+    text = re.sub(r"<#.*?#>", "", text, flags=re.S)
+    text = "\n".join(re.sub(r"#.*$", "", ln) for ln in text.splitlines())
+    # 去双引号字符串（简化：不含嵌套 " 的行内串）
+    text = re.sub(r'"(?:[^"`]|`.)"', '""', text)
+    # 去单引号字符串（'' 转义）
+    text = re.sub(r"'(?:[^']|'')*'", "''", text)
+    return text
+
+cleaned = strip_noise(t)
+ob, cb = cleaned.count("{"), cleaned.count("}")
+if ob != cb:
+    errors.append(f"花括号不配平: {{ ×{ob} vs }} ×{cb}")
+
+# 2) 单引号字符串逐行闭合检查（跳过 here-string 区间与注释行）
+in_heredoc = False
+for i, ln in enumerate(lines, 1):
+    s = ln.strip()
+    if s.endswith("@'") and not s.startswith("'@"):
+        # here-string 开始行（$x = @' 或裸 @'）：@' 起字面量区，前缀仍须引号配平
+        body = s[: s.rfind("@'")]
+        if body.count("'") % 2 != 0:
+            errors.append(f"行 {i}: here-string 前缀行单引号未闭合: {s[:70]}")
+        in_heredoc = True; continue
+    if s == "'@":
+        in_heredoc = False; continue
+    if in_heredoc or s.startswith("#"):
+        continue
+    cnt = ln.count("'")
+    # 偶数个单引号才闭合（数组/参数串都是成对的）；含 '' 转义也保持偶性
+    if cnt % 2 != 0:
+        errors.append(f"行 {i}: 单引号数为奇数（字符串可能未闭合）: {ln.strip()[:70]}")
+
+# 3) 关键结构存在性
+must_have = [
+    ("function Install-WorkBuddy", "WorkBuddy 安装函数"),
+    ("function Install-ClaudeCode", "Claude Code 安装函数"),
+    ("$REPO_DIR -eq $DEST", "自毁保护"),
+    ("avatars", "avatars 清单项"),
+    ("settings.json", "settings.json 清单项"),
+    ("marketplace.json", "marketplace 注册"),
+]
+for needle, label in must_have:
+    if needle not in t:
+        errors.append(f"缺少关键结构: {label}（'{needle}'）")
+
+# 4) 技能循环 ×3 应含 9 技能（匹配 foreach ($s in @(...)) 实际格式）
+declared = {"agent-harness-protocol","citation-verify","learn-protocol","manuscript-delivery",
+            "multi-agent-patterns","scientific-figure","task-router","team-generation","textbook-pipeline-workflow"}
+n_loops = 0
+for m in re.finditer(r"foreach\s*\(\$s\s+in\s+@\(([^)]*)\)\)", t):
+    names = set(re.findall(r"'([^']+)'", m.group(1)))
+    if declared <= names:
+        n_loops += 1
+if n_loops < 3:
+    errors.append(f"技能循环含全 9 技能的只有 {n_loops} 处（应 ≥3）")
+
+if errors:
+    print(f"[lint-ps1] FAIL — {len(errors)} 项：")
+    for e in errors:
+        print("   ✗", e)
+    sys.exit(1)
+print(f"[lint-ps1] PASS — 括号配平 / 引号闭合 / {len(must_have)} 关键结构 / 技能循环×3(9技能)")
+PYEOF
 }
 
 # ---------- arg parsing ----------
@@ -24,6 +110,7 @@ while [[ $# -gt 0 ]]; do
         --target) TARGET="$2"; shift 2 ;;
         --target=*) TARGET="${1#*=}"; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
+        --lint-ps1) lint_ps1; exit $? ;;
         -h|--help) usage 0 ;;
         *) echo "Unknown arg: $1"; usage 1 ;;
     esac
