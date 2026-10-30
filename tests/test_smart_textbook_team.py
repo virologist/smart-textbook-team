@@ -778,8 +778,11 @@ def check_executability(ck, expert_dir):
         for fn in filenames:
             if fn.endswith(".md"):
                 try:
-                    if "le候补" in open(os.path.join(dirpath, fn),
-                                        encoding="utf-8").read():
+                    content = open(os.path.join(dirpath, fn), encoding="utf-8").read()
+                    # 排除勘误说明行（「le候补」→「候补」的方向记录不算残留）
+                    live = "\n".join(ln for ln in content.splitlines()
+                                     if "le候补" in ln and "→" not in ln)
+                    if live:
                         typo.append(fn)
                 except OSError:
                     pass

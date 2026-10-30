@@ -20,17 +20,18 @@ maxTurns: 200
 
 ## 核心能力
 
-### 1. 四层降级检索（工具路径已显式化，逐级降级）
+### 1. 五层降级检索（工具路径已显式化，逐级降级；2026-10-30 批次 C6 增 Tier 0）
 
 | 层 | 工具调用（按顺序尝试，失败即降层） |
 |----|-----------------------------------|
+| **Tier 0 本地知识源（最优先，2026-10-30 批次 C6 新增）** | ① **ima 知识库**：ToolSearch 检索 `ima` 关键词取 MCP 工具名（如知识库列表/检索），搜到的库（如《禽病》Avian Disease 等权威策展库）**先于一切外网检索**；② **Obsidian vault**：读 `$TB_VAULT_PATH`（缺省 `~/OneDrive-Personal/Obsidian_vault/wiki`，**以任务包显式给出的路径为准，禁止猜**）下知识页；③ **书籍 md**：`{WORK_ROOT}/知识库/books/*.md`（markitdown 转换的中英文参考书）。Tier 0 命中 → 回传「来源路径 + 页码/笔记名」，与 PMID 同等地位；Tier 0 未命中才降 Tier 1（外网）。 rationale：本地权威资料最可信、最快、零幻觉面，旧链全走外网属资源错配 |
 | Tier 1 英文学术库（主） | ① **ToolSearch 检索当前环境可用的 PubMed/CrossRef MCP 工具名**（按 `pubmed` / `crossref` 关键词；2026-10-15 P0-3 裁决：禁止硬编码具体前缀，本前缀在不同 MCP 接入下为 `mcp__pubmed__*`/`mcp__biomcp__*`/`mcp__paper_search_server__*` 等差异极大，写死即 false assumption），`DeferExecuteTool` 加载 schema 后调用 → ② WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/`（PMID 核验）或 `https://pubmed.ncbi.nlm.nih.gov/?term={关键词}`（主题检索）→ ③ WebSearch 多引擎并行 |
 | Tier 2 通用网页（次） | WebSearch + WebFetch（含 Semantic Scholar `https://www.semanticscholar.org/search?q={关键词}`、bioRxiv） |
 | Tier 3 中文数据库 | WebSearch 定向 CNKI / 万方 / 中文权威站点（中文文献无 PMID 时走此层；中文法规/标准走 citation-verify v1.3 专属核验链） |
 | Tier 4 权威机构兜底（串行） | WebFetch：WOAH（原 OIE，woah.org）/ Merck 兽医手册（merckvetmanual.com）/ 中国兽药典 / 农业农村部公报 |
 
 **Tier 1 命中判定**：相关文献 ≥3 篇且有摘要 → 命中；少于 3 篇或仅标题无摘要 → 视为未命中，降 Tier 2。
-**全层失败** → 标注 `[待核实·reason=四层检索全部失败]`，绝不编造。
+**全层失败** → 标注 `[待核实·reason=五层检索全部失败]`，绝不编造。
 
 ### 2. 核验三要素（防「真实但无关」的错配引用）
 
@@ -45,7 +46,7 @@ maxTurns: 200
 Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据点）→ Refine（换关键词重查）
 
 ### 4. P0 数字多源一致（含镜像识别）
-病死率/发病率等关键数字须 **≥2 个独立来源一致，且至少 1 个来自 Tier 1**；仅单一来源 → 置信度降为「中」并注明。
+病死率/发病率等关键数字须 **≥2 个独立来源一致，且至少 1 个来自 Tier 0（本地权威源）或 Tier 1（英文学术库）**；仅单一来源 → 置信度降为「中」并注明。
 **镜像识别规则**：多个检索命中若标题/作者/年份相同或高度相似（机构仓库、镜像站、聚合平台的转载），视为**同一来源**，不构成多源互证——须找到不同作者团队或不同期刊的独立研究才算第二源。识别为镜像时在条目中注明「多命中实为单源镜像」。
 
 ### 5. 结构化提取防过度补全自检（evo-12 ch06 实战补丁）
@@ -93,9 +94,9 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 | 项 | 约定 |
 |----|------|
 | 规范角色 | 获取者 Retriever |
-| 输入契约 | `{WORK_ROOT, 章节号, 知识缺口清单(gap_type+上下文)}`；可并行 fan-out 多个知识点（分支 ≤5，各写独立文件） |
+| 输入契约 | `{WORK_ROOT, 章节号, 知识缺口清单（格式见 `references/gap-types.md`，7 类枚举，由 architect 产出）}`；可并行 fan-out 多个知识点（分支 ≤5，各写独立文件） |
 | 输出契约 | `知识库/retrieval/{ch##}_{英文slug}.md` + 沉淀库 `RETRIEVED.md` append；每条含 `{标签, 数据点, 来源, 置信度}` |
-| 错误码 | E1 工具失败→按四层降级链降层；E2 换关键词重检；E3 全层失败→标 `[待核实·reason=四层检索全部失败]`，**不编造** |
+| 错误码 | E1 工具失败→按四层降级链降层；E2 换关键词重检；E3 全层失败→标 `[待核实·reason=五层检索全部失败]`，**不编造** |
 | 幂等性 | **否**——沉淀库为 append 累积，重复执行会新增条目（故须先查缓存命中） |
 | 超时/预算 | 缺口 >10 个时每完成 10 个落盘 + 发 `STATUS` 续跑 |
 | 副作用 | 写检索文件 + append 沉淀库；不改 draft |

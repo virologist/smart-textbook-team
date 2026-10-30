@@ -23,23 +23,40 @@ version: 1.2.0
 {WORK_ROOT}/
 ├── 章节/{ch##}/
 │   ├── chapter_design.md          # 教学设计（didactic-architect）
-│   ├── draft.md                   # 章节正文（subject-writer）
+│   ├── sections/{节号}.md         # 节级正文（subject-writer）——大章节强制（批次 C4）
+│   ├── draft.md                   # 章节正文（由 sections/ 拼接，subject-writer）
 │   ├── review/round{N}_report.md  # 审查报告（quality-examiner）
+│   │   └── r3_verification_log.md # 引用核验明细 → 溯源表来源
 │   └── figures/{图号}.md          # 图表代码（visual-instructional-designer）
+│       └── assets/{图号}.ipynb    # 数据图的原始数据+绘图代码（批次 C5）
 ├── 知识库/retrieval/
 │   ├── {ch##}_{英文slug}.md       # 检索摘要（literature-scout）
 │   └── RETRIEVED.md               # 知识沉淀库（append，缓存优先来源）
+├── 运行态/                        # 黑板 / trace / 进度 / 动态成员注册表
+│   ├── workflow-state.yaml        # 状态黑板 SSOT
+│   ├── progress.md                # 续跑检查点（progress.py）
+│   ├── trace.jsonl                # 每次成员调用一行
+│   ├── dynamic-members.yaml       # 动态成员注册表（confirmed_by_user: true 才生效）
+│   └── team-proposal-{ch##}.yaml  # 动态团队提案（未确认前不生效）
+├── 学习/候补/{日期}_{ch##}_候补.yaml   # LEARN 候补池（≥3 候选或用户 ack 才合并）
 └── 交付/
     ├── {教材名}_{ch##}.md         # 书稿【源格式】（主理人装配；唯一编辑入口）
-    └── {教材名}_{ch##}.docx       # 书稿【交付格式】（由 md 生成，禁止手改）
+    ├── {教材名}_{ch##}.docx       # 书稿【交付格式】（由 md 生成，禁止手改）
+    └── {教材名}_{ch##}.溯源.md     # 溯源表（章节→证据→引用→文本位置；批次 C3）
 ```
 
 > **交付形态（2026-10-30 修订）**：交付物是**大学教材书稿**，`.md` 为源、`.docx` 为交付格式。
 > 规格 SSOT = `skills/manuscript-delivery/SKILL.md`；构建 = `scripts/build_manuscript.py`；
 > 校验 = `scripts/check_manuscript.py`（门禁 4）。
 > 原目录树只有 `.md` 一档，docx 长期只是「按需转」的软承诺且无实现（实测包内 0 命中 docx）。
+>
+> **目录树补全（批次 C4/C3，2026-10-30）**：此前本树只有 3 支（章节/知识库/交付），
+> 而 `运行态/`（6 份 skill 引用）与 `学习/候补/`（learn-protocol 引用）**从未进过目录树**——
+> 目录树是 WORK_ROOT 的 SSOT，缺支 = 成员按 SSOT 找不到运行态文件。
+> 另：`sections/`（节级正文）、`assets/*.ipynb`（数据图代码）、`*.溯源.md`（溯源表）为新增支。
 
-命名规则：章节号两位数字（`ch01`）；topic 用英文小写连字符 slug；图按 `图 {章}-{序}` 编号。
+命名规则：章节号两位数字（`ch01`）；topic 用英文小写连字符 slug；图按 `图 {章}-{序}` 编号；
+节号沿用教学设计的节号（如 `1.1`，落盘为 `sections/1.1.md`）。
 
 ## 13 态状态机
 
@@ -55,7 +72,7 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | CLARIFY | 主理人 | 3 句话需求摘要 | SPECIFY | 关键信息齐全 |
 | SPECIFY | didactic-architect | chapter_design.md | RETRIEVE | 门禁 1：设计覆盖知识域 |
 | RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性 |
-| PRODUCE | subject-writer | draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
+| PRODUCE | subject-writer | sections/{节号}.md → draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
 | VERIFY | quality-examiner | 4 轮审查报告 + verdict | PROOFREAD / RETRIEVE / PRODUCE | 4 轮全 pass |
 | PROOFREAD | quality-examiner | 校对后稿 | CONSOLIDATION | 清洁无流程标注 |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
@@ -90,7 +107,38 @@ R1 结构 → R2 深度 → R3 数据+引用 → R4 风格。任一轮 fail → 
 | 3.3 | **角色团声明完整** | draft frontmatter 含 `角色团:`，每角色必带 `role_id`（kebab-case）+ `role_name` + `examines`（≥1 项）；role_id 取自 `references/role-assembly.md` | 缺/空 → blocking（role-assembly §5） |
 | 3.4 | **图表位与习题位编号连续** | `[图 {章}-{序}]` 无跳号；习题位节号与设计 §C 一致 | 回 writer 对齐 |
 
-**fail 一律回 PRODUCE 返修，不得带着 fail 进 VERIFY**；同一项 fail 2 次 → 按介入协议（A/B/C/D 根因）处置。门禁 3 结论记入 `运行态/progress.md` 的 PRODUCE 行摘要。
+**fail 一律回 PRODUCE 返修，不得带着 fail 进 VERIFY**；同一项 fail 2 次 → 按介入协议（A/B/C/D 根因）处置。门禁 3 结论记入 `运行态/progress.md` 的 PRODUCE 行摘要
+（`progress.py` 已支持 `PRODUCE`/`VERIFY` 粗粒度别名 → 自动落到 PRODUCE-R3/VERIFY-R4 行）。
+
+### 3.6 节级推进协议（批次 C4，2026-10-30 · 维度「编写/审稿/校稿颗粒度」）
+
+> **缺口**：此前 PRODUCE 只能整章推进（`draft.md` 一把写），VERIFY 只能整章审
+> （4 轮全在整章上）。单章 5 万字级稿子一次进 4 轮审查 → 上下文必然裁剪、
+> 审查颗粒过粗（一个段落的用词问题与一个章节的结构问题在同一尺度上被裁决）。
+> 用户明确要求：**以单个段落、单个节为最小单位推进单章，再做文件级拼接与跨章串联审稿**。
+
+**触发条件**：章节字数目标 **> 8000 字** → **强制**节级推进；≤8000 字可整章推进。
+
+**执行序列**：
+
+```
+① 节级撰写    subject-writer 逐节写 → 章节/{ch##}/sections/{节号}.md
+② 节级自查    逐节过门禁 3.1/3.2/3.4 的**节内子集**（标签/字数/编号/交叉引用）
+③ 文件级拼接  按 chapter_design §C 的节序拼接 → 章节/{ch##}/draft.md
+              （拼接必须记录来源节号，便于返修定位）
+④ 整章审查    quality-examiner R1-R4 在 draft.md 上跑（一次，不按节重复跑 4 轮）
+⑤ 跨章串联审  多章成书时 → scripts/check_cross_chapter.py（术语/数据矛盾/重复）
+```
+
+**规则**：
+- **节级自查不过，不得拼接**（避免把带缺陷的节拼成整章再返工）；
+- **整章审查仍只跑一次**（节级不是「每个节跑 4 轮」，那会让审查轮次爆炸）；
+- 返修时**只回改对应节**，不重写整章（返修粒度 = 节）；
+- 门禁 3.2 净字数在**拼接后**统一校验（节级只做相对量级自查）；
+- 路径归属：`章节/{ch##}/sections/` 归 subject-writer 写（须登记进 path-ownership 表）。
+
+**可观察判据**：大章节若只见整章 `draft.md` 而无 `sections/` 目录 → 门禁 3 advisory
+（记录「建议节级推进」）； Examiner R1 应能核到节级文件。
 
 ### 外部学科规范注入协议（B7，2026-10-30）
 

@@ -24,6 +24,7 @@
         "./skills/learn-protocol",
         "./skills/manuscript-delivery",
         "./skills/multi-agent-patterns",
+        "./skills/scientific-figure",
         "./skills/task-router",
         "./skills/team-generation",
         "./skills/textbook-pipeline-workflow"

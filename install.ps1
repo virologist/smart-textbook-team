@@ -133,7 +133,7 @@ function Install-ClaudeCode {
     }
     $SKILL_DIR = Join-Path $HOME_DIR '.claude\skills'
     Run "New-Item -ItemType Directory -Force -Path '$SKILL_DIR'"
-    foreach ($s in @('agent-harness-protocol','citation-verify','learn-protocol','manuscript-delivery','multi-agent-patterns','task-router','team-generation','textbook-pipeline-workflow')) {
+    foreach ($s in @('agent-harness-protocol','citation-verify','learn-protocol','manuscript-delivery','multi-agent-patterns','scientific-figure','task-router','team-generation','textbook-pipeline-workflow')) {
         $src = Join-Path $REPO_DIR (Join-Path 'skills' $s)
         if (Test-Path $src) {
             $dst = Join-Path $SKILL_DIR $s
@@ -159,7 +159,7 @@ function Install-ClaudeDesktop {
     }
     $SKILL_DIR = Join-Path $HOME_DIR '.claude\skills'
     Run "New-Item -ItemType Directory -Force -Path '$SKILL_DIR'"
-    foreach ($s in @('agent-harness-protocol','citation-verify','learn-protocol','manuscript-delivery','multi-agent-patterns','task-router','team-generation','textbook-pipeline-workflow')) {
+    foreach ($s in @('agent-harness-protocol','citation-verify','learn-protocol','manuscript-delivery','multi-agent-patterns','scientific-figure','task-router','team-generation','textbook-pipeline-workflow')) {
         $src = Join-Path $REPO_DIR (Join-Path 'skills' $s)
         if (Test-Path $src) {
             $dst = Join-Path $SKILL_DIR $s
@@ -184,7 +184,7 @@ function Install-Cursor {
             Write-Ok "  .cursor/agents/$a.md"
         }
     }
-    foreach ($s in @('agent-harness-protocol','citation-verify','learn-protocol','manuscript-delivery','multi-agent-patterns','task-router','team-generation','textbook-pipeline-workflow')) {
+    foreach ($s in @('agent-harness-protocol','citation-verify','learn-protocol','manuscript-delivery','multi-agent-patterns','scientific-figure','task-router','team-generation','textbook-pipeline-workflow')) {
         $src = Join-Path $REPO_DIR (Join-Path 'skills' $s)
         if (Test-Path $src) {
             $dst = Join-Path $TARGET_DIR (Join-Path 'skills' $s)
