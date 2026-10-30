@@ -96,18 +96,22 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ## 3. 升级规则（confidence < 0.7）
 
-### E1: 候选歧义（同一问法命中 ≥2 个 task_type）
+> **命名消歧（批次 D，2026-10-30）**：本 skill 的 R1–R4 = **路由升级原因**；
+> `textbook-pipeline-workflow` 的 E1–E5 = **错误严重分级**。两套编号此前同为 E 前缀
+> 且语义完全不同（实测混淆源），现路由侧改用 R 前缀，与 pipeline 的 E 码彻底分离。
+
+### R1: 候选歧义（同一问法命中 ≥2 个 task_type）
 
 **例**：用户说"看一下这章的引用"——可能是 `review-citation` 也可能是 `retrieval-standard` 补充。
 
 **处置**：team-lead 追加 1 问澄清（≤1 轮）：
 - "是已有 draft 的引用核验（review-citation），还是新检索标准（retrieval-standard）？"
 
-### E2: 未知任务（无任何命中）
+### R2: 未知任务（无任何命中）
 
 **处置**：team-lead 主动追加澄清询问用户，不直接 dispatch。
 
-### E3: 成员当前阻塞（blocking_open 非空）
+### R3: 成员当前阻塞（blocking_open 非空）
 
 **处置（2026-10-30 批次 4 更新，原「换等价成员（无）」已失效）**：
 按序尝试，逐级上报：
@@ -119,7 +123,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
    - **换人不重置计数**：打回计数按 `correlation_id + 问题指纹` 跨成员累计（防换人洗计数）
 2. 无等价成员可换 → 在 trace 记录 `outcome=BLOCKED` + 上报用户（原行为兜底）
 
-### E4: 跨 task_type 复合任务
+### R4: 跨 task_type 复合任务
 
 **例**："帮我审一下这章，顺便补一下图"——含 `review-structure` + `visual-spec`。
 
