@@ -72,31 +72,76 @@ install_workbuddy() {
     # （路径归属表）均迁移至此，由装配器 resolve_shared_refs() 自动注入成员 spawn 文案。
     # 漏掉本目录 = 安装态下资源清单全是死链（源仓态一切正常，安装态静默失效，最难排查）。
     # 同时移除已迁走的包根 role-assembly.md 条目（[[ -e ]] 判假会静默跳过，属死条目）。
-    for item in agents skills scripts tests vendor references .codebuddy-plugin .claude-plugin \
-                README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
+    # v2.2.3: 补 avatars/ 与 settings.json —— plugin.json 引用 avatars/*.png（专家卡片图标），
+    # settings.json 指定默认 agent；两者漏复制 = 安装态头像全空 + agent 行为退化。
+    for item in agents skills scripts tests vendor references avatars .codebuddy-plugin .claude-plugin \
+                settings.json README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
         if [[ -e "$REPO_DIR/$item" ]]; then
+            # ── D-1 自毁保护（2026-10-30 修复）─────────────────────────────
+            # 旧实现先 `rm -rf $DEST/$item` 再 `cp -R $REPO_DIR/$item`——当源目录
+            # 就是目标目录（即用户在安装态目录里执行 install.sh）时，rm 已把源删掉，
+            # cp 复制的是空目录 → **整包被清空且不报错**（实测 exit 13、agents/ 消失）。
+            # 现改为：源==目标时不删不拷（幂等重装语义本就等价）。
+            if [[ "$REPO_DIR" == "$DEST" ]]; then
+                ok "  skipped (源=目标,幂等): $item"
+                continue
+            fi
             run "rm -rf '$DEST/$item'"
             run "cp -R '$REPO_DIR/$item' '$DEST/$item'"
             ok "  copied: $item"
         fi
     done
-    # 注入 marketplace 注册（2026-10-15 P1-2 修复）
+    # 注入 marketplace 注册（2026-10-15 P1-2 修复；2026-10-30 D-3 补实写条目）
     # v3 host 真实注册位置 = $WB/my-experts/.codebuddy-plugin/marketplace.json
     # （老路径 $WB/my-experts/marketplace.json 是 dead 位置，register_expert 走的是新位置）
     # 先建父目录再判 -d: 旧版只在 $WB/my-experts 已存在时建 marketplace.json,
     # 但 v3 首次安装 my-experts/ 根目录尚未建,导致 marketplace.json 永不创建
-    if [[ ! -f "${mkt_file:-}" && $DRY_RUN -eq 0 ]]; then
+    #
+    # ── D-3 修复（2026-10-30）────────────────────────────────────────────
+    # 旧实现写入 `"plugins": []`（空数组）且**从不追加本插件条目**——
+    # 注释声称「注入 marketplace 注册」，实际什么都没注册；
+    # 且「已存在」分支只打印一行、**完全不更新**该文件 → 二次安装也不会注册。
+    # 现改为：用 python3 就地 upsert 本插件条目（幂等：已存在则更新，不重复追加），
+    # 并保留宿主 marketplace.json 里的其它插件条目。
+    if [[ $DRY_RUN -eq 1 ]]; then
+        ok "  DRY-RUN: would upsert marketplace 注册条目 → ${mkt_file:-}"
+    else
         run "mkdir -p '${mkt_dir:-}'"
-        cat > "${mkt_file:-}" <<'EOF'
-{
-  "name": "my-experts",
-  "owner": "TZUVet",
-  "plugins": []
-}
-EOF
-        ok "  created marketplace.json（v3 新路径 ${mkt_file:-}）"
-    elif [[ -f "${mkt_file:-}" ]]; then
-        ok "  marketplace.json 已存在（位置 ${mkt_file:-}）"
+        # 用宿主真实结构补齐（name/source/description/version），
+        # source 指向安装后的 DEST，与 register_expert 写入的结构一致。
+        MKT_FILE="${mkt_file:-}" MKT_DEST="$DEST" MKT_NAME="smart-textbook-team" \
+        MKT_VERSION="$VERSION" MKT_DESC="智能教材编写天团——十三态流水线编排的教材编写团队" \
+        python3 - <<'PYEOF'
+import json, os
+from pathlib import Path
+
+p = Path(os.environ["MKT_FILE"])
+dest = os.environ["MKT_DEST"]
+name = os.environ["MKT_NAME"]
+ver = os.environ["MKT_VERSION"]
+desc = os.environ["MKT_DESC"]
+
+data = {"name": "my-experts", "owner": "TZUVet", "plugins": []}
+if p.is_file():
+    try:
+        loaded = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data = loaded
+            data.setdefault("name", "my-experts")
+            data.setdefault("owner", "TZUVet")
+            data.setdefault("plugins", [])
+    except (OSError, json.JSONDecodeError):
+        print("  [warn] marketplace.json 解析失败，将以新结构覆盖", flush=True)
+
+entry = {"name": name, "source": dest, "description": desc, "version": ver}
+plugins = [x for x in data.get("plugins", []) if x.get("name") != name]
+plugins.append(entry)
+data["plugins"] = plugins
+
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(f"  [ok] marketplace 注册已 upsert: {name}@{ver} → {p}")
+PYEOF
     fi
     warn "  启用方式：打开 WorkBuddy → 插件管理 → 启用 smart-textbook-team（如已自动发现可忽略）"
 }

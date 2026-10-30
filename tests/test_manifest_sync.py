@@ -274,6 +274,54 @@ def main():
           bool(ps_skill_lists) and not short_ps,
           "；".join(short_ps) if short_ps else "未找到任何技能循环")
 
+    # ── M14：安装态完整性门禁（2026-10-30 批次 A）──────────────────────
+    # 背景：此前 M11/M12 只查「复制清单含 references/scripts」，
+    # 但**清单里该有的项是否真被复制**无人看守——实测 install.sh 清单缺
+    # avatars/ 与 settings.json → 安装态静态契约从 1.000 掉到 0.988
+    # （A2b/A2d/A5a/F32a 四项 FAIL），而 CI 在纯 clone 态跑，**永远测不到**。
+    # 现把「安装清单须覆盖包内所有需分发资源」变成可拦截项。
+    def _install_items(txt: str) -> set:
+        # install.sh: for item in a b c \n  d e; do   /  install.ps1: @('a','b')
+        items = set()
+        m = re.search(r"for\s+item\s+in\s+(.*?);", txt, re.S)
+        if m:
+            items |= {x for x in re.findall(r"[A-Za-z0-9_.\-/]+", m.group(1))}
+        m2 = re.search(r"\$items\s*=\s*@\((.*?)\)", txt, re.S)
+        if m2:
+            items |= set(re.findall(r"'([^']+)'", m2.group(1)))
+        return items
+
+    sh_items = _install_items(txt)
+    ps_items = _install_items(ps1_txt)
+    # 包内需要随安装分发的资源（凡被 plugin.json 引用 或 是运行期必需）
+    must_ship = {"agents", "skills", "scripts", "tests", "vendor", "references",
+                 "avatars", ".codebuddy-plugin", ".claude-plugin", "settings.json"}
+    miss_sh = sorted(must_ship - sh_items)
+    miss_ps = sorted(must_ship - ps_items)
+    r.add("M14a", "install.sh 复制清单覆盖全部需分发资源（含 avatars/settings.json）",
+          not miss_sh, f"缺: {miss_sh}")
+    r.add("M14b", "install.ps1 复制清单覆盖全部需分发资源（含 avatars/settings.json）",
+          not miss_ps, f"缺: {miss_ps}")
+    r.add("M14c", "两个安装器复制清单集合一致（防长期分叉）",
+          sh_items == ps_items,
+          f"仅 sh 有: {sorted(sh_items - ps_items)}；仅 ps1 有: {sorted(ps_items - sh_items)}")
+
+    # D-1 自毁保护：源==目标时不得先删后拷
+    r.add("M14d", "install.sh 存在「源=目标不删」保护（防自毁）",
+          'if [[ "$REPO_DIR" == "$DEST" ]]' in txt,
+          "缺少自毁保护 → 在安装态目录执行 install.sh 会清空整包")
+    r.add("M14e", "install.ps1 存在「源=目标不删」保护（防自毁）",
+          '$REPO_DIR -eq $DEST' in ps1_txt,
+          "缺少自毁保护 → Windows 安装态执行会清空整包")
+
+    # D-3/D-4 marketplace 注册：不得写空 plugins 数组
+    r.add("M14f", "install.sh 实际写入 marketplace 注册条目（upsert 而非空数组占位）",
+          "plugins.append(entry)" in txt,
+          "无 upsert 写入动作 = 注释声称注册、实际未注册")
+    r.add("M14g", "install.ps1 含 marketplace 注册动作",
+          "marketplace.json" in ps1_txt and "upsert" in ps1_txt.lower(),
+          "Windows 侧安装 = 纯目录拷贝，宿主找不到插件")
+
     # marketplace.json 与 plugin.json 的 skills 集合也必须一致
     try:
         mkp_skills = {s.strip("./").split("/")[-1]

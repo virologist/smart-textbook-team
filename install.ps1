@@ -57,15 +57,62 @@ function Install-WorkBuddy {
     #   + scripts/tests/vendor/.claude-plugin —— 与 install.sh 对齐（此前 PowerShell 路径
     #                    长期落后，安装态连 assemble_spawn_prompt.py / progress.py 都缺失）
     #   - role-assembly.md —— 已迁走，Test-Path 判假会静默跳过，属死条目，移除
-    $items = @('agents','skills','scripts','tests','vendor','references','.codebuddy-plugin','.claude-plugin','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','.gitignore')
+    # v2.2.3 同步（2026-10-30 D-2）：+ avatars/（plugin.json 引用的专家卡片图标）
+    #   + settings.json（默认 agent）—— 两者漏复制 = 安装态头像全空 + agent 行为退化
+    $items = @('agents','skills','scripts','tests','vendor','references','avatars','.codebuddy-plugin','.claude-plugin','settings.json','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','.gitignore')
     foreach ($item in $items) {
         $src = Join-Path $REPO_DIR $item
         if (Test-Path $src) {
             $dst = Join-Path $DEST $item
+            # ── D-1 自毁保护（2026-10-30，与 install.sh 同纪律）──────────────
+            # 源目录 == 目标目录时（用户在安装态目录执行本脚本），先删后拷会把
+            # 源删空 → 整包被清空且不报错。现改为跳过复制（幂等重装语义等价）。
+            if ($REPO_DIR -eq $DEST) {
+                Write-Ok "  skipped (源=目标,幂等): $item"
+                continue
+            }
             Run "Remove-Item -Recurse -Force '$dst' -ErrorAction SilentlyContinue"
             Run "Copy-Item -Recurse -Path '$src' -Destination '$dst'"
             Write-Ok "  copied: $item"
         }
+    }
+    # ── D-4 marketplace 注册（2026-10-30）─────────────────────────────────
+    # 旧实现完全没有注册动作 → Windows 侧安装 = 纯目录拷贝，宿主找不到插件。
+    # 现按 install.sh 同纪律 upsert 本插件条目（幂等，不破坏宿主已有条目）。
+    $MktDir = Join-Path $WB 'my-experts\.codebuddy-plugin'
+    $MktFile = Join-Path $MktDir 'marketplace.json'
+    if ($DryRun) {
+        Write-Ok "  DRY-RUN: would upsert marketplace 注册条目 → $MktFile"
+    } else {
+        Run "New-Item -ItemType Directory -Force -Path '$MktDir'"
+        $script = @'
+import json, os, sys
+from pathlib import Path
+p = Path(sys.argv[1]); dest = sys.argv[2]; name = sys.argv[3]
+ver = sys.argv[4]; desc = sys.argv[5]
+data = {"name": "my-experts", "owner": "TZUVet", "plugins": []}
+if p.is_file():
+    try:
+        loaded = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data = loaded
+            data.setdefault("name", "my-experts")
+            data.setdefault("owner", "TZUVet")
+            data.setdefault("plugins", [])
+    except (OSError, json.JSONDecodeError):
+        print("  [warn] marketplace.json 解析失败，将以新结构覆盖")
+entry = {"name": name, "source": dest, "description": desc, "version": ver}
+plugins = [x for x in data.get("plugins", []) if x.get("name") != name]
+plugins.append(entry)
+data["plugins"] = plugins
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(f"  [ok] marketplace 注册已 upsert: {name}@{ver}")
+'@
+        $tmpPy = Join-Path ([System.IO.Path]::GetTempPath()) 'stt_mkt_upsert.py'
+        Set-Content -Path $tmpPy -Value $script -Encoding UTF8
+        Run "python '$tmpPy' '$MktFile' '$DEST' 'smart-textbook-team' '$VERSION' '智能教材编写天团——十三态流水线编排的教材编写团队'"
+        Remove-Item -Force $tmpPy -ErrorAction SilentlyContinue
     }
     Write-Warn '  启用方式: 打开 WorkBuddy → 插件管理 → 启用 smart-textbook-team'
 }
