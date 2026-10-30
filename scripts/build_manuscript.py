@@ -232,7 +232,8 @@ def write_source_assets(text: str, chapter: str, asset_dir: Path) -> list[dict]:
         src = asset_dir / f"{stem}.{ext}"
         src.write_text(code.strip() + "\n", encoding="utf-8")
         assets.append({"stem": stem, "kind": kind, "src": str(src),
-                       "title": title, "png": None, "raster": None})
+                       "title": title, "png": None, "raster": None,
+                       "fence_start": fm.start()})
 
     # 未匹配到任何图位的代码块：仍落盘（不丢内容），但显式告警
     orphan_fences = [j for j in range(len(fence_ms)) if j not in used]
@@ -243,7 +244,8 @@ def write_source_assets(text: str, chapter: str, asset_dir: Path) -> list[dict]:
         src = asset_dir / f"{stem}.{ext}"
         src.write_text(code.strip() + "\n", encoding="utf-8")
         assets.append({"stem": stem, "kind": kind, "src": str(src),
-                       "title": "", "png": None, "raster": None, "orphan": True})
+                       "title": "", "png": None, "raster": None, "orphan": True,
+                       "fence_start": fence_ms[j].start()})
 
     if orphan_slots:
         log(f"⚠️  {len(orphan_slots)} 个图位在其后未找到图表源码（docx 中将只有题注、无图）："
@@ -319,12 +321,23 @@ def build_intermediate_md(text: str, assets: list[dict]) -> str:
          理由：该标记是写作期内部标记（指示"此处放图"）。docx 里图已插入，
          保留会让读者看到 `[图 1-1：xxx]` 与题注 `图 1-1 xxx` 重复两遍。
          md 中保留（供校验与溯源），docx 中移除。
-    """
-    out = text
-    fences = list(RE_FENCE.finditer(text))
 
+    **替换复用落盘侧的配对结果（E-1 修复，2026-10-30）**：旧实现在这里用
+    `zip(reversed(assets), reversed(fences))` **按下标**重新配对——落盘侧明明已按
+    位置就近匹配，替换侧却又按下标对一次，orphan 代码块存在时两者必然错位
+    （图 1-1 的位置被塞进 orphan 图）。现改为：assets 里记录其源码在原文中的
+    偏移（`fence_start`），替换直接按偏移定位，两侧永不分歧。
+    """
+    # 按 fence_start 建立偏移 → 资产映射（orphan 资产也带自己的偏移）
+    by_start = {a["fence_start"]: a for a in assets if "fence_start" in a}
+    out = text
     # 逆序替换，避免位移影响后续匹配
-    for a, m in zip(reversed(assets), reversed(fences)):
+    for m in sorted(RE_FENCE.finditer(text), key=lambda x: -x.start()):
+        a = by_start.get(m.start())
+        if a is None:
+            # 无主代码块（理论上落盘侧已全部处理；防御性保留原样）
+            log(f"⚠️  偏移 {m.start()} 的代码块未匹配到资产，docx 中保留源码", "WARN")
+            continue
         if a.get("png"):
             repl = f"![]({a['png']})"
         else:
