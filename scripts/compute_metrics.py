@@ -325,6 +325,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--work-root', required=True)
     ap.add_argument('--json', help='输出 JSON 路径')
+    ap.add_argument('--report-only', action='store_true',
+                    help='只出报告不因指标 fail 而非零退出（默认：产物质量三维度的 FAIL 会影响退出码）')
     args = ap.parse_args()
 
     traces = load_traces(Path(args.work_root))
@@ -346,6 +348,23 @@ def main() -> int:
         bad.append('blocking_pct')
     if m['avg_turns'] is not None and m['avg_turns'] > 6:
         bad.append('avg_turns')
+
+    # ── D-10 修复（2026-10-30 批次 B）───────────────────────────────────
+    # 旧实现：指标 [6] 产物质量三维度（结构/标签/核验）会渲染「✗ FAIL」，
+    # 但**不参与退出码判定** → 红灯不阻塞任何流程（实测结构完整率 0.200
+    # 渲染 FAIL，exit 仍为 0）。现默认即参与判定；另提供 --report-only
+    # 供「只想看报告不想被退出码卡住」的场景（默认 stricter 是正确方向：
+    # 渲染出 FAIL 却不反映在退出码上 = 自相矛盾）。
+    pq = m.get('product_quality')
+    if pq and not args.report_only:
+        th = pq.get('thresholds', {})
+        for key, label in (('structure_rate', '产物结构完整率'),
+                           ('label_rate', '数据标签完整率'),
+                           ('citation_pass_rate', '引用核验通过率')):
+            v = pq.get(key)
+            limit = th.get(key)
+            if v is not None and limit is not None and v < limit:
+                bad.append(f'{label}({v:.3f}<{limit:.2f})')
 
     return 1 if bad else 0
 

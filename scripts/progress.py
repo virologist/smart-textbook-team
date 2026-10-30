@@ -36,6 +36,20 @@ PHASE_ORDER = [
     'DELIVER', 'LEARN',
 ]
 
+# ── D-6 修复（2026-10-30 批次 B）─────────────────────────────────────────
+# pipeline skill §门禁3 明确要求「门禁 3 结论记入 运行态/progress.md 的
+# **PRODUCE 行**摘要」，但 PHASE_ORDER 只有细粒度的 PRODUCE-R1/R2/R3，
+# 实跑 `update --phase PRODUCE` → `ValueError: 未知 phase`
+# → **门禁 3 的结论在协议层面无处可写**（结论落不了盘 = 门禁不可审计）。
+#
+# 现补粗粒度别名：PRODUCE/VERIFY 视为「该阶段当前轮次」的别名，
+# 映射到该阶段**最后一个**轮次（PRODUCE → PRODUCE-R3，VERIFY → VERIFY-R4），
+# 使「记入 PRODUCE 行」的协议语义可执行。
+PHASE_ALIAS = {
+    'PRODUCE': 'PRODUCE-R3',
+    'VERIFY': 'VERIFY-R4',
+}
+
 
 def progress_file(work_root: Path) -> Path:
     d = work_root / '运行态'
@@ -88,8 +102,11 @@ spawn smart-textbook-team-team-lead
 
 
 def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path:
+    # D-6：粗粒度别名（PRODUCE/VERIFY）先解析为该阶段当前轮次
+    phase = PHASE_ALIAS.get(phase, phase)
     if phase not in PHASE_ORDER:
-        raise ValueError(f'未知 phase: {phase}; 合法值: {PHASE_ORDER}')
+        raise ValueError(f'未知 phase: {phase}; 合法值: {PHASE_ORDER}'
+                         f'（别名: {sorted(PHASE_ALIAS)}）')
     p = progress_file(work_root)
     if not p.exists():
         raise FileNotFoundError(f'progress.md 不存在: {p}; 请先 init')

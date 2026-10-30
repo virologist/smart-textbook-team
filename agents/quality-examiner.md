@@ -77,7 +77,9 @@ maxTurns: 100
 | 副作用 | 只写 `review/` 下文件；**禁止改 draft**（改稿是 Generator 的事） |
 | 状态义务 | 启动读黑板（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.review[]` + `blocking_open[]` |
 | 工具白名单（evo-16，契约层最小权限） | ToolSearch/DeferExecuteTool（R3 核验用 PubMed/DOI MCP）+ WebFetch + WebSearch（仅 R3 降级链）+ 文件读写（限 `review/`）+ SendMessage |
-| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase VERIFY-R{N} ...`（§6.3）——三项缺一 = 任务未完成 |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase VERIFY-R{N} --status DONE --summary "..."`（§6.3）——三项缺一 = 任务未完成 |
+  
+> **D-7 修复（2026-10-30 批次 B）**：`progress.py` 的 `--work-root` 是**顶层必填**（argparse `required=True`），且 `scripts/` 是相对路径而成员 cwd=WORK_ROOT（成员不可达包根）——旧写法（漏 `--work-root`）实跑直接报错「the following arguments are required: --work-root」，**收尾三件套实质不可执行**。现统一给出完整可执行形态；`$WORK_ROOT` 由主理人在派单指令中给出，成员不猜路径。
 | **延迟预算** | 单次四轮审查目标 ≤240s：R1/R2 纸面 ≤60s；R3 每批 ≤60s（超时批降级「未核验标注」上报不阻塞）；R4 ≤60s。总超 240s → 输出已完成轮次的部分裁决并发 `STATUS`，编排者决定续跑或部分采纳 |
 | **R3 计时口径（evo-12 ch06 补丁）** | 引用数 ≤15 条时**当前环境可用的 PubMed MCP 工具**单次批量调用返回（按 ToolSearch 解析出的工具名，不写死前缀），**按整批计而非逐条计**——预算口径为「每批调用 ≤60s」；引用 >15 条按节分批（≤10 条/批），恢复逐批计时。ch06 实测：5 PMID 单次批量 45s（远低于分批预算），机械按"≤60s/批"无法反映真实耗时结构 |
 

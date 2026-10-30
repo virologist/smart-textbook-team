@@ -301,33 +301,54 @@ def main() -> int:
     docx_path = find_delivery(work_root, args.chapter, "docx")
     media = check_docx(docx_path, r) if docx_path else -1
     if docx_path is None:
-        r.warn("4.6", "docx 产物存在（图数一致性依赖）", "未构建 docx，跳过 4.6")
+        # ── D-5 修复（2026-10-30 批次 B）─────────────────────────────────
+        # 旧实现：docx 缺失时只记一条 WARN 并整段跳过 4.6 → `--strict` 仍 exit 0，
+        # 即「docx 交付物根本没生成」被判通过（实测 FAIL 1 但 exit 0）。
+        # 交付形态铁律是 md+docx 双格式，docx 缺失 = 交付物不完整 = 必须 FAIL。
+        # 判据 ID 用 4.5d / 4.6d（docx-missing 专属），避免与正常分支的
+        # 4.5 / 4.6a / 4.6b 同 ID 重复出现（重复 ID 会让报告出现两条同名判据）。
+        r.add("4.5d", "docx 产物存在（交付形态 md+docx 双格式，缺一即不完整）", False,
+              f"未找到 docx：{work_root / '交付'}/*_{args.chapter}.docx")
+        r.add("4.6d", "docx 图数一致性可校验", False,
+              "docx 缺失，无法校验图数一致性（4.6a/4.6b 不可评估）")
 
-    # 4.6 图数一致：docx 媒体数 == 本次栅格化成功数
+    # 4.6 图数一致：docx 媒体数 == 本次可嵌入图数
     # 关键（2026-10-30 修复）：assets/ 可能残留**上一章的陈旧资产**（如 9-9.png），
     # 直接数 PNG 个数会把陈旧资产算进来，导致 4.6a 误判为「一致」而实际缺图。
     # 判据改为：只统计 stem 属于**本章图位集合**的资产。
+    #
+    # ── D-11 修复（2026-10-30 批次 B）─────────────────────────────────
+    # 旧实现只数 *.png，但 build_manuscript 对 SVG 记 raster="ok-vector"（矢量直嵌），
+    # docx media 会 +1 而 png 数为 0 → **SVG 图一进交付必判 4.6a FAIL**（假红）。
+    # 现口径改为「本章图位集合下所有可嵌入图（png + svg）」，与 build 侧对齐。
     asset_dir = work_root / "章节" / args.chapter / "figures" / "assets"
     slot_stems = {f"{a}-{b}" for a, b, _ in RE_FIGURE_SLOT.findall(text)}
     n_slots = len(slot_stems)
-    pngs = []
+    pngs, svgs = [], []
     if asset_dir.is_dir():
         for p in sorted(asset_dir.glob("*.png")):
             if p.stem in slot_stems:
                 pngs.append(p)
-        stale = [p.name for p in sorted(asset_dir.glob("*.png")) if p.stem not in slot_stems]
+        for p in sorted(asset_dir.glob("*.svg")):
+            if p.stem in slot_stems:
+                svgs.append(p)
+        stale = [p.name for p in sorted(asset_dir.iterdir())
+                 if p.is_file() and p.suffix in (".png", ".svg") and p.stem not in slot_stems]
         if stale:
             r.warn("4.6c", "assets/ 无不属于本章的陈旧资产",
                    f"残留: {stale}（已忽略，不计入图数；建议清理）")
     n_png = len(pngs)
+    n_embed = len(pngs) + len(svgs)   # 可嵌入图总数（PNG 栅格图 + SVG 矢量图）
 
     if media >= 0:
-        r.add("4.6a", f"docx 内嵌图数({media}) == 栅格化成功数({n_png})",
-              media == n_png, f"docx media={media} / png={n_png}")
-    if n_png < n_slots:
+        # D-11：口径与 build 侧对齐 —— 可嵌入图 = PNG(栅格) + SVG(矢量直嵌)
+        r.add("4.6a", f"docx 内嵌图数({media}) == 可嵌入图数({n_embed})",
+              media == n_embed,
+              f"docx media={media} / png={n_png} + svg={len(svgs)} = {n_embed}")
+    if n_embed < n_slots:
         lv = "FAIL" if args.require_raster else "WARN"
-        r.add("4.6b", f"全部图表已栅格化（{n_png}/{n_slots}）", False,
-              f"未栅格化 {n_slots - n_png} 个；交付时必须在质量报告显式列出", level=lv)
+        r.add("4.6b", f"全部图表已栅格化（{n_embed}/{n_slots}）", False,
+              f"未栅格化 {n_slots - n_embed} 个；交付时必须在质量报告显式列出", level=lv)
 
     if args.json:
         print(json.dumps({"items": r.items,

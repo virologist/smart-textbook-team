@@ -1,6 +1,6 @@
 ---
 name: learn-protocol
-description: "LEARN phase protocol for the textbook team: harvest signals from interventions.md / r3_verification_log / round reports, convert to minimal rule drafts, file into the candidate pool (学习/le候补/), and merge into evolution rounds only after ≥3 candidates or user ack. Trigger words: 经验沉淀 / LEARN 阶段 / 候补池 / 提取教训 / 本章学到了什么 / learn phase / post-mortem."
+description: "LEARN phase protocol for the textbook team: harvest signals from interventions.md / r3_verification_log / round reports, convert to minimal rule drafts, file into the candidate pool (学习/候补/), and merge into evolution rounds only after ≥3 candidates or user ack. Trigger words: 经验沉淀 / LEARN 阶段 / 候补池 / 提取教训 / 本章学到了什么 / learn phase / post-mortem."
 version: 1.0.0
 ---
 
@@ -31,7 +31,7 @@ version: 1.0.0
 
 ### 3. 存入候补池
 
-写入 `学习/le候补/{日期}_{ch##}_候补.yaml`，格式（**`signal_type` 枚举为 SSOT，7 值**：`反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach`——后两个是 2026-10-29 补入，此前 `agent-harness-protocol` §2 与 §7 分别引用了它们但本枚举未收录，导致候补池分类错乱）：
+写入 `学习/候补/{日期}_{ch##}_候补.yaml`，格式（**`signal_type` 枚举为 SSOT，7 值**：`反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach`——后两个是 2026-10-29 补入，此前 `agent-harness-protocol` §2 与 §7 分别引用了它们但本枚举未收录，导致候补池分类错乱）：
 
 ```yaml
 - date: YYYY-MM-DD

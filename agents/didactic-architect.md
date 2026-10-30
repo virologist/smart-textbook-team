@@ -63,7 +63,9 @@ maxTurns: 80
 | 副作用 | 只写 `chapter_design.md`，不改其他文件 |
 | 状态义务 | 启动读 `运行态/workflow-state.yaml`（**不存在 → 发 `NEED_INPUT` 上报主理人补建，不代建、不猜**）；结束 patch `artifacts.design` |
 | 工具白名单（evo-16，契约层最小权限） | 文件读写（限副作用路径）+ SendMessage；**禁网络检索**（学科数据属 scout 职责） |
-| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py update --phase SPECIFY ...`（§6.3）——三项缺一 = 任务未完成 |
+| 收尾三件套（evo-16，强制） | 结束时依次：① patch 黑板（裸跑模式下由主理人核验后代 patch——harness §2 黑板权属双模式）② `python3 scripts/record_trace.py ...`（harness §6.1）③ `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase SPECIFY --status DONE --summary "..."`（§6.3）——三项缺一 = 任务未完成 |
+  
+> **D-7 修复（2026-10-30 批次 B）**：`progress.py` 的 `--work-root` 是**顶层必填**（argparse `required=True`），且 `scripts/` 是相对路径而成员 cwd=WORK_ROOT（成员不可达包根）——旧写法（漏 `--work-root`）实跑直接报错「the following arguments are required: --work-root」，**收尾三件套实质不可执行**。现统一给出完整可执行形态；`$WORK_ROOT` 由主理人在派单指令中给出，成员不猜路径。
 
 ### ACP 回传格式（v2.0 统一协议）
 

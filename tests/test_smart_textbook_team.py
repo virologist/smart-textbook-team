@@ -549,7 +549,9 @@ def check_executability(ck, expert_dir):
              ("LEARN 三步曲" in lead or ("三步曲" in lead and "候补池" in lead))
              and "数据收集" in lead and "规则草案" in lead)
     ck.check("F22b", "F", "主理人定义候补池路径 + yaml 格式",
-             "学习/le候补" in lead and "signal_type" in lead)
+             # 2026-10-30 批次 B D-9：路径由「学习/le候补」修正为「学习/候补」
+             # （拼音残留 typo），断言同步；F35a 守护不再回退到旧拼写
+             "学习/候补" in lead and "signal_type" in lead)
     # F23 夹具归档（遗留-3）
     # 夹具在【包外】的 tb-writer 工作区，纯 clone 态/CI 天然不存在 ——
     # 归为环境观测项，避免把「本机有没有挂 OneDrive」误判成专家团内容缺陷。
@@ -733,6 +735,61 @@ def check_executability(ck, expert_dir):
              "缺替补通路 = 单成员阻塞即全队停")
     ck.check("F33g", "F", "动态成员被禁止代行审查职责（生成者/审查者分离不可绕过）",
              "quality-examiner" in tg, "缺该条款 = 动态层绕过审查分离")
+
+    # ── F34-F35：批次 B 契约断裂守护（2026-10-30）─────────────────────────
+    # 实测教训（5 项同一类缺陷）：
+
+    # F34a: 成员 MD 的收尾三件套必须给出**可执行**的 progress.py 调用
+    #   （--work-root 顶层必填 + 位置参数），否则成员照做即报错
+    bad_calls = []
+    for mf in sorted(os.listdir(os.path.join(expert_dir, "agents"))):
+        if not mf.endswith(".md"):
+            continue
+        mt = read(os.path.join(expert_dir, "agents", mf))
+        for ln in mt.splitlines():
+            if "progress.py" in ln and "update" in ln and "--work-root" not in ln:
+                bad_calls.append(mf)
+    ck.check("F34a", "F", "全部成员 MD 的 progress.py 调用含 --work-root（顶层必填）",
+             not bad_calls, f"缺 --work-root 的成员: {sorted(set(bad_calls))}")
+
+    # F34b: 门禁 3 结论必须能写回 progress.md（PRODUCE 别名）
+    prog_py = read(os.path.join(expert_dir, "scripts", "progress.py"))
+    ck.check("F34b", "F", "progress.py 支持 PRODUCE/VERIFY 粗粒度别名（门禁3结论可落盘）",
+             "PHASE_ALIAS" in prog_py and "'PRODUCE'" in prog_py,
+             "无别名 → pipeline 要求「记入 PRODUCE 行」在协议层不可执行")
+
+    # F34c: check_manuscript 的 docx 缺失必须是 FAIL（--strict 才拦得住）
+    cm = read(os.path.join(expert_dir, "scripts", "check_manuscript.py"))
+    ck.check("F34c", "F", "check_manuscript 对 docx 缺失判 FAIL（非跳过）",
+             '"4.5d"' in cm and '"4.6d"' in cm,
+             "docx 缺失若只 WARN → --strict 形同虚设")
+
+    # F34d: compute_metrics 的产物质量三维度必须参与退出码判定
+    cmm = read(os.path.join(expert_dir, "scripts", "compute_metrics.py"))
+    ck.check("F34d", "F", "compute_metrics 产物质量三维参与退出码（--report-only 可豁免）",
+             "product_quality" in cmm and "report_only" in cmm
+             and "citation_pass_rate" in cmm,
+             "渲染 FAIL 却不影响退出码 = 红灯不阻塞")
+
+    # F35a: 目录名不得含拼音残留（学习/le候补 → 学习/候补）
+    typo = []
+    for dirpath, dirnames, filenames in os.walk(expert_dir):
+        dirnames[:] = [d for d in dirnames if d != ".git"]
+        for fn in filenames:
+            if fn.endswith(".md"):
+                try:
+                    if "le候补" in open(os.path.join(dirpath, fn),
+                                        encoding="utf-8").read():
+                        typo.append(fn)
+                except OSError:
+                    pass
+    ck.check("F35a", "F", "无拼音残留目录名（学习/le候补）",
+             not typo, f"残留: {typo}")
+
+    # F35b: SVG 矢量图必须计入 4.6a 图数口径（否则 SVG 图一进交付必假红）
+    ck.check("F35b", "F", "check_manuscript 4.6a 口径含 SVG（与 build 侧 ok-vector 对齐）",
+             "n_embed" in cm and "svg" in cm.lower(),
+             "只数 png → SVG 图必然误判 FAIL")
 
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，

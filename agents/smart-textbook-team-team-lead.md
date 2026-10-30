@@ -62,7 +62,7 @@ maxTurns: 200
 ### Phase A: 需求澄清（我亲自执行）
 确认 WORK_ROOT、教材名、读者、章节、字数、时数；一轮问清（≤5 问）。**WORK_ROOT 由我确定并写入所有下游指令——成员不猜路径。**
 
-**续读判定（evo-15 增补）**：Phase A 第一步先执行 `python3 scripts/progress.py --work-root $WORK_ROOT show`。若 progress.md 存在且非 BOOTSTRAP 状态 → **续跑模式**：跳过已完成 phase，直接进入下一个 IN_PROGRESS phase；若 progress.md 不存在 → 新章节初始化（`progress.py init --chapter ch## --textbook ... --audience ...`）。
+**续读判定（evo-15 增补）**：Phase A 第一步先执行 `python3 scripts/progress.py --work-root $WORK_ROOT show`。若 progress.md 存在且非 BOOTSTRAP 状态 → **续跑模式**：跳过已完成 phase，直接进入下一个 IN_PROGRESS phase；若 progress.md 不存在 → 新章节初始化（`python3 scripts/progress.py --work-root $WORK_ROOT init --chapter ch## --textbook ... --audience ...`）。
 
 **初始化双工件（evo-16 增补，堵初始化断链——实战实证：黑板缺失导致全体成员「启动读黑板/结束 patch」两条状态义务落空）**：
 新章节 init 时，我必须**同一轮**创建两个运行态工件，缺一即视同 Phase A 未完成：
@@ -100,7 +100,7 @@ PROOFREAD 态 = quality-examiner 的 R4 风格审查（AI 腔检测 / 术语一�
 **串行硬约束**（与 13 态 SSOT 对齐）：PROOFREAD 不能与 E 并行；PROOFREAD 全 pass 才进下一态。
 
 ### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）
-六项检查（术语/编号/引用格式/清洁/遗留表/净字数——以 `scripts/count_net_words.py --target` SSOT 脚本值为准）→ 装配交付物 → present_files + 质量报告。**净字数以脚本值为唯一权威**，自报值 ≠ 脚本值 → advisory（以脚本值为准）。
+六项检查（术语/编号/引用格式/清洁/遗留表/净字数——以 `python3 scripts/count_net_words.py --target <目标> <文件>` 的 SSOT 脚本值为准（**file 是位置参数，缺它实跑报「缺少文件参数」**））→ 装配交付物 → present_files + 质量报告。**净字数以脚本值为唯一权威**，自报值 ≠ 脚本值 → advisory（以脚本值为准）。
 
 ### Phase VISUALIZE: 可视化（13 态 SSOT 排在 ASSEMBLE 之前；与 CONSOLIDATION 串行）
 spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数据。
@@ -127,7 +127,7 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 3. **质量报告必须显式列出「未栅格化图表数」**（栅格化工具不可用时降级为占位框 + 保留源码，绝不静默丢图）
 
 ### Phase LEARN: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
-从 interventions/核验日志/审查报告提取信号 → 规则草案 → 写候补池 `学习/le候补/`；≥3 候选或用户 ack 才合并。
+从 interventions/核验日志/审查报告提取信号 → 规则草案 → 写候补池 `学习/候补/`；≥3 候选或用户 ack 才合并。
 
 ## 预设 Workflow
 

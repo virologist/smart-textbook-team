@@ -32,7 +32,7 @@ version: 1.0.0
 | `运行态/workflow-state.yaml` | smart-textbook-team-team-lead（写 `phase`/`circuit`/`budget`）；成员仅增量 patch `artifacts.<自己字段>` | 见左 | 只 patch 自身 `artifacts` 子树 |
 | `运行态/progress.md` | smart-textbook-team-team-lead；成员经 `scripts/progress.py update` 写自己 phase 行 | upsert 自身 phase 行 | 禁改他人 phase 行、禁 init |
 | `运行态/trace.jsonl` | 全体 append（各自 `record_trace.py`） | append | append（append-only，不冲突） |
-| `学习/le候补/` | smart-textbook-team-team-lead | 写/改 | 只读 |
+| `学习/候补/` | smart-textbook-team-team-lead | 写/改 | 只读 |
 | `.harness-runs/{task_id}/` | 由装配器与当次成员写 | 写 | 只读 |
 
 ## 3. 资源冲突仲裁（与 harness §0「冲突仲裁五类」对齐）

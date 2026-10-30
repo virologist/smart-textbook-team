@@ -2,7 +2,7 @@
 
 > 转换自 content-forge v5 多 Agent 框架（tb-writer 项目），适配 WorkBuddy 专家团规范 v2.0。
 > 版本 2.2.2 | 2026-10-30 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
-> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 237 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 7 道全绿；**8 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / task-router / team-generation / textbook-pipeline-workflow）；主理人常驻核心 16.0KB
+> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 243 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 7 道全绿；**8 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / task-router / team-generation / textbook-pipeline-workflow）；主理人常驻核心 16.0KB
 > **交付形态（v2.2.2）**：大学教材**书稿** —— `.md`（源，唯一编辑入口）+ `.docx`（交付格式，由 md 生成，禁止手改），规格见 `skills/manuscript-delivery/SKILL.md`
 > **跨专业（v2.2.2）**：学科知识已外置为 profile —— `references/profiles/{veterinary|computer-science|law}.md`，新增学科只需复制改写该文件，**规范本体零学科常量**（默认 veterinary）
 > 真实运行基线（2026-10-15 e2e-p1）：ch08 PRODUCE-R2 + VERIFY-R2 端到端，7/7 引用 PubMed 实检 PASS，dispatch 1.000 / retry 0.50 / rework 0.000
