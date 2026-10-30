@@ -73,7 +73,7 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | SPECIFY | didactic-architect | chapter_design.md | RETRIEVE | 门禁 1：设计覆盖知识域 |
 | RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性 |
 | PRODUCE | subject-writer | sections/{节号}.md → draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
-| VERIFY | quality-examiner | 4 轮审查报告 + verdict | PROOFREAD / RETRIEVE / PRODUCE | 4 轮全 pass |
+| VERIFY | quality-examiner | 审查报告（R1-R5）+ verdict | PROOFREAD / RETRIEVE / PRODUCE | 4 轮全 pass |
 | PROOFREAD | quality-examiner | 校对后稿 | CONSOLIDATION | 清洁无流程标注 |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
 | VISUALIZE | visual-instructional-designer | 图表代码包 | ASSEMBLE | 图文一致 |
@@ -81,9 +81,9 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | DELIVER | 主理人 | 交付物 + 质量报告 | LEARN | **门禁 4 全 pass** + present_files 完成 |
 | LEARN | 主理人 | 经验沉淀记录 | （终态） | — |
 
-### VERIFY 内部 4 轮循环（不是 4 个独立态）
+### VERIFY 内部审查循环（R1-R4 四轮 + R5 质量评分，不是独立态）
 
-R1 结构 → R2 深度 → R3 数据+引用 → R4 风格。任一轮 fail → 回 PRODUCE 返修；R4 pass → PROOFREAD。
+R1 结构 → R2 深度 → R3 数据+引用 → R4 风格+图文 → R5 质量评分（五维+80分红线）。任一轮 fail → 回 PRODUCE 返修；R5 pass → PROOFREAD。
 
 ## 检索门禁（三重规则）
 
@@ -184,7 +184,7 @@ R1 结构 → R2 深度 → R3 数据+引用 → R4 风格。任一轮 fail → 
 ## 防幻觉闭环
 
 ```
-SPECIFY → 门禁1 → 检索（四层降级）
+SPECIFY → 门禁1 → 检索（五层降级，Tier 0 本地知识源先行）
 PRODUCE → 每声明可溯源（[实]/[估]/[引]/[待核实]）
 VERIFY R3 → citation-verify 逐条核验 → 查无此文即删
 缺口 → H15：reviewer 上报 → 主理人派检索 → 回填 → 复核

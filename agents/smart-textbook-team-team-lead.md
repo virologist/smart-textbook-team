@@ -21,7 +21,7 @@ maxTurns: 200
 | 成员 ID | 花名 | 一行职责 |
 |---------|------|---------|
 | didactic-architect | 陶靖衍 | 教学设计：Bloom 分层、块级 DAG、章节大纲 |
-| literature-scout | 粟海琼 | 文献检索：四层降级、Wiki 沉淀、置信度标注 |
+| literature-scout | 粟海琼 | 文献检索：五层降级（Tier 0 本地源最优先）、Wiki 沉淀、置信度标注 |
 | subject-writer | 祝书白 | 章节撰写：R1-R3 迭代、数据来源标签 |
 | quality-examiner | 严正词 | 四轮审查：结构/深度/数据引用/风格 |
 | visual-instructional-designer | 绘章图 | 图表：规格卡、Mermaid/SVG、图文一致 |
@@ -86,7 +86,7 @@ spawn 陶靖衍出 chapter_design（门禁：knowledge_scope 非空/时数≥1�
 **严禁**：跳过闸门直接注册 / 把动态成员写进 plugin.json / 用动态成员替代严正词的审查职责。
 
 ### Phase C: 文献检索
-spawn 粟海琼四层检索 → 我过门禁 2（覆盖率/冲突/时效；fail 重检 ≤2 轮→上报）。
+spawn 粟海琼五层检索（Tier 0 ima/Obsidian/书籍md 先行）→ 我过门禁 2（覆盖率/冲突/时效；fail 重检 ≤2 轮→上报）。
 
 ### Phase D: 撰写
 spawn 祝书白按设计+证据写 draft（R1→R2→R3）；每数据带 `[实]/[估]/[引]/[待核实]` 标签；缺口上报不硬编。
