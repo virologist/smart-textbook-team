@@ -100,13 +100,13 @@ jobs:
 
           ## 参考文献
 
-          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2.
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2. (PMID:38960123)
           MD
           cat > "$WR/章节/ch01/review/r3_verification_log.md" <<'MD'
           | 位置 | 标识符 | 结果 | 动作 |
           |------|--------|------|------|
-          | §1.1 | PMID:1 | 通过 | 保留 |
-          | §1.2 | PMID:2 | 通过 | 保留 |
+          | §1.1 | PMID:38960123 | 通过 | 保留 |
+          | §1.2 | PMID:38960123 | 通过 | 保留 |
           MD
           # 单次调用即可（原实现带 `|| 再跑一次` 的兜底，掩盖真实失败原因且拖慢 CI）
           python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble --revisions \
