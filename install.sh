@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="2.3.0"
+VERSION="2.4.0"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0

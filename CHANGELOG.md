@@ -3,6 +3,56 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-10-31
+
+### 从零独立诊断（第三轮，9 维度 × 3 并行红队子代理 + 教职成厅函〔2025〕1 号对标）→ 批次 E-H
+
+> **诊断实证**（每条附证据，共 6 高危 + 11 中危）：R4/R5 轮次归属三文件矛盾（R5 无人派工）；
+> 节级推进只有规范无派工动作；generate_team 三维评估两维恒真（构造「量子计算」等全未命中域
+> 仍输出「全部来自 profile 映射」——实跑复现）；4.12 标识符核验零实现（FAKE-DOI 可伪造溯源全绿）；
+> 金教材硬指标只有 R5 评分端无生产端；4.11 三缺陷（示例行消费/无词界/转义不解析）。
+
+### Added（批次 E：机制核心）
+- **pipeline §轮次归属 SSOT**：VERIFY=R1-R3（内容正确性）、PROOFREAD=R4+R5（交付质量）——
+  team-lead/examiner/pipeline 三处统一，R5 五维+80 分红线接入派工链（`review-score` task_type）
+- `scripts/assemble_sections.py`（新）：节级拼接器——设计 §C 节序解析 + 节级自检前置
+  （缺标签 exit 1 拒拼）+ `拼接清单.json`（返修定位锚）；team-lead Phase D 补逐节派工序列
+- progress.py：`VERIFY-R5` 态 + `resolve` 子命令（H15 回填后机械清零，防螺旋死锁）
+- check_manuscript：**4.12b** 溯源标识符↔参考文献机械核验（PMID/DOI/ISBN/中文源锚提取）
+
+### Added（批次 F：金教材生产端——评分端之外补生产端）
+- architect 能力 7「岗课赛证融通规划」：§B 逐节三锚点（1+X 对接 / 赛点标注 / 立体化资源位），
+  规划缺失 = R1 blocking；writer 能力 6 融通行文（`[资源位]` 标记）
+- gap-types 枚举 7→**7+1**（`vocational-skill`：证书/大赛/岗位标准，核验深度=版次现行）
+- chapter-structure §2 对接教职成厅函〔2025〕1 号遴选原则（五维 ↔ 五原则映射表）
+- terminology-table 补 **4.11d** 口径（表内标准写法唯一——此前 §5 引用悬空）
+
+### Changed（批次 G：口径统一）
+- 打回介入阈值统一 **=2**（harness 防逃逸条款对齐 pipeline SSOT；第 3 轮仍败才停机）
+- 路由升级码 **R→ESC**（ESC1-4——消除与审查轮次/写作版本的 R 前缀三重命名空间碰撞）
+- task_type 枚举 **15 类**（+`review-score`/`review-style` 重定义/`gap-retrieval`）；
+  confidence 统一 **0-100**；下行 `type: TASK`→`STATUS`+`payload.direction`（入 §1 枚举）
+- record_trace 新增 **tokens 子命令**（确定性累加 trace，estimated 单列告警——
+  替代「手工 patch tokens_used」必漂移路径，harness §2 规则 6 同步）
+- citation-verify **1.5.0**：方法 4b 补 4 行（司法判例 `[实·判例]` / 司法解释 /
+  RFC·语言规范 `[实·规范]` / dblp——对接 law/cs profile §3，换学科 R3 无行可套修复）
+
+### Hardened（批次 H：对抗硬化）
+- CI 第 8 步「门禁 4 负向实验」：FAKE 标识符 / 孤立插入标记 / 缺 notebook / 禁用写法
+  4 组破坏样本**必须全 FAIL** 才过（此前 4.10-4.13 声称负向守护但无实体，CI 回退不红）
+- router 评测 40→**45 用例**（新枚举 3 类 + 量纲统一 0-100 + gap 分支前移修复截胡）
+- architect/writer/designer 副作用与输出契约同步（gaps.md/sections/.ipynb 三处此前越界死锁）
+
+### Fixed（复查第 2 轮，独立验收代理查出）
+- examiner 延迟预算行重复损坏（R1-R4 段粘贴两遍）+ 总超 240s 与 ≤300s 目标矛盾
+- pipeline §3.6 步骤④残留「R1-R4」与新 SSOT 打架（E1 漏改点）
+
+### Verified
+- 静态契约 **253/253 = 1.000** + router **45/45** + manifest 31/31 + vendor 6/6 + lint-ps1 PASS
+- 负向实验本地演练 4/4 全拦截；generate_team 正负双向（全未命中 0/3 构造 vs 命中 2/2）
+- assemble_sections 正负实测（缺标签拒拼 exit 1 / 修复后拼接+清单落盘）
+- 4.12b 双向（真 PMID 过 / FAKE-DOI-999 拦截 strict exit 1）
+
 ## [2.3.0] - 2026-10-31
 
 ### 修订态交付链（方案甲：md 承载修订语义 → docx 渲染 Word 真修订；管家拍板 + 铁律收窄）
