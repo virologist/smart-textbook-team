@@ -85,6 +85,19 @@ RE_REVISION = re.compile(
 )
 # 校稿结论节（PROOFREAD 三件套的落点，ASSEMBLE 转写）
 RE_PROOFREAD_SECTION = re.compile(r"^##\s+校稿结论\s*$", re.M)
+# 构建指纹（R5 红队修复 b2「无修订标记的静默篡改」盲区）：
+# 正文 hash 写入 docx 核心属性 → check_manuscript 4.13d 比对，
+# 改 docx 任何内容（改字/删段）不回流 → 指纹不一致 FAIL——修订数比对拦不住的盲区由它兜底
+FINGERPRINT_KEY = "STT_MANUSCRIPT_FINGERPRINT"
+
+
+def manuscript_fingerprint(text: str) -> str:
+    """交付 md 正文（去 frontmatter）的 sha256 前 16 位——docx 指纹锚。"""
+    import hashlib
+    _, body = _split_frontmatter(text)
+    return hashlib.sha256(body.strip().encode("utf-8")).hexdigest()[:16]
+
+
 # 注：Markdown 表格不栅格化——pandoc 会转成 docx 原生表格（可编辑、可选中）。
 # （原 RE_TABLE_FENCE 常量从未被使用，属死代码，已删除）
 
@@ -405,13 +418,22 @@ def generate_provenance(work_root: Path, chapter: str, textbook: str, text: str)
 
     n_shi = len(re.findall(r"\[实[·\]]", text))   # 正文 [实]/[实·xx] 出现处数
     rows = []
+    n_skipped = 0
     for line in log_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line.startswith("|") or line.startswith("|--") or line.startswith("| 位置"):
             continue
         cells = [c.strip() for c in line.strip("|").split("|")]
+        # R5 红队列错位修复：examiner 契约 4 列 = 位置|标识符|结果|动作；
+        # 溯源 5 列 = 序|位置|陈述要点|标识符/来源|核验状态。
+        # 语义映射：核验状态=动作列；陈述要点=结果列；「标识符/来源」=标识符列（不再是结果文案）。
         if len(cells) >= 4:
-            rows.append(cells[:5] if len(cells) >= 5 else cells + ["—"] * (5 - len(cells)))
+            pos, ident, result, action = cells[0], cells[1], cells[2], cells[3]
+            rows.append([pos, result, ident, action])
+        else:
+            n_skipped += 1
+    if n_skipped:
+        log(f"r3 日志有 {n_skipped} 行格式异常（列数 <4）已跳过——建议回 examiner 修日志", "WARN")
 
     out = work_root / "交付" / f"{textbook}_{chapter}.溯源.md"
     lines = [
@@ -424,7 +446,7 @@ def generate_provenance(work_root: Path, chapter: str, textbook: str, text: str)
         "|---|---|---|---|---|",
     ]
     for i, c in enumerate(rows, 1):
-        lines.append("| " + " | ".join([str(i)] + c[:4]) + " |")
+        lines.append("| " + " | ".join([str(i)] + c) + " |")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     log(f"溯源表已生成：{out}（{len(rows)} 行）")
     return out
@@ -444,15 +466,18 @@ def append_proofread_conclusion(work_root: Path, chapter: str, md_path: Path) ->
     rev_path = work_root / "章节" / chapter / "review" / "proofread_revisions.md"
     pr_path = work_root / "章节" / chapter / "review" / "proofread.md"
     n_ins = n_del = 0
-    verdict, pending = "未完成校稿（PROOFREAD 三件套缺失）", "—"
+    # R5 红队修复：兜底文本不能含「结论:」可解析形态——否则三件套缺失也被 4.13c 漂绿
+    verdict, pending = "校稿未完成（PROOFREAD 三件套缺失，交付前必须补齐）", "—"
     if rev_path.is_file():
         rev_text = rev_path.read_text(encoding="utf-8")
-        n_ins = len(re.findall(r"\.insertion", rev_text))
-        n_del = len(re.findall(r"\.deletion", rev_text))
-        m = re.search(r"结论[:：]\s*(.+)", rev_text)
+        # 修订计数只认**修订标记语法**（与正文 §1.5 同源），不认表格叙述里的字面量
+        n_ins = len(RE_REVISION.findall(rev_text))
+        n_del = sum(1 for m in RE_REVISION.finditer(rev_text)
+                    if m.group("kind") == ".deletion")
+        m = re.search(r"^结论[:：]\s*(.+)$", rev_text, re.M)
         if m:
             verdict = m.group(1).strip()
-        m2 = re.search(r"遗留待办[:：]\s*(.+)", rev_text, re.M)
+        m2 = re.search(r"^遗留待办[:：]\s*(.+)$", rev_text, re.M)
         if m2:
             pending = m2.group(1).strip()
     src = pr_path.name if pr_path.is_file() else "（校对后稿未产出）"
@@ -505,11 +530,30 @@ def apply_revisions(work_root: Path, chapter: str, from_docx: Path,
     fm, _ = _split_frontmatter(old_text)
     new_body = tmp_md.read_text(encoding="utf-8").strip()
     # 回流清洗（pandoc docx→md 的三类噪声）：
-    # ① TOC 伪标题（pandoc --toc 生成 TOC-Heading，回流时无意义）
-    new_body = re.sub(r"^# Table of Contents\s*\{[^}]*\}\s*\n+", "", new_body, flags=re.M)
+    # ① TOC 伪标题（pandoc --toc 生成的「Table of Contents」行——带不带属性块都清，
+    #    R5 红队实测 3.13 输出无属性块，旧正则失效 → 净稿永久残留伪章标题）
+    new_body = re.sub(r"^#\s*Table of Contents.*\n+", "", new_body, flags=re.M | re.I)
     # ② 转义方括号 \[实\] → [实]（docx 无 md 转义概念，pandoc 保守转义）
     new_body = new_body.replace("\\[", "[").replace("\\]", "]")
-    # ③ frontmatter 实际净字数重算（回流改变了正文）
+    # ③ 图位标记恢复（R5 红队高危：docx 渲染态已删 [图 X-Y：…] 占位行，回流以 docx 为准
+    #    会把图位永久蒸发 → 4.10/4.6a 静默 N/A、图与题注关系丢失）。恢复：旧 md 有而回流稿
+    #    缺失的图位行，按其题注行定位重新插入题注之前；无题注则附文末。
+    old_body = _split_frontmatter(old_text)[1]
+    restored = 0
+    for sm in RE_FIGURE_SLOT.finditer(old_body):
+        slot_line = sm.group(0)
+        if slot_line in new_body:
+            continue
+        stem = f"{sm.group(1)}-{sm.group(2)}"
+        cm = re.search(rf"^\s*图\s*{re.escape(stem)}\s+.*$", new_body, re.M)
+        if cm:
+            new_body = new_body[:cm.start()] + slot_line + "\n\n" + new_body[cm.start():]
+        else:
+            new_body = new_body.rstrip() + "\n\n" + slot_line + "\n"
+        restored += 1
+    if restored:
+        log(f"回流恢复了 {restored} 个被 docx 渲染态删除的图位标记", "WARN")
+    # ④ frontmatter 实际净字数重算（回流改变了正文）
     try:
         from count_net_words import count_net_words
         fm = re.sub(r"^实际净字数:.*$", f"实际净字数: {count_net_words(new_body).get('net_final', 0)}",
@@ -528,8 +572,30 @@ def apply_revisions(work_root: Path, chapter: str, from_docx: Path,
 
 
 # ──────────────────────────────────────────────────────────── docx 后处理
-def postprocess_docx(docx_path: Path, chapter_title: str) -> bool:
-    """python-docx 后处理：中文字体 / 字号 / 行距 / 缩进 / 题注居中 / 页眉页脚。"""
+def docx_text_fingerprint(docx_path: Path) -> str:
+    """docx **document.xml 原始字节**（含修订标记全部内容）的 hash——校验侧可重算。
+
+    R5 教训：python-docx 的 paragraphs **看不到 w:ins/w:del 内的 run**（修订内文本
+    对其不可见）——基于它的 hash 拦不住修订内文本篡改。document.xml 原始字节覆盖
+    全部内容（正文+修订+属性引用），任何 XML 级改动都会改变 hash。
+    """
+    import hashlib
+    import zipfile as _zf
+    try:
+        with _zf.ZipFile(str(docx_path)) as z:
+            raw = z.read("word/document.xml")
+        return hashlib.sha256(raw).hexdigest()[:16]
+    except Exception:
+        return ""
+
+
+def postprocess_docx(docx_path: Path, chapter_title: str,
+                     fingerprint: str | None = None) -> bool:
+    """python-docx 后处理：中文字体 / 字号 / 行距 / 缩进 / 题注居中 / 页眉页脚。
+
+    收尾时计算 **docx 渲染文本自身 hash** 写入核心属性（4.13d 双向锚）；
+    fingerprint 参数（md 口径指纹）仍一并记录，供溯源。
+    """
     try:
         from docx import Document
         from docx.shared import Pt, Cm
@@ -608,6 +674,13 @@ def postprocess_docx(docx_path: Path, chapter_title: str) -> bool:
         except (IndexError, AttributeError):
             pass
 
+    # 双向锚（R5）：先 save 落定版式，再算**最终文本** hash 回写属性，再 save 一次
+    doc.save(str(docx_path))
+    text_fp = docx_text_fingerprint(docx_path)
+    doc.core_properties.comments = (
+        f"{FINGERPRINT_KEY}={text_fp}"
+        + (f" md={fingerprint}" if fingerprint else "")
+    )
     doc.save(str(docx_path))
     return True
 
@@ -730,31 +803,41 @@ def main() -> int:
         # 章标题取第一个 # 行
         m = re.search(r"^#\s+(.+)$", text, re.M)
         chapter_title = m.group(1).strip() if m else ""
-        if not postprocess_docx(docx_path, chapter_title):
+        # 指纹锚 = **交付 md 全文正文**（与 check_manuscript 4.13d 同口径，R5）——
+        # docx 是它的渲染态；锚点唯一目的=检测 docx 被改而不回流，口径一致才能比对。
+        # （此前用 inter_md 算 → check 侧用交付 md 复算必然不等 = 正向恒 FAIL）
+        fp_main = manuscript_fingerprint(text)
+        if not postprocess_docx(docx_path, chapter_title, fingerprint=fp_main):
             return 4
 
         report["docx"] = str(docx_path)
         report["docx_bytes"] = docx_path.stat().st_size
+        report["docx_fingerprint"] = fp_main
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        log(f"docx 构建完成：{docx_path}（{report['docx_bytes']} 字节）")
+        log(f"docx 构建完成：{docx_path}（{report['docx_bytes']} 字节，指纹 {fp_main}）")
 
     # 审阅版（v1.1.0 方案甲）：修订标记 → Word 真修订态
     if args.revisions and "docx" in args.format:
         inter_md = build_intermediate_md(text, assets)
         # 审阅版剔除校稿结论节（内部 QA 产物，不进审阅对象）
-        inter_md = RE_PROOFREAD_SECTION.split(inter_md)[0].rstrip() + "\n"
+        inter_review = RE_PROOFREAD_SECTION.split(inter_md)[0].rstrip() + "\n"
         rev_dir = Path(tempfile.mkdtemp(prefix="build_revisions_"))
         rev_md = rev_dir / f"{md_path.stem}__review_src.md"
-        rev_md.write_text(inter_md, encoding="utf-8")
+        rev_md.write_text(inter_review, encoding="utf-8")
         review_docx = md_path.with_name(f"{md_path.stem}_审阅.docx")
         if not run_pandoc(rev_md, review_docx, args.reference_doc):
             return 4
-        if not postprocess_docx(review_docx, chapter_title_placeholder(text)):
+        # 审阅版指纹 = 交付 md 去校稿结论节（其渲染源即此形态，R5 口径与 check 侧一致）
+        fp_review = manuscript_fingerprint(
+            RE_PROOFREAD_SECTION.split(text)[0].rstrip() + "\n")
+        if not postprocess_docx(review_docx, chapter_title_placeholder(text),
+                                fingerprint=fp_review):
             return 4
         report["review_docx"] = str(review_docx)
         report["review_revision_marks"] = n_rev
+        report["review_fingerprint"] = fp_review
         shutil.rmtree(rev_dir, ignore_errors=True)
-        log(f"审阅版构建完成：{review_docx}（含 {n_rev} 处 Word 修订）")
+        log(f"审阅版构建完成：{review_docx}（含 {n_rev} 处 Word 修订，指纹 {fp_review}）")
 
     if args.report:
         Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2),

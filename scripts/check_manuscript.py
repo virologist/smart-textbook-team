@@ -79,7 +79,9 @@ RE_REVISION = re.compile(
 )
 RE_PROOFREAD_SECTION = re.compile(r"^##\s+校稿结论\s*$", re.M)
 RE_PROOFREAD_VERDICT = re.compile(r"^\s*[-*]?\s*\**\s*结论\**[:：]\s*(\S+)", re.M)
-RE_DATA_FIG_HINT = re.compile(r"数据来源\s*[:：]\s*(?!纯示意)")  # 数据图位识别（非纯示意）
+# 数据图位识别（非纯示意）：兼容「数据来源：」「数据来源=」「数据来源 =」三种官方写法
+# （R5 红队：manuscript-delivery §2 官方示例用「数据来源=」，只认冒号会整类逃检）
+RE_DATA_FIG_HINT = re.compile(r"数据来源\s*[:：=]\s*(?!纯示意)")
 # 术语表解析（references/terminology-table.md 第 2 节表格行）
 RE_TERM_ROW = re.compile(r"^\|([^|]+)\|([^|]+)\|([^|]+)\|", re.M)
 
@@ -326,10 +328,26 @@ def check_data_figure_notebooks(text: str, work_root: Path, chapter: str, r: Res
             if len(cells) < 3 or n_md < 1 or n_code < 2:
                 bad_struct.append(f"{stem}(cells={len(cells)},md={n_md},code={n_code})")
             else:
-                # 数据内联抽查：code cell 里应有字面数据（列表/dict/数组），不得只 import 外部文件
-                joined = "".join(str(c.get("source", "")) for c in cells if c.get("cell_type") == "code")
-                if not re.search(r"(\[.*\d.*\]|\{.*\d.*\}|=\s*\d)", joined[:3000], re.S):
-                    bad_struct.append(f"{stem}(数据未内联)")
+                # 数据内联抽查：code cell 须含**字面数据结构**（= 后跟 [/{ 或纯数字列表）。
+                # R5 红队：旧正则 `\[.*\d.*\]` 会被 str(source) 的 repr 括号 + 文件名数字
+                # 误命中（`pd.read_csv('data.csv'); savefig('1-1.png')` → 假 PASS）。
+                # 现按 cell 原始行逐行判：命中 `= [数字...]` / `= {` / 裸数字序列 才算内联。
+                has_inline = False
+                for c in cells:
+                    if c.get("cell_type") != "code":
+                        continue
+                    src = c.get("source", "")
+                    lines = src if isinstance(src, list) else str(src).splitlines(True)
+                    for ln in lines:
+                        s = ln.strip()
+                        if re.search(r"=\s*[\[{]", s) or re.search(r"=\s*[\d.]+(\s*,|$)", s) \
+                           or re.match(r"^[\d.\s,]+$", s):
+                            has_inline = True
+                            break
+                    if has_inline:
+                        break
+                if not has_inline:
+                    bad_struct.append(f"{stem}(数据未内联——须 cell2 字面数据，禁仅 import 外部文件)")
         except Exception as e:
             bad_struct.append(f"{stem}(ipynb 解析失败: {type(e).__name__})")
     r.add("4.10", f"数据图 notebook 齐备且结构合规（数据图 {len(data_slots)} 个）",
@@ -400,9 +418,11 @@ def check_provenance(text: str, work_root: Path, chapter: str, md_path: Path, r:
     n_rows = len([l for l in prov.splitlines()
                   if l.strip().startswith("|") and not l.strip().startswith("|--")
                   and not l.strip().startswith("| 序")])
+    # R5 红队：SKILL §4.1 契约是「==」，实现却是 >=（少行不放行、多行静默）→ 对齐 ==
     r.add("4.12", f"溯源表行数({n_rows}) == 正文 [实] 处数({n_shi})",
-          n_rows >= n_shi,
-          f"溯源表 {hits[0].name}；缺 {max(0, n_shi - n_rows)} 行" if n_rows < n_shi else "")
+          n_rows == n_shi,
+          f"溯源表 {hits[0].name}；差 {abs(n_rows - n_shi)} 行"
+          + ("（多行）" if n_rows > n_shi else "（缺行）") if n_rows != n_shi else "")
 
 
 # ── 4.13 修订态完整性（v1.1.0 新增：方案甲的机械守护）
@@ -412,15 +432,18 @@ def check_revision_state(text: str, work_root: Path, chapter: str,
     marks = RE_REVISION.findall(text)
     n_ins = sum(1 for _, kind, _, _ in marks if kind == ".insertion")
     n_del = sum(1 for _, kind, _, _ in marks if kind == ".deletion")
-    # 4.13a：成对性——只要有标记，插入与删除必须等量（替换=删+插成对）；
-    # 纯插入或纯删除整章一致时（如整段新增审稿意见）允许，但须 author/date 全合法。
+    # 4.13a 成对性（R5 红队 #3 语义对齐）：**替换必须删+插成对**；§1.5 允许「整章一致的
+    # 纯插入/纯删除」（如整段新增审稿意见）——判据：非替换性的单侧标记整章一致即放行。
+    # 实现：若插删均 >0 则必须等量（= 替换场景）；若只有单侧则放行（= 整章纯插/纯删）。
     has_marks = bool(marks)
-    paired = (n_ins == n_del) if has_marks else True
+    mixed = n_ins > 0 and n_del > 0
+    paired = (n_ins == n_del) if mixed else True
     bad_author = [a for _, _, a, _ in marks if not a.strip()]
     bad_date = [d for _, _, _, d in marks if not re.match(r"\d{4}-\d{2}-\d{2}", d)]
     r.add("4.13a", f"修订标记成对且 author/date 合法（插{n_ins}/删{n_del}）",
           paired and not bad_author and not bad_date,
-          ("" if paired else f"孤立修订标记（替换须删+插成对；现插{n_ins}/删{n_del}） ") +
+          ("" if paired else f"替换场景插删不等（插{n_ins}/删{n_del}）——替换须删+插成对；"
+                           f"纯插入/纯删除场景不得与另一侧混用 ") +
           (f"author 空: {bad_author} " if bad_author else "") +
           (f"date 非法: {bad_date}" if bad_date else ""))
     # 4.13b：md 标记数 == docx w:ins+w:del 数（docx 存在且 python-docx/zip 可读时）
@@ -444,6 +467,48 @@ def check_revision_state(text: str, work_root: Path, chapter: str,
     else:
         r.add("4.13c", "校稿结论节存在且含结论", False,
               "交付 md 缺「## 校稿结论」——PROOFREAD 三件套未转写（build --assemble 自动补）")
+
+
+def _docx_fingerprint(docx_path: Path) -> str | None:
+    """读 docx 核心属性里的构建指纹（STT_MANUSCRIPT_FINGERPRINT=...）；无则 None。"""
+    try:
+        from docx import Document
+        cp = Document(str(docx_path)).core_properties.comments or ""
+        if "STT_MANUSCRIPT_FINGERPRINT=" in cp:
+            return cp.split("STT_MANUSCRIPT_FINGERPRINT=")[1].split()[0].strip()
+    except Exception:
+        return None
+    return None
+
+
+# ── 4.13d 构建指纹（R5 红队 b2/b3：拦「无修订标记的静默篡改」与审阅版法外区）
+def check_fingerprint(text: str, work_root: Path, chapter: str, r: Result):
+    """双向锚定：属性内指纹（构建时文本 hash） vs 校验时**重算**的 docx 文本 hash。
+
+    改文本不回流 → 重算值 ≠ 属性 → FAIL；换旧 docx（无属性）→ FAIL；
+    篡改属性 → 仍与现文本不匹配 → FAIL。快照式指纹（不重算）拦不住就地改字，已废弃。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from build_manuscript import FINGERPRINT_KEY, docx_text_fingerprint
+    except ImportError:
+        r.warn("4.13d", "构建指纹校验（依赖 build_manuscript）", "导入失败，跳过")
+        return
+    deliver_p = find_delivery(work_root, chapter, "docx")
+    review_p = next(iter(sorted((work_root / "交付").glob(f"*{chapter}*_审阅.docx"))), None) \
+        if (work_root / "交付").is_dir() else None
+    for label, p in (("交付", deliver_p), ("审阅版", review_p)):
+        if p is None:
+            continue  # 缺产物由 4.5d/4.13b 口径另行报告
+        fp_attr = _docx_fingerprint(p)
+        if not fp_attr:
+            r.add(f"4.13d-{label}", f"{label} docx 含构建指纹", False,
+                  f"{p.name} 无 {FINGERPRINT_KEY}（旧版/外来产物，须用 build_manuscript 重建）")
+            continue
+        fp_now = docx_text_fingerprint(p)
+        r.add(f"4.13d-{label}", f"{label} docx 文本完整（现算 hash == 属性指纹）",
+              fp_now == fp_attr,
+              f"属性={fp_attr} 现算={fp_now} —— docx 在构建后被改动且未回流/重建（铁律违规）")
 
 
 def main() -> int:
@@ -478,6 +543,7 @@ def main() -> int:
     check_provenance(text, work_root, args.chapter, md_path, r)
     docx_path_pre = find_delivery(work_root, args.chapter, "docx")
     check_revision_state(text, work_root, args.chapter, docx_path_pre, r)
+    check_fingerprint(text, work_root, args.chapter, r)
 
     docx_path = find_delivery(work_root, args.chapter, "docx")
     media = check_docx(docx_path, r) if docx_path else -1
