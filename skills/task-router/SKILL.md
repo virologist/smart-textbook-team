@@ -1,13 +1,15 @@
 ---
 name: task-router
-version: 1.0.0
-description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (12 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
+version: 1.1.0
+description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (15 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
 ---
 
 # task-router — 结构化任务路由
 
 > 解决"问法歧义→分派错位"问题。把 team-lead 的 6 行关键词路由表升级为 **task_type schema + 决策表 + 置信度升级**。
-> 路由器本质：把"用户口语化问法"映射成 12 个标准 task_type 之一，再查表派活。
+> 路由器本质：把"用户口语化问法"映射成 15 个标准 task_type 之一，再查表派活。
+> （G3 修复 2026-10-31：枚举 13→15——补 review-score（R5 评分）、review-proofread（R4 校稿三件套）两类；
+> 此前 R4b/R5/校稿三件套无 task_type 可路由，被迫错挂 review-citation 或标 custom，路由审计失真。）
 
 ---
 
@@ -22,7 +24,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 1. task_type 枚举（13 类，SSOT）
+## 1. task_type 枚举（15 类，SSOT）
 
 | task_type | 中文 | 责任成员 | 输入信号 | 输出契约 |
 |-----------|------|---------|---------|---------|
@@ -36,11 +38,13 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | `review-structure` | 审查 R1（结构 / 框架） | quality-examiner | `draft.md` + `chapter_design.md` | R1 verdict + blocking |
 | `review-depth` | 审查 R2（深度 / 内容） | quality-examiner | `draft.md` + 引用源 | R2 verdict + blocking |
 | `review-citation` | 审查 R3（数据 + 引用核验） | quality-examiner | `draft.md` + 所有 `[实]/[引]` | R3 verdict + 引用核验表 |
-| `review-style` | 审查 R4（风格 / 可读性） | quality-examiner | `draft.md` | R4 verdict + advisory |
-| `visual-spec` | 图表规格 + 代码 | visual-instructional-designer | 图表位 `[图 X-X：...]` + `draft.md` | 规格卡 + Mermaid/SVG |
+| `review-style` | 审查 R4（校稿三件套） | quality-examiner | `draft.md` | `proofread.md` + `proofread_revisions.md` + R4 verdict |
+| `review-score` | 审查 R5（五维质量评分） | quality-examiner | `draft.md` + `chapter_design.md` | R5 分数 + 质量评分段（<80 blocking） |
+| `visual-spec` | 图表规格 + 代码 | visual-instructional-designer | 图表位 `[图 X-X：...]` + `draft.md` | 规格卡 + Mermaid/SVG（数据图含 .ipynb） |
 | `visual-review` | 图表审查（图与正文一致性）| visual-instructional-designer | 已产图表 + 最终 `draft.md` | 图文一致性 verdict |
+| `gap-retrieval` | 缺口清单检索（gaps.md 消费） | literature-scout | `章节/{ch##}/gaps.md`（architect 产出） | 按缺口逐条证据 + 覆盖追踪 |
 
-> **扩展规则**：未覆盖的新场景（14+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+> **扩展规则**：未覆盖的新场景（16+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
 
 ---
 
@@ -57,17 +61,17 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 **匹配优先级**：精确匹配 > 关键词相似度 > 默认 fallback（见 Step 3）。
 
-### Step 2：置信度评分（0-1）
+### Step 2：置信度评分（0-100，G3 统一量纲——与 harness §1 信封 `confidence: 0-100` 同源；旧 0-1 值 ×100 换算）
 
 | 评分依据 | 分值 |
 |----------|------|
-| 输入信号明确命中 task_type 描述 | +0.4 |
-| 与已知样例（见 §4）语法高度相似 | +0.3 |
-| task_type 默认责任成员当前空闲（无 blocking_open）| +0.2 |
-| 任务边界清晰（输入/输出都明确）| +0.1 |
+| 输入信号明确命中 task_type 描述 | +40 |
+| 与已知样例（见 §4）语法高度相似 | +30 |
+| task_type 默认责任成员当前空闲（无 blocking_open）| +20 |
+| 任务边界清晰（输入/输出都明确）| +10 |
 
-**总分 ≥ 0.7 → 直接 dispatch**
-**总分 < 0.7 → 走 §3 升级**
+**总分 ≥ 70 → 直接 dispatch**
+**总分 < 70 → 走 §3 升级**
 
 ### Step 3：默认 fallback（兜底用，不依赖置信度）
 
@@ -96,22 +100,26 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ## 3. 升级规则（confidence < 0.7）
 
-> **命名消歧（批次 D，2026-10-30）**：本 skill 的 R1–R4 = **路由升级原因**；
-> `textbook-pipeline-workflow` 的 E1–E5 = **错误严重分级**。两套编号此前同为 E 前缀
-> 且语义完全不同（实测混淆源），现路由侧改用 R 前缀，与 pipeline 的 E 码彻底分离。
+> **命名消歧 v2（批次 G-G2，2026-10-31）**：本 skill 的升级原因改用 **ESC- 前缀**
+> （ESC1–ESC4）——原 R1–R4 与审查轮次（examiner R1-R5）、writer 版本（R1-R3）
+> 形成 R 前缀三重命名空间碰撞（trace/黑板中 "R3" 三义：数据核验轮/成员阻塞升级/终稿版本，
+> 审计与断点续跑归因错乱）。批次 D 曾把 E 码消歧为 R 码，本轮把路由侧再让位为 ESC-，
+> R- 从此专属于「审查轮次/写作版本」。变更映射：R1→ESC1 候选歧义 / R2→ESC2 未知任务 /
+> R3→ESC3 成员阻塞 / R4→ESC4 复合任务；trace 的 `escalation_code` 字段同步。
+> `textbook-pipeline-workflow` 的 E1–E5 = 错误严重分级，不受影响。
 
-### R1: 候选歧义（同一问法命中 ≥2 个 task_type）
+### ESC1: 候选歧义（同一问法命中 ≥2 个 task_type）
 
 **例**：用户说"看一下这章的引用"——可能是 `review-citation` 也可能是 `retrieval-standard` 补充。
 
 **处置**：team-lead 追加 1 问澄清（≤1 轮）：
 - "是已有 draft 的引用核验（review-citation），还是新检索标准（retrieval-standard）？"
 
-### R2: 未知任务（无任何命中）
+### ESC2: 未知任务（无任何命中）
 
 **处置**：team-lead 主动追加澄清询问用户，不直接 dispatch。
 
-### R3: 成员当前阻塞（blocking_open 非空）
+### ESC3: 成员当前阻塞（blocking_open 非空）
 
 **处置（2026-10-30 批次 4 更新，原「换等价成员（无）」已失效）**：
 按序尝试，逐级上报：
@@ -123,7 +131,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
    - **换人不重置计数**：打回计数按 `correlation_id + 问题指纹` 跨成员累计（防换人洗计数）
 2. 无等价成员可换 → 在 trace 记录 `outcome=BLOCKED` + 上报用户（原行为兜底）
 
-### R4: 跨 task_type 复合任务
+### ESC4: 跨 task_type 复合任务
 
 **例**："帮我审一下这章，顺便补一下图"——含 `review-structure` + `visual-spec`。
 
@@ -131,18 +139,21 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 4. 已知样例（路由器训练样本）
+## 4. 已知样例（路由器训练样本；置信度量纲 G3 统一为 0-100）
 
 | 用户问法（原文） | task_type | 置信度 |
 |-----------------|-----------|--------|
-| "设计第 6 章禽流感鉴别诊断" | `design-bloom` | 0.95 |
-| "查一下 GB 19438 的现行版次" | `retrieval-standard` | 0.95 |
-| "检索 H5N1 致病性最新文献" | `retrieval-pmid` | 0.90 |
-| "写禽流感章节的骨架" | `write-skeleton` | 0.85 |
-| "把 draft 充实一下，加证据标签" | `write-revise` | 0.85 |
-| "审查 ch06 的结构" | `review-structure` | 0.90 |
-| "核验所有 [实] 标签的 PMID/DOI" | `review-citation` | 0.95 |
-| "画一张疫区封锁的决策树" | `visual-spec` | 0.90 |
+| "设计第 6 章禽流感鉴别诊断" | `design-bloom` | 95 |
+| "查一下 GB 19438 的现行版次" | `retrieval-standard` | 95 |
+| "检索 H5N1 致病性最新文献" | `retrieval-pmid` | 90 |
+| "写禽流感章节的骨架" | `write-skeleton` | 85 |
+| "把 draft 充实一下，加证据标签" | `write-revise` | 85 |
+| "审查 ch06 的结构" | `review-structure` | 90 |
+| "核验所有 [实] 标签的 PMID/DOI" | `review-citation` | 95 |
+| "校对这章，出校对后稿和修订记录" | `review-style` | 90 |
+| "给这章打个五维质量分" | `review-score` | 90 |
+| "画一张疫区封锁的决策树" | `visual-spec` | 90 |
+| "按 gaps.md 把缺口逐条补证据" | `gap-retrieval` | 90 |
 
 > **离线 eval 基线**：20+ 用例命中率应 ≥ 80%（Apollo 类比：首过 20%→80%）。低于此基线即判定 router 需升级。
 
@@ -156,16 +167,17 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
   "task_id": "{ch##}-{phase}-{round}",
   "phase": "{phase}",
   "status": "success",
-  "confidence": 0.0-1.0,
+  "confidence": 70,
   "deliverable_summary": "<任务一句话描述>",
-  "type": "TASK",
+  "type": "STATUS",
   "correlation_id": "{ch##}",
   "context_refs": ["相对 WORK_ROOT 的路径"],
   "state_patch": {"黑板增量": "..."},
   "ts": "ISO8601",
   "payload": {
+    "direction": "downstream",
     "task_type": "review-citation",
-    "routing_confidence": 0.92,
+    "routing_confidence": 92,
     "routing_signals": ["PMID", "核验"],
     "required_skills": ["citation-verify"],
     "input": {},
@@ -174,8 +186,11 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 }
 ```
 
-> 下行任务包与上行回传共用同一信封骨架（6必填），`type=TASK` 标识下行；
-> `payload.task_type` / `routing_confidence` / `routing_signals` 为本路由器核心输出（供 trace 与离线 eval）。
+> **G3 两处对齐（2026-10-31）**：
+> ① `confidence` 量纲统一 **0-100**（与 harness §1 信封同源，旧 0-1 废弃）；
+> ② `type` 不再写 `"TASK"`（不在 harness §1 枚举 `RESULT|BLOCK|ERROR|STATUS|NEED_INPUT` 内，
+> 按自家「唯一 SSOT」裁决属非法值）——下行任务包用 `type: "STATUS"` +
+> `payload.direction: "downstream"` 标识下行方向；机械对账按 §1 枚举校验即可放行。
 
 ---
 

@@ -27,13 +27,19 @@ from pathlib import Path
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description='trace.jsonl 写入器')
-    ap.add_argument('--work-root', required=True, help='WORK_ROOT 根目录')
-    ap.add_argument('--task-id', required=True)
+    ap = argparse.ArgumentParser(description='trace.jsonl 写入器 + tokens 对账器')
+    sub = ap.add_subparsers(dest='cmd')
+
+    # G6: tokens 对账子命令（确定性累加，替代手工 patch）
+    p_tok = sub.add_parser('tokens', help='从 trace.jsonl 累加 tokens（编排者每 gate 后执行，patch 黑板 budget.tokens_used）')
+    p_tok.add_argument('--work-root', required=True)
+
+    ap.add_argument('--work-root', required=False, help='WORK_ROOT 根目录')
+    ap.add_argument('--task-id', required=False)
     ap.add_argument('--correlation-id', default='', help='缺省取 task_id 前缀(ch##)')
-    ap.add_argument('--from', dest='src', required=True, help='from 成员 ID')
-    ap.add_argument('--to', dest='dst', required=True, help='to 成员/编排 ID')
-    ap.add_argument('--type', required=True, choices=['RESULT', 'BLOCK', 'ERROR', 'STATUS', 'NEED_INPUT'])
+    ap.add_argument('--from', dest='src', required=False, help='from 成员 ID')
+    ap.add_argument('--to', dest='dst', required=False, help='to 成员/编排 ID')
+    ap.add_argument('--type', required=False, choices=['RESULT', 'BLOCK', 'ERROR', 'STATUS', 'NEED_INPUT'])
     ap.add_argument('--msg-id', default='', help='缺省自动生成')
     ap.add_argument('--outcome', default='', help='OK / ERROR / BLOCKED / TIMEOUT')
     ap.add_argument('--duration-ms', type=int, default=0)
@@ -53,6 +59,18 @@ def main() -> int:
                          '(C14, 2026-10-30): CLI 自填值与信封不一致时以信封为准并 WARN,'
                          '消除「trace 与信封两张皮」;信封缺 from/to 时拒收(exit 2)')
     args = ap.parse_args()
+
+    # ── G6: tokens 对账分支 ──
+    if args.cmd == 'tokens':
+        return tokens_summary(Path(args.work_root).expanduser())
+
+    # 写入模式：必填项校验（原 required=True 语义保留）
+    missing = [f for f, v in (('--work-root', args.work_root), ('--task-id', args.task_id),
+                              ('--from', args.src), ('--to', args.dst), ('--type', args.type))
+               if not v]
+    if missing:
+        ap.error(f'写入模式必填: {missing}（或使用 tokens 子命令: record_trace.py tokens --work-root …）')
+        return 2
 
     # ── C14: 信封优先解析（2026-10-30）──────────────────────────────────
     env = None
@@ -146,6 +164,46 @@ def main() -> int:
                 pass
 
     print(f'OK  trace[{args.task_id}] → {trace_file}')
+    return 0
+
+
+def tokens_summary(work_root: Path) -> int:
+    """G6（2026-10-31）：tokens_used 脚本化对账——从 trace.jsonl 确定性累加。
+
+    此前 harness §2 要求编排者「每 gate 后按 trace 累加 patch budget.tokens_used」，
+    纯靠手工执行 → evo-16 实证 tokens_used 全章停留初值（死字段），80K 硬上限永不触发。
+    现提供确定性子命令：编排者每 gate 后执行
+      `python3 scripts/record_trace.py tokens --work-root $WORK_ROOT`
+    将输出值 patch 进黑板 budget.tokens_used（或直接比对告警）。
+    estimated 行（成员自报、不可审计）单列统计，供报告标注。
+    """
+    trace_file = work_root / '运行态' / 'trace.jsonl'
+    if not trace_file.is_file():
+        print(f'WARN  trace.jsonl 不存在: {trace_file}（0 任务记录——先跑任务再对账）',
+              file=sys.stderr)
+        print('TOKENS_USED=0')
+        print('TOKENS_ESTIMATED=0')
+        return 0
+    total = estimated = 0
+    with open(trace_file, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # 坏行跳过（原子写入下不应出现，防御）
+            tin = int(rec.get('tokens_in') or 0)
+            tout = int(rec.get('tokens_out') or 0)
+            total += tin + tout
+            if rec.get('estimated'):
+                estimated += tin + tout
+    print(f'TOKENS_USED={total}')
+    print(f'TOKENS_ESTIMATED={estimated}')
+    if estimated:
+        print(f'WARN  其中 {estimated} tokens 来自 estimated 行（成员自报，不可审计）',
+              file=sys.stderr)
     return 0
 
 

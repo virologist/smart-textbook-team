@@ -31,7 +31,7 @@ from pathlib import Path
 PHASE_ORDER = [
     'BOOTSTRAP', 'INTAKE', 'CLARIFY', 'SPECIFY', 'RETRIEVE',
     'PRODUCE-R1', 'VERIFY-R1', 'PRODUCE-R2', 'VERIFY-R2',
-    'PRODUCE-R3', 'VERIFY-R3', 'VERIFY-R4',
+    'PRODUCE-R3', 'VERIFY-R3', 'VERIFY-R4', 'VERIFY-R5',
     'PROOFREAD', 'CONSOLIDATION', 'VISUALIZE', 'ASSEMBLE',
     'DELIVER', 'LEARN',
 ]
@@ -43,11 +43,13 @@ PHASE_ORDER = [
 # → **门禁 3 的结论在协议层面无处可写**（结论落不了盘 = 门禁不可审计）。
 #
 # 现补粗粒度别名：PRODUCE/VERIFY 视为「该阶段当前轮次」的别名，
-# 映射到该阶段**最后一个**轮次（PRODUCE → PRODUCE-R3，VERIFY → VERIFY-R4），
+# 映射到该阶段**最后一个**轮次（PRODUCE → PRODUCE-R3，VERIFY → VERIFY-R5），
 # 使「记入 PRODUCE 行」的协议语义可执行。
+# VERIFY-R5（2026-10-31 E1 补）：R5 质量评分轮此前无态——examiner 收尾
+# update --phase VERIFY-R5 直接报错，R5 结论无处落盘；VERIFY 别名同步改指 R5。
 PHASE_ALIAS = {
     'PRODUCE': 'PRODUCE-R3',
-    'VERIFY': 'VERIFY-R4',
+    'VERIFY': 'VERIFY-R5',
 }
 
 
@@ -143,30 +145,59 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path
 
 def add_blocking(work_root: Path, item: str, source: str) -> Path:
     """H15 缺口登记"""
+    return _mutate_blocking(work_root, item, source, resolve=False)
+
+
+def resolve_blocking(work_root: Path, item: str, note: str = '') -> Path:
+    """H15 缺口解除（G4 修复 2026-10-31：此前只有 block 无 resolve——
+    回填复核后阻塞无法机械清零，progress 残留清单致续跑编排者反复补检索，螺旋只进不出）。
+
+    匹配规则：item 与已有条目**精确子串匹配**（按登记时间倒序取最新一条命中项），
+    就地改写为 RESOLVED 行（保留审计痕迹，不物理删除）。
+    """
+    return _mutate_blocking(work_root, item, note, resolve=True)
+
+
+def _mutate_blocking(work_root: Path, item: str, source: str, resolve: bool) -> Path:
     p = progress_file(work_root)
     text = p.read_text(encoding='utf-8')
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
-    line = f'- [{ts}] {item} (来源: {source})'
 
-    m = re.search(r'## 阻塞清单 \(H15 缺口\)\n\n（暂无）', text)
-    if m:
-        text = text.replace('（暂无）', line, 1)
-    else:
-        # 追加到阻塞清单末
-        m = re.search(r'(## 阻塞清单 \(H15 缺口\)\n)', text)
+    if not resolve:
+        line = f'- [{ts}] {item} (来源: {source})'
+        m = re.search(r'## 阻塞清单 \(H15 缺口\)\n\n（暂无）', text)
         if m:
-            insert_at = m.end()
-            # 跳过现有项
-            tail = text[insert_at:]
-            end_match = re.search(r'\n## ', tail)
-            if end_match:
-                pos = insert_at + end_match.start()
-                text = text[:pos] + line + '\n' + text[pos:]
-            else:
-                text += '\n' + line + '\n'
+            text = text.replace('（暂无）', line, 1)
+        else:
+            m = re.search(r'(## 阻塞清单 \(H15 缺口\)\n)', text)
+            if m:
+                insert_at = m.end()
+                tail = text[insert_at:]
+                end_match = re.search(r'\n## ', tail)
+                if end_match:
+                    pos = insert_at + end_match.start()
+                    text = text[:pos] + line + '\n' + text[pos:]
+                else:
+                    text += '\n' + line + '\n'
+        p.write_text(text, encoding='utf-8')
+        print(f'OK  blocking 登记: {item}')
+        return p
 
-    p.write_text(text, encoding='utf-8')
-    print(f'OK  blocking 登记: {item}')
+    # resolve 分支：找含 item 子串的最新未解除行，追加 RESOLVED 标记
+    lines = text.splitlines(keepends=True)
+    hit_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        l = lines[i]
+        if l.strip().startswith('- [') and item in l and 'RESOLVED' not in l:
+            hit_idx = i
+            break
+    if hit_idx is None:
+        print(f'ERROR  未找到可解除的阻塞项（item 子串不匹配或已 RESOLVED）: {item}',
+              file=sys.stderr)
+        sys.exit(2)
+    lines[hit_idx] = lines[hit_idx].rstrip('\n') + f' → RESOLVED [{ts}] {source}\n'
+    p.write_text(''.join(lines), encoding='utf-8')
+    print(f'OK  blocking 解除: {item}')
     return p
 
 
@@ -199,8 +230,11 @@ def main() -> int:
     p_blk.add_argument('--item', required=True)
     p_blk.add_argument('--source', required=True)
 
-    sub.add_parser('show', help='读取并打印 progress.md')
+    p_res = sub.add_parser('resolve', help='解除 H15 缺口（G4：回填复核后机械清零，防螺旋死锁）')
+    p_res.add_argument('--item', required=True, help='登记时的 item 子串')
+    p_res.add_argument('--note', default='回填复核通过', help='解除依据（如：检索已回填并复核）')
 
+    sub.add_parser('show', help='读取并打印 progress.md')
     args = ap.parse_args()
     wr = Path(args.work_root)
 
@@ -211,6 +245,8 @@ def main() -> int:
         update_phase(wr, args.phase, args.status, args.summary)
     elif args.cmd == 'block':
         add_blocking(wr, args.item, args.source)
+    elif args.cmd == 'resolve':
+        resolve_blocking(wr, args.item, args.note)
     elif args.cmd == 'show':
         return show(wr)
 

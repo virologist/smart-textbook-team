@@ -1,7 +1,7 @@
 ---
 name: citation-verify
-description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准) against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 法规现行有效 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
-version: 1.4.0
+description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准), plus law-domain precedents/judicial interpretations and CS-domain RFCs/dblp entries against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 法规现行有效 / 判例核验 / 裁判文书 / RFC 现行状态 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
+version: 1.5.0
 ---
 
 # citation-verify — 引用核验（零容忍防幻觉）
@@ -86,7 +86,7 @@ WebFetch https://api.crossref.org/works/{DOI}
 > 引用旧版 = 数据可能整体失效。凡 `[实·法规]`/`[实·标准]` 标签，核验记录必须写明
 > 「版次 + 现行性判定依据」，不能只写「查到」。
 
-### 方法 4b：英文 / 国际标准与机构源核验链（v1.4.0 补，2026-10-29）
+### 方法 4b：英文 / 国际标准与机构源核验链（v1.4.0 补，2026-10-29；G5 扩判例/RFC/dblp 行 2026-10-31）
 
 > **为什么补**：方法 4 的 7 行权威源**全部为中文且全为兽医域**（动物防疫法/兽药典/农业农村部公告/GB 16550/WOAH 禽病）。
 > 跨专业复用（法学/计算机/经济/材料等）时该表**整体失效**；且英文标准与通用学术基础设施（DOI/Crossref）
@@ -102,6 +102,10 @@ WebFetch https://api.crossref.org/works/{DOI}
 | 国际机构（WHO/FAO/Codex/UNEP 等） | `https://www.who.int/publications`；`https://www.fao.org/`；`https://www.fao.org/fao-who-codexalimentarius/` | 文件编号 + 发布年 + 现行版（注意取代关系） | `[实·机构]` |
 | 政府/监管机构（US FDA/USDA/EU 等） | `https://www.fda.gov/`；`https://www.usda.gov/`；`https://eur-lex.europa.eu/` | 法规号/公文号 + 生效日期 + 是否被修订 | `[实·法规]` |
 | 预印本（bioRxiv/medRxiv/arXiv） | `https://www.biorxiv.org/`；`https://arxiv.org/` | **必须标注预印本身份**，不得冒充同行评议文献；已发表版本优先（查 DOI 关联） | `[实·预印本]` |
+| **司法判例/裁判文书**（法学域，G5 补——对接 `profiles/law.md` §3） | `https://wenshu.court.gov.cn/`（中国裁判文书网）；案号检索 | 案号真实存在 + 当事人/案由/裁判要旨与引用一致 + **是否被再审/抗诉改判**（判例现行效力） | `[实·判例]` |
+| **司法解释**（法学域，G5 补） | `https://www.court.gov.cn/`（最高法）；`https://www.spp.gov.cn/`（最高检） | 文号（法释〔YYYY〕N 号）+ 施行日期 + **是否被新解释取代** | `[实·法规]` |
+| **RFC / 语言规范**（计算机域，G5 补——对接 `profiles/computer-science.md` §3） | `https://www.rfc-editor.org/`；语言官方规范原文（ECMAScript/PEP/Java Lang Spec） | RFC 编号存在 + 状态（Proposed Standard / Internet Standard / **Obsolete/Obsoleted by**）+ 语义与引用一致；语言规范须写**版本号**且核是否被新版本取代 | `[实·规范]` |
+| **dblp / CS 书目**（计算机域，G5 补） | `https://dblp.org/`；或 Crossref（首选，元数据更全） | 标题/作者/会议或期刊/年份一致；dblp 仅作书目反查辅助，核验以 DOI/Crossref 为准 | `[实·DOI]` |
 
 **英文/国际源三要素**（与中文源同构，不因语种放宽）：
 ① **源真实**——在权威入口可解析/检索到（**仅 Google Scholar / 二手摘要站不算**）；
@@ -143,5 +147,6 @@ WebFetch https://api.crossref.org/works/{DOI}
 - 中文文献（CNKI）无 PMID：核验标准引文格式（作者/期刊/年/卷期页）可检索到即可，标 `[实·CNKI]`
 - 权威机构数据（WOAH/Merck/兽药典）：走方法 4 专属链路核验，标 `[实·机构]`/`[实·兽药典]`
 - 英文/国际标准与 DOI：走**方法 4b** 链路核验，标 `[实·DOI]`/`[实·标准]`/`[实·机构]`；预印本必须标 `[实·预印本]` 且不得冒充已发表文献
+- 司法判例/司法解释/RFC/dblp：走方法 4b 新增四行（G5），标 `[实·判例]`/`[实·法规]`/`[实·规范]`/`[实·DOI]`
 - 绝不因「看起来合理」而免检；逐条核验，无一例外
 - 消费者：quality-examiner（R3 报告）、主理人（交付质量报告）

@@ -88,17 +88,26 @@ spawn 陶靖衍出 chapter_design（门禁：knowledge_scope 非空/时数≥1�
 ### Phase C: 文献检索
 spawn 粟海琼五层检索（Tier 0 ima/Obsidian/书籍md 先行）→ 我过门禁 2（覆盖率/冲突/时效；fail 重检 ≤2 轮→上报）。
 
-### Phase D: 撰写
-spawn 祝书白按设计+证据写 draft（R1→R2→R3）；每数据带 `[实]/[估]/[引]/[待核实]` 标签；缺口上报不硬编。
+### Phase D: 撰写（E4 节级派工落地——此前 >8000 字强制节级推进只有规范无动作）
+**字数判定**：字数目标 >8000 字 → **强制节级推进**（pipeline §3.6）；≤8000 字可整章。
+**节级推进派工序列**（>8000 字时，逐节 spawn 祝书白，每节一个 task_id）：
+1. 按 chapter_design §C 节序逐节派工：`spawn subject-writer --task_id=ch##-PRODUCE-R1-节{节号}`（任务包含该节字数目标/知识块/证据路径，写入 `章节/{ch##}/sections/{节号}.md`）
+2. 每节收产出后过节级自查（标签/编号/交叉引用——assemble_sections.py 内置），不过审打回该节
+3. 全节完成后执行拼接：`python3 scripts/assemble_sections.py --work-root "$WORK_ROOT" --chapter {ch##}`（自动产 draft.md + 拼接清单.json；自检不过 exit 1 不得拼接）
+4. 门禁 3 在**拼接后**整章跑（3.2 净字数按整章口径）
+**≤8000 字整章推进**：spawn 祝书白按 §C 一次写 draft.md（R1→R2→R3）。
+每数据带 `[实]/[估]/[引]/[待核实]` 标签；缺口上报不硬编。
 
 ### Phase E: 审查循环 R1-R3（同一问题打回上限 3 轮）
 spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审查 → 结构化 verdict。fail → blocking 清单转祝书白返修→复审。**打回=2 → 我按介入协议执行**（见 pipeline skill：诊断根因 A/B/C/D → 按因处置 → 第 3 轮仍败停机报用户）；全程记 `review/interventions.md`。
 
-### Phase PROOFREAD: 校对（独立于 E 之上，对应 13 态 PROOFREAD；2026-10-15 re-audit 裁决；v1.1.0 三件套化）
-PROOFREAD 态 = quality-examiner 的 R4 风格审查（AI 腔检测 / 术语一致性 / 学段语言适配 / 排版节奏），与 Phase E 串行且 E 全 pass 后才启动。**为什么从 E 拆出**：让 E 的 4 维矩阵（术语/因果/鉴别/学段）只在结构+深度+数据三轮里出，PROOFREAD 用专门的 R4 检查表（见 quality-examiner.md §核心能力 R4 段），风格问题不影响内容三轮结论。
-**派工动作**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`。
-**产出三件套（v1.1.0，修复「校对后稿」无人产出断链）**：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）。blocking 项回 writer 改风格（writer 复核标记后并入 draft）；纯 advisory 由校对后稿承载。
-**串行硬约束**（与 13 态 SSOT 对齐）：PROOFREAD 不能与 E 并行；PROOFREAD 全 pass 才进下一态。
+### Phase PROOFREAD: R4 校稿 + R5 质量评分（独立于 E 之上，对应 13 态 PROOFREAD；E1 统一裁决 2026-10-31）
+**轮次归属 SSOT（pipeline §轮次归属）**：VERIFY 只跑 R1-R3（内容正确性）；**PROOFREAD 跑 R4+R5**（交付质量）——与 13 态表、examiner 契约三处对齐。
+**R4 校稿派工**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`；
+产出三件套：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）。blocking 项回祝书白改风格（复核标记后并入 draft）；纯 advisory 由校对后稿承载。
+**R5 评分派工（同轮追加，此前无人派工的修复）**：`spawn quality-examiner --task_id=ch##-VERIFY-R5 --task_type=review-score`；
+按五维评分（chapter-structure §2）+ **80 分红线**：≥80 才进 CONSOLIDATION；<80 blocking，按维度定点退返修。结果双落盘：审查报告「质量评分」段 + `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase VERIFY-R5`。
+**串行硬约束**：PROOFREAD（R4+R5）不能与 E（R1-R3）并行；全 pass 才进下一态。
 
 ### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）
 六项检查（术语/编号/引用格式/清洁/遗留表/净字数——以 `python3 scripts/count_net_words.py --target <目标> <文件>` 的 SSOT 脚本值为准（**file 是位置参数，缺它实跑报「缺少文件参数」**））→ 装配交付物 → present_files + 质量报告。**净字数以脚本值为唯一权威**，自报值 ≠ 脚本值 → advisory（以脚本值为准）。

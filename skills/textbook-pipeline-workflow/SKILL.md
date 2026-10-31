@@ -76,17 +76,26 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | SPECIFY | didactic-architect | chapter_design.md | RETRIEVE | 门禁 1：设计覆盖知识域 |
 | RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性 |
 | PRODUCE | subject-writer | sections/{节号}.md → draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
-| VERIFY | quality-examiner | 审查报告（R1-R5）+ verdict | PROOFREAD / RETRIEVE / PRODUCE | 4 轮全 pass |
-| PROOFREAD | quality-examiner | 校稿三件套：`review/proofread.md`（校对后稿·带修订标记）+ `review/proofread_revisions.md`（修订记录+结论）→ ASSEMBLE 转写进交付 md 的「校稿结论」节（判据 4.13c） | CONSOLIDATION | 修订标记成对（4.13a）+ 结论已出 |
+| VERIFY | quality-examiner | 审查报告（R1-R3）+ verdict | PROOFREAD / RETRIEVE / PRODUCE | R1-R3 全 pass |
+| PROOFREAD | quality-examiner | **R4 校稿**（三件套：`review/proofread.md` 校对后稿·带修订标记 + `review/proofread_revisions.md` 修订记录+结论 → ASSEMBLE 转写「校稿结论」节，判据 4.13c）+ **R5 质量评分**（五维+80 分红线，结果写审查报告「质量评分」段 + progress VERIFY-R5 行） | CONSOLIDATION | R4 修订标记成对（4.13a）+ 结论已出（4.13c）+ **R5 ≥80 分** |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
 | VISUALIZE | visual-instructional-designer | 图表代码包 | ASSEMBLE | 图文一致 |
 | ASSEMBLE | 主理人 | 装配稿 + docx（md 源 → 双格式） | DELIVER | 组件齐全 + docx 构建成功 |
 | DELIVER | 主理人 | 交付物 + 质量报告 | LEARN | **门禁 4 全 pass** + present_files 完成 |
 | LEARN | 主理人 | 经验沉淀记录 | （终态） | — |
 
-### VERIFY 内部审查循环（R1-R4 四轮 + R5 质量评分，不是独立态）
+### 轮次归属 SSOT（E1 统一裁决，2026-10-31——修复三文件矛盾）
 
-R1 结构 → R2 深度 → R3 数据+引用 → R4 风格+图文 → R5 质量评分（五维+80分红线）。任一轮 fail → 回 PRODUCE 返修；R5 pass → PROOFREAD。
+> **矛盾史**：pipeline 曾把 R4 放 VERIFY 内（「R5 pass→PROOFREAD」）、team-lead 曾写
+> 「PROOFREAD 态=R4」、examiner 前言自述 4-round——三处互相矛盾，R5 实际无人派工。
+
+**统一口径（SSOT = 本节）**：
+- **VERIFY = R1-R3**（结构/深度/数据引用——内容正确性三轮，fail 回 PRODUCE 返修）
+- **PROOFREAD = R4 + R5**（风格校稿三件套 + 五维质量评分——交付质量两轮）：
+  R4 产出三件套（§4.2）；R5 按五维评分（chapter-structure §2）出分，**<80 分 blocking**
+  退回 PRODUCE 或按维度定点返修，**≥80 分**才进 CONSOLIDATION
+- R5 结果双落盘：审查报告「质量评分」段 + `progress.py update --phase VERIFY-R5`
+- 任一轮 fail 的返修循环上限与介入阈值见 §介入协议（打回数=2 触发介入）
 
 ## 检索门禁（三重规则）
 
@@ -111,7 +120,7 @@ R1 结构 → R2 深度 → R3 数据+引用 → R4 风格+图文 → R5 质量�
 | 3.4 | **图表位与习题位编号连续** | `[图 {章}-{序}]` 无跳号；习题位节号与设计 §C 一致 | 回 writer 对齐 |
 
 **fail 一律回 PRODUCE 返修，不得带着 fail 进 VERIFY**；同一项 fail 2 次 → 按介入协议（A/B/C/D 根因）处置。门禁 3 结论记入 `运行态/progress.md` 的 PRODUCE 行摘要
-（`progress.py` 已支持 `PRODUCE`/`VERIFY` 粗粒度别名 → 自动落到 PRODUCE-R3/VERIFY-R4 行）。
+（`progress.py` 已支持 `PRODUCE`/`VERIFY` 粗粒度别名 → 自动落到 PRODUCE-R3/VERIFY-R5 行）。
 
 ### 3.6 节级推进协议（批次 C4，2026-10-30 · 维度「编写/审稿/校稿颗粒度」）
 

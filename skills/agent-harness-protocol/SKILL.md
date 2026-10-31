@@ -161,7 +161,8 @@ trace_ref: 运行态/trace.jsonl
 3. 只有编排者可写 `phase` 与 `circuit`
 4. `blocking_open` 非空 → 任何成员不得推进到下一阶段
 5. **门禁推进即时落盘（evo-16 增补，实战实证：黑板 phase 全章停留 SPECIFY、gate2 停留 pending——编排者未推进）**：编排者每完成一次 gate 裁决，**同轮** patch `phase`/`gates` 并执行 `progress.py update`，禁止攒批
-6. **预算对账活字段（evo-16 增补，实战实证：budget.tokens_used 全章停留初值 8000 而实际累计 ≈64K——死字段等于无对账）**：编排者每 gate 后按 `运行态/trace.jsonl` 累加各成员 `tokens_in+tokens_out` patch `budget.tokens_used`；≥80% `tokens_limit` 触发本节降级策略
+6. **预算对账活字段（evo-16 增补，实战实证：budget.tokens_used 全章停留初值 8000 而实际累计 ≈64K——死字段等于无对账；G6 脚本化 2026-10-31）**：编排者每 gate 后执行
+   `python3 scripts/record_trace.py tokens --work-root "$WORK_ROOT"`（确定性累加 trace 的 tokens_in+tokens_out，estimated 行单列告警）→ 将输出 `TOKENS_USED` 值 patch 进黑板 `budget.tokens_used`；≥80% `tokens_limit` 触发本节降级策略。**禁止纯手工估算累加**（evo-16 实证必漂移）
 
 **字段级 patch 语义（evo-7 补，防并发丢更新）**
 | 字段类型 | patch 方式 | 示例 |
@@ -194,7 +195,7 @@ trace_ref: 运行态/trace.jsonl
 2. **预算对账（防谎报 turns_used）**：编排者维护每任务实际 turn 计数（spawn 前后差值），与成员申报值交叉核对；申报值 < 实际值 20% 以上 → 记 trace 警告；两次谎报 → 该成员产出降级为待复核
 3. **信封来源校验（防伪造 from）**：编排者只采信「自己 spawn 过的成员 ID」发来的信封；未 spawn 的 from 字段 → 直接丢弃并记 trace（outcome=SPOOFED_SENDER）。msg_id 重复（重放攻击）→ 丢弃后到的
 4. **副作用越界校验（v1.2，evo-9）**：成员产出落盘后，编排者 post-check 产物路径 ∈ 该成员契约声明的副作用范围（如检索员只可写 `知识库/retrieval/`）；越界写（如检索员改 draft）→ **拒收该产物 + trace 记 OUT_OF_SCOPE_WRITE**，按 E2 上报处置
-5. **打回计数防逃逸（v1.2，evo-9）**：打回轮次计数键 = `correlation_id + 问题指纹`（blocking 的违反项类型 + 证据位置），**跨 task_id 累计**——换 task_id（R2→R2b）不重置计数；计数 ≥3 → 强制走介入升级，禁止借改名续命
+5. **打回计数防逃逸（v1.2，evo-9；E-G1 阈值统一 2026-10-31）**：打回轮次计数键 = `correlation_id + 问题指纹`（blocking 的违反项类型 + 证据位置），**跨 task_id 累计**——换 task_id（R2→R2b）不重置计数；**计数 ≥2 即触发介入协议**（SSOT = pipeline §介入协议「打回数 = 2」；本条款原「≥3」与之打架，系红队 G1 修复——介入负责处置，第 3 轮仍败才停机报用户，两级语义现已对齐），禁止借改名续命
 6. **死锁解锁路径（v1.2，evo-9）**：两成员 BLOCK 相互等待（BLOCK 依赖图成环），或 `blocking_open` 非空但责任成员预算已耗尽且悬空超过 1 个调度周期 → 编排者**必须**主动裁决（拆依赖/换责任人/升级用户），禁止悬空等待
 7. **降级疲劳监测（v1.2，evo-9）**：同一 correlation_id 下同一降级层触发 ≥3 次 → 该层进入冷却（后续直接用下层）+ trace 记 DEGRADE_FATIGUE + 上报编排者——既省时也防「疲劳降级」滥用
 

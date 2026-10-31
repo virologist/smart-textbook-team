@@ -27,6 +27,7 @@ version: 1.0.0
 | `知识库/retrieval/{ch##}_{slug}.md` | literature-scout | 写/改 | 只读 |
 | `知识库/retrieval/RETRIEVED.md` | literature-scout | **append**（禁覆盖/删） | 只读 |
 | `章节/{ch##}/sections/{节号}.md` | subject-writer | 写/改（节级正文，批次 C4 新增） | 只读 |
+| `章节/{ch##}/拼接清单.json` | smart-textbook-team-team-lead（由 `assemble_sections.py` 生成，E4 登记） | 写 | 只读 |
 | `章节/{ch##}/gaps.md` | didactic-architect | 写/改（缺口清单，批次 C9 新增） | 只读 |
 | `章节/{ch##}/draft.md` | subject-writer | 写/改（版本 R1→R2→R3 递增；由 sections/ 拼接） | 只读；**examiner/designer 均不得直接修改**（修正意见走回传清单，由编排者转 writer） |
 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner | 写/改 | 只读 |

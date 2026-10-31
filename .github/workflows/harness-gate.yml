@@ -128,5 +128,79 @@ jobs:
           python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble
           python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
 
+      # 负向实验（批次 H，2026-10-31：此前 4.10-4.13 声称「负向实验守护」但全仓无实体——
+      # 回退判据改动 CI 不会红。现补 4 组破坏性用例，每组必须 FAIL 才算门禁有效）
+      - name: 门禁4负向实验（4.10/4.11/4.12b/4.13a 必须拦住破坏样本）
+        run: |
+          set -e
+          WR=/tmp/stt-ms-neg
+          rm -rf "$WR"; mkdir -p "$WR/章节/ch01/figures/assets" "$WR/章节/ch01/review" "$WR/交付"
+          cat > "$WR/章节/ch01/draft.md" <<'MD'
+          ---
+          教材名: 教材
+          章节号: ch01
+          章节标题: 负向实验章
+          字数目标: 50
+          实际净字数: 50
+          版本: R3
+          学科profile: veterinary
+          ---
+
+          # 第1章 负向实验
+
+          ## 1.1 概述
+
+          数据句 [实]。禽流感（AI）缩写滥用。
+
+          ## 参考文献
+
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2. (PMID:12345678)
+          MD
+          cat > "$WR/章节/ch01/review/r3_verification_log.md" <<'MD'
+          | 位置 | 标识符 | 结果 | 动作 |
+          |------|--------|------|------|
+          | §1.1 | PMID:12345678 | 通过 | 保留 |
+          MD
+          echo '结论: 可交付' > "$WR/章节/ch01/review/proofread_revisions.md"
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          # 负向①：4.12b 伪造标识符（FAKE-DOI）→ 必须 FAIL
+          sed -i 's/PMID:12345678/FAKE-DOI-999/' "$WR/交付/教材_ch01.溯源.md"
+          if python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict 2>/dev/null; then
+            echo "负向①FAIL: 伪造溯源标识符未被拦截"; exit 1
+          fi
+          echo "负向① PASS: 4.12b 拦截伪造标识符"
+          # 负向②：4.13a 孤立插入标记 → 必须 FAIL
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          python3 - <<'PY'
+          p = "/tmp/stt-ms-neg/交付/教材_ch01.md"
+          t = open(p, encoding="utf-8").read()
+          t = t.replace("数据句 [实]。", "数据句 [实]。[凭空新句]{.insertion author=\"x\" date=\"2026-10-31\"}")
+          open(p, "w", encoding="utf-8").write(t)
+          PY
+          if python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict 2>/dev/null; then
+            echo "负向②FAIL: 孤立修订标记未被拦截"; exit 1
+          fi
+          echo "负向② PASS: 4.13a 拦截孤立插入"
+          # 负向③：4.10 数据图位缺 notebook → 必须 FAIL
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          python3 - <<'PY'
+          p = "/tmp/stt-ms-neg/章节/ch01/draft.md"
+          t = open(p, encoding="utf-8").read()
+          t = t.replace("## 参考文献", "[图 1-1：发病率趋势｜教学目的：展示变化｜数据来源：检索摘要]\n\n图 1-1 发病率趋势\n\n## 参考文献")
+          open(p, "w", encoding="utf-8").write(t)
+          PY
+          rm -rf "$WR/交付"; mkdir -p "$WR/交付"
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          if python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict 2>/dev/null; then
+            echo "负向③FAIL: 数据图缺 notebook 未被拦截"; exit 1
+          fi
+          echo "负向③ PASS: 4.10 拦截缺 notebook"
+          # 负向④：4.11 禁用写法词界（AI 独立出现）→ 必须 FAIL
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          if python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict 2>/dev/null; then
+            echo "负向④FAIL: 禁用写法 AI 未被拦截"; exit 1
+          fi
+          echo "负向④ PASS: 4.11 拦截禁用写法"
+
       # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源
       # (SSOT 在包内, tb-writer 侧为评测适配器; 任一侧修改须同步另一侧)

@@ -82,8 +82,6 @@ RE_PROOFREAD_VERDICT = re.compile(r"^\s*[-*]?\s*\**\s*结论\**[:：]\s*(\S+)", 
 # 数据图位识别（非纯示意）：兼容「数据来源：」「数据来源=」「数据来源 =」三种官方写法
 # （R5 红队：manuscript-delivery §2 官方示例用「数据来源=」，只认冒号会整类逃检）
 RE_DATA_FIG_HINT = re.compile(r"数据来源\s*[:：=]\s*(?!纯示意)")
-# 术语表解析（references/terminology-table.md 第 2 节表格行）
-RE_TERM_ROW = re.compile(r"^\|([^|]+)\|([^|]+)\|([^|]+)\|", re.M)
 
 
 class Result:
@@ -356,39 +354,75 @@ def check_data_figure_notebooks(text: str, work_root: Path, chapter: str, r: Res
           (f"；结构不合规: {bad_struct}" if bad_struct else ""))
 
 
-# ── 4.11 术语一致性（v1.1.0 补实现：对照 references/terminology-table.md）
-def check_terminology(text: str, r: Result):
-    """禁用写法零出现 + 同章内标准写法与别名不并存 + 4.11d 表内标准写法唯一。
+# ── 4.11 术语一致性（v1.1.0 补实现；E3 修复解析三缺陷）
+def _parse_term_rows(table_path: Path) -> tuple[list[tuple[str, str, list[str]]], str]:
+    """解析 terminology-table.md §2 表格 → [(标准写法, 别名, [禁用写法...]), ...]，含出处说明。
 
-    terminology-table.md 可能尚未填真实术语行（示例行除外）——表为空/无有效行时
-    判 N/A 通过并在 detail 声明，避免「表未建 → 全书恒 FAIL」的死锁；表建了就真查。
+    E3 修复三重缺陷：
+    ① 只取「## 2. 表格式」到下一个 `## ` 之间的表格（旧版全文 grep 把 §1/§3 的
+       三列表、文档示例行全部当条目消费）；
+    ② 解析行内 `\\|` 转义（表格自己 §2 声明的约定，旧版 `[^|]+` 直接错位）；
+    ③ 表头/分隔行严格按「标准写法」列头识别，不再靠枚举排除。
+    """
+    text = table_path.read_text(encoding="utf-8")
+    m = re.search(r"##\s*2\..*?(?=\n##\s|\Z)", text, re.S)
+    seg = m.group(0) if m else text
+    rows: list[tuple[str, str, list[str]]] = []
+    header_seen = False
+    for line in seg.splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        # 先按未转义的 | 切列（\| 视为字面量占位 \x00 后还原）
+        safe = line.replace("\\|", "\x00")
+        cells = [c.strip().replace("\x00", "|") for c in safe.strip("|").split("|")]
+        if len(cells) < 5 or set(cells[0]) <= {"-", ":", " "}:
+            continue
+        if cells[0] == "标准写法":      # 表头行
+            header_seen = True
+            continue
+        if not header_seen:
+            continue                    # 表头前的任何行（规范说明等）不消费
+        std, alias, banned = cells[0], cells[1], cells[2]
+        if not std or std == "—":
+            continue
+        banned_list = [b.strip() for b in banned.replace("，", "、").split("、")
+                       if b.strip() and b.strip() != "—"]
+        rows.append((std, alias, banned_list))
+    if not header_seen:
+        return rows, "未找到 §2 表头行（「| 标准写法 |…」）——表结构异常"
+    return rows, ""
+
+
+def check_terminology(text: str, r: Result):
+    """禁用写法零出现 + 同章内标准写法与别名不并存 + 表内标准写法唯一（4.11d）。
+
+    E3 修复：词界匹配（"AI" 不得命中 "AIV"——英文缩写禁用词用 \\b 词界，
+    中文词用原样子串）；示例行/判据表行不再被消费。
     """
     table_path = Path(__file__).resolve().parent.parent / "references" / "terminology-table.md"
     if not table_path.is_file():
         r.add("4.11", "术语一致性校验（terminology-table.md 缺失，N/A）", True,
               "表文件缺失，判据无法执行——建表后此判据生效")
         return
-    rows = []
-    for m in RE_TERM_ROW.finditer(table_path.read_text(encoding="utf-8")):
-        std, alias, banned = (c.strip() for c in m.groups())
-        # 只收真正的术语条目行：跳过表头（§1 填表规则的「列/含义/规则」三列头、
-        # §3 判据表的「#/判据/口径」头）、加粗列头行与分隔行。
-        # 判定锚：§2 术语表的第 1 列永远是「标准写法」名词（非 #、非编号、非加粗表头）。
-        if (std in ("标准写法", "列", "#", "") or std.startswith("-")
-                or std.startswith("**") or re.match(r"^\d+\.\d+", std)
-                or alias in ("含义", "判据", "")):
-            continue
-        rows.append((std, alias, banned))
-    # 排除文档示例行（含「禽流感（高致病性」等 §2 示例表内容不查稿，只查结构）
+    rows, err = _parse_term_rows(table_path)
+    if err and not rows:
+        r.add("4.11", "术语一致性校验（表结构异常，N/A）", True, err)
+        return
     if not rows:
         r.add("4.11", "术语一致性校验（术语表无有效条目，N/A）", True,
               "terminology-table.md 未填条目——按 §5 维护约定每章 DELIVER 后追加")
         return
     bad_banned, bad_coexist = [], []
-    for std, alias, banned in rows:
-        for b in [x.strip() for x in banned.split("、") if x.strip() and x.strip() != "—"]:
-            # 禁用写法在正文出现（排除其出现在本表内的情况——这里只查稿件 text）
-            if b and b in text:
+    for std, alias, banned_list in rows:
+        for b in banned_list:
+            if not b:
+                continue
+            # 词界匹配：纯 ASCII 词用 \b（AI 不命中 AIV/E.coli 的 coli），
+            # 含中文的词用原样子串（中文无词界概念）
+            if re.fullmatch(r"[A-Za-z0-9 .\-]+", b):
+                if re.search(rf"(?<![A-Za-z0-9]){re.escape(b)}(?![A-Za-z0-9])", text):
+                    bad_banned.append(b)
+            elif b in text:
                 bad_banned.append(b)
         if alias and alias != "—" and std in text and alias in text:
             bad_coexist.append(f"{std} vs {alias}")
@@ -396,7 +430,7 @@ def check_terminology(text: str, r: Result):
     ok = not bad_banned and not bad_coexist and dup == 0
     detail = (f"禁用写法出现: {bad_banned} " if bad_banned else "") + \
              (f"标准写法与别名并存: {bad_coexist}" if bad_coexist else "") + \
-             (f"表内标准写法重复 {dup} 行" if dup else "")
+             (f"表内标准写法重复 {dup} 行（4.11d）" if dup else "")
     r.add("4.11", f"术语一致性（对照 {len(rows)} 条术语）", ok, detail or "全部通过")
 
 
@@ -418,11 +452,41 @@ def check_provenance(text: str, work_root: Path, chapter: str, md_path: Path, r:
     n_rows = len([l for l in prov.splitlines()
                   if l.strip().startswith("|") and not l.strip().startswith("|--")
                   and not l.strip().startswith("| 序")])
-    # R5 红队：SKILL §4.1 契约是「==」，实现却是 >=（少行不放行、多行静默）→ 对齐 ==
+    # E3（红队 H4 修复）：SKILL §4.1 判据③「标识符在参考文献中存在」此前零实现——
+    # 溯源行可写 FAKE-DOI-999 而行数对齐全绿。现机械核验：溯源行「标识符/来源」列的
+    # PMID/DOI/ISBN 或中文源名须能在正文「参考文献」节或溯源表自身的核验状态中对应。
+    refs_sec = re.split(r"^##\s*参考文献\s*$", text, flags=re.M)
+    refs_body = refs_sec[1] if len(refs_sec) > 1 else ""
+    bad_ident: list[str] = []
+    for line in prov.splitlines():
+        s = line.strip()
+        if not s.startswith("|") or s.startswith("|--") or s.startswith("| 序"):
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if len(cells) < 5:
+            continue
+        ident = cells[3]  # 序|正文位置|陈述要点|标识符/来源|核验状态 → 第3列=标识符（0起）
+        if ident in ("—", "", "待核实"):
+            continue
+        # 提取标识符中的可检索锚（PMID 数字 / DOI 串 / ISBN / 中文源名词）
+        anchors = re.findall(r"PMID[:：]?\s*(\d{5,9})|(10\.\d{4,5}/\S+)|(ISBN[^\s|,，]*)|([\u4e00-\u9fff]{2,12}(?:版|典|法|标准|公告|指南|手册))", ident)
+        flat = [a for tup in anchors for a in tup if a]
+        if not flat:
+            # 无法提取锚的来源名：整串进参考文献模糊匹配
+            flat = [ident]
+        ok_row = any(a in refs_body for a in flat)
+        if not ok_row:
+            bad_ident.append(ident[:40])
+    # R5 红队：SKILL §4.1 契约是「==」（少行/多行都不放行）
+    line_ok = n_rows == n_shi
+    ident_ok = not bad_ident
     r.add("4.12", f"溯源表行数({n_rows}) == 正文 [实] 处数({n_shi})",
-          n_rows == n_shi,
+          line_ok,
           f"溯源表 {hits[0].name}；差 {abs(n_rows - n_shi)} 行"
-          + ("（多行）" if n_rows > n_shi else "（缺行）") if n_rows != n_shi else "")
+          + ("（多行）" if n_rows > n_shi else "（缺行）") if not line_ok else "")
+    r.add("4.12b", f"溯源行标识符在参考文献中存在（{len(bad_ident)} 条异常）",
+          ident_ok,
+          f"参考文献节找不到对应条目: {bad_ident}" if bad_ident else "全部可对应")
 
 
 # ── 4.13 修订态完整性（v1.1.0 新增：方案甲的机械守护）

@@ -1,7 +1,7 @@
 ---
 name: literature-scout
 version: 2.0.0
-description: "Literature retrieval specialist for textbook chapters. Runs 4-tier fallback retrieval (English academic databases, general web, Chinese databases, authority sites like WOAH/Merck), deposits verified knowledge into the team wiki, and marks unverifiable claims as [pending verification]."
+description: "Literature retrieval specialist for textbook chapters. Runs 5-tier fallback retrieval (Tier 0 local knowledge sources first, then English academic databases, general web, Chinese databases, authority sites like WOAH/Merck), deposits verified knowledge into the team wiki, and marks unverifiable claims as [pending verification]."
 displayName:
   en: "Su Haiqiong"
   zh: "粟海琼"
@@ -99,7 +99,7 @@ Research（查）→ Reflect（评估相关性与冲突）→ Run（提取数据
 | 项 | 约定 |
 |----|------|
 | 规范角色 | 获取者 Retriever |
-| 输入契约 | `{WORK_ROOT, 章节号, 知识缺口清单（格式见 `references/gap-types.md`，7 类枚举，由 architect 产出）}`；可并行 fan-out 多个知识点（分支 ≤5，各写独立文件） |
+| 输入契约 | `{WORK_ROOT, 章节号, 知识缺口清单（格式见 `references/gap-types.md`，7+1 类枚举，由 architect 产出）}`；可并行 fan-out 多个知识点（分支 ≤5，各写独立文件） |
 | 输出契约 | `知识库/retrieval/{ch##}_{英文slug}.md` + 沉淀库 `RETRIEVED.md` append；每条含 `{标签, 数据点, 来源, 置信度}` |
 | 错误码 | E1 工具失败→按五层降级链降层；E2 换关键词重检；E3 全层失败→标 `[待核实·reason=五层检索全部失败]`，**不编造** |
 | 幂等性 | **否**——沉淀库为 append 累积，重复执行会新增条目（故须先查缓存命中） |

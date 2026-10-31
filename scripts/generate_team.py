@@ -74,7 +74,11 @@ def extract_knowledge_scope(design_path: Path) -> list[str]:
     domains: list[str] = []
     m = re.search(r"knowledge_scope\s*[:：]\s*(.+)", text)
     if m:
-        domains = [d.strip() for d in re.split(r"[,，、;；/]", m.group(1)) if d.strip()]
+        raw = m.group(1).strip()
+        # 剥离 YAML 列表括号（[a, b] → a, b）——此前 [] 被并入域名致映射必不命中
+        if raw.startswith("[") and raw.endswith("]"):
+            raw = raw[1:-1]
+        domains = [d.strip() for d in re.split(r"[,，、;；/]", raw) if d.strip()]
     if not domains:
         # 退化：抓「知识域」列
         for line in text.splitlines():
@@ -129,15 +133,27 @@ def main() -> int:
     # 如「病毒学/病毒」「病毒」都落 domain-specialist → 注册表键冲突）。
     domain_members = []
     seen_ids: dict[str, int] = {}
+    # E2 修复（2026-10-31）：三维评估此前两维恒真——covered 与 domains 同源构造、
+    # examines 恒为 DEFAULT_EXAMINES。现在：
+    # ① examines 按 profile 差异化：映射表命中域用「领域默认 3 维」，
+    #   构造域追加「领域知识域特异性」维（[待定·按 {domain} 校准]），使 accuracy 维有信息量；
+    # ② covered/unmatched 按 **映射表命中** 独立统计（不与成员集合同源），恒真不可能。
+    hit_domains: list[str] = []      # 命中 profile 映射表的域
+    constructed_domains: list[str] = []  # 未命中、由命名约定构造的域
     for d in domains:
         hit = mappings.get(d)
         if hit:
             rid, rname = hit
             src = f"profile:{args.profile}"
+            examines = list(DEFAULT_EXAMINES)
+            hit_domains.append(d)
         else:
             slug = re.sub(r"[^a-z0-9]+", "-", d.lower()).strip("-") or "domain"
             rid, rname = f"{slug}-specialist", f"{d}领域专家"
             src = "constructed"
+            # 构造域的 examines 显式标注「待校准」——用户对齐三问第 2 问的实质输入
+            examines = list(DEFAULT_EXAMINES) + [f"[待校准·{d}特异性维度]"]
+            constructed_domains.append(d)
         if rid in seen_ids:
             seen_ids[rid] += 1
             rid = f"{rid}-{seen_ids[rid]}"   # domain-specialist-2
@@ -146,16 +162,18 @@ def main() -> int:
             seen_ids[rid] = 1
         domain_members.append({
             "member_id": rid, "role_name": rname, "domain": d,
-            "examines": list(DEFAULT_EXAMINES), "source": src,
+            "examines": examines, "source": src,
         })
 
-    # 三维评估
-    covered = {m["domain"] for m in domain_members}
-    unmatched = [d for d in domains if d not in covered]
+    # 三维评估（E2：按映射命中独立计算，杜绝同源恒真）
+    n_hit = len(hit_domains)
+    n_total = len(domains)
+    hit_ratio = n_hit / n_total if n_total else 0.0
     all_exam = set()
     for m in domain_members:
         all_exam.update(m["examines"])
     has_term = "术语精确性" in all_exam
+    n_tbd = sum(1 for m in domain_members if any("[待校准" in e for e in m["examines"]))
 
     # 提案 yaml（confirmed_by_user 必须为 false —— 生效由主理人在用户确认后另写）
     lines = [
@@ -180,15 +198,17 @@ def main() -> int:
 
     lines += [
         "",
-        "# ── 三维评估（供用户对齐参考）──",
-        f"coverage: 知识域 {len(domains)} 个，成员 primary 覆盖 {len(domain_members)} 个"
-        + (f"；未匹配: {unmatched}" if unmatched else "；全部命中"),
-        f"domain_match: {'全部来自 profile 映射' if not unmatched else '部分为构造 role_id（未命中映射表）'}",
-        f"accuracy: 术语精确性视角{'已含' if has_term else '缺失！需补领域术语成员'}",
+        "# ── 三维评估（供用户对齐参考；E2 起按映射命中独立计算，杜绝恒真）──",
+        f"coverage: 知识域 {n_total} 个；映射表命中 {n_hit} 个（{hit_ratio:.0%}）；"
+        + (f"构造域（未命中）: {constructed_domains}" if constructed_domains else "全部命中映射表"),
+        f"domain_match: 命中 {n_hit} 来自 profile:{args.profile} 映射"
+        + (f"；{len(constructed_domains)} 个为构造 role_id——**对齐三问第 1 问重点审查对象**" if constructed_domains else ""),
+        f"accuracy: 术语精确性视角{'已含' if has_term else '缺失！需补领域术语成员'}；"
+        + (f"{n_tbd} 个构造成员 examines 含 [待校准] 维——对齐三问第 2 问须逐个确认" if n_tbd else "examines 全部来自 profile 映射，无需校准"),
         "",
         "# 对齐三问（主理人呈现给用户）：",
-        "#   1. 这 N 个视角覆盖是否合适？（多/少/错）",
-        "#   2. examines 分工是否符合预期？",
+        "#   1. 这 N 个视角覆盖是否合适？（多/少/错）——命中比 <100% 时先审 constructed 域",
+        "#   2. examines 分工是否符合预期？——含 [待校准] 维的成员须逐个确认",
         "#   3. 确认生效 or 修改 or 放弃？",
     ]
     out = Path(args.out).expanduser()
@@ -198,9 +218,9 @@ def main() -> int:
     print(f"[OK] 提案已写入：{out}", file=sys.stderr)
     print(f"[OK] 领域成员 {len(domain_members)} + 固定 {len(FIXED)} = "
           f"{len(domain_members) + len(FIXED)} 个；知识域命中 "
-          f"{len(domains) - len(unmatched)}/{len(domains)}", file=sys.stderr)
-    if unmatched:
-        print(f"[WARN] 未命中 profile 映射、由命名约定构造的域: {unmatched}", file=sys.stderr)
+          f"{n_hit}/{n_total}", file=sys.stderr)
+    if constructed_domains:
+        print(f"[WARN] 未命中 profile 映射、由命名约定构造的域: {constructed_domains}", file=sys.stderr)
     return 0
 
 
