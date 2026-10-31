@@ -116,9 +116,10 @@ jobs:
           test -f "$WR/交付/教材_ch01.溯源.md"
           python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
           # 修订往返回归：Word 修订（w:ins/w:del）真实存在 + 回流 accept 后标记清零
-          python3 - <<'PY'
-          import zipfile
-          xml = zipfile.ZipFile("$WR/交付/教材_ch01_审阅.docx").read("word/document.xml").decode()
+          WR="$WR" python3 - <<'PY'
+          import os, zipfile
+          p = os.path.join(os.environ["WR"], "交付", "教材_ch01_审阅.docx")
+          xml = zipfile.ZipFile(p).read("word/document.xml").decode()
           assert "<w:ins " in xml and "<w:del " in xml, "审阅版无 Word 修订态（方案甲断柱）"
           PY
           python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 \
