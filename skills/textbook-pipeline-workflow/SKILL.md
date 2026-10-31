@@ -135,16 +135,18 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 
 ```
 ① 节级撰写    subject-writer 逐节写 → 章节/{ch##}/sections/{节号}.md
-② 节级自查    逐节过门禁 3.1/3.2/3.4 的**节内子集**（标签/字数/编号/交叉引用）
+② 节级自查    逐节过门禁 3.1/3.2/3.4 的**节内子集**（标签/字数/编号/交叉引用；
+              工具化：python3 scripts/assemble_sections.py 内置自检，不过 exit 1 拒拼，E4）
 ③ 文件级拼接  按 chapter_design §C 的节序拼接 → 章节/{ch##}/draft.md
-              （拼接必须记录来源节号，便于返修定位）
-④ 整章审查    quality-examiner R1-R4 在 draft.md 上跑（一次，不按节重复跑 4 轮）
+              （拼接必须记录来源节号 → assemble_sections.py 产 拼接清单.json，E4）
+④ 整章审查    quality-examiner R1-R3 在 draft.md 上跑（E1 口径：VERIFY=R1-R3；
+              R4+R5 属 PROOFREAD 态在拼接稿之后——见 §轮次归属 SSOT）
 ⑤ 跨章串联审  多章成书时 → scripts/check_cross_chapter.py（术语/数据矛盾/重复）
 ```
 
 **规则**：
 - **节级自查不过，不得拼接**（避免把带缺陷的节拼成整章再返工）；
-- **整章审查仍只跑一次**（节级不是「每个节跑 4 轮」，那会让审查轮次爆炸）；
+- **整章审查仍只跑一次**（节级不是「每个节跑 5 轮」，那会让审查轮次爆炸）；
 - 返修时**只回改对应节**，不重写整章（返修粒度 = 节）；
 - 门禁 3.2 净字数在**拼接后**统一校验（节级只做相对量级自查）；
 - 路径归属：`章节/{ch##}/sections/` 归 subject-writer 写（须登记进 path-ownership 表）。
