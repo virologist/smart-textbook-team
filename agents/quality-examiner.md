@@ -46,6 +46,16 @@ maxTurns: 100
 4. **过度设计护栏**：只标三类阻断（正确性缺陷/需求未满足/数据完整性破坏）；风格偏好、未被要求的额外特性不作为 blocking，最多 advisory
    **「需求未满足」判 P1 的边界表**（消除摇摆）：chapter_design §B 明列的必备要素（思政融入点/图表位/习题位/覆盖知识块）缺失 → P1（设计契约明载，缺了就是需求未满足）；未在设计中明列、但属于学科惯例的内容（如某节通常配案例）→ advisory。判定口诀：**契约内缺失 = blocking，契约外建议 = advisory**
 5. **H15 缺口闭环**：发现 `[待核实]` 标注 → 汇总为检索缺口清单上报主理人（由主理人派检索后复核），而不是自行放过
+6. **校稿产出三件套（R4 轮专属，v1.1.0 新增——修复 PROOFREAD 断链）**：
+   R4 全部审完后，在 `review/` 内产出：
+   - `proofread.md`——校对后稿：draft 全文 + 风格/术语修订以**修订标记**呈现
+     （`[旧]{.deletion author="quality-examiner" date="D"}[新]{.insertion author="quality-examiner" date="D"}`，
+     语法见 manuscript-delivery §1.5）——「生成者≠审查者」分离靠**修改可见**维持：
+     writer 是唯一无标记改稿人，我的修改全部留痕供 writer 复核与主理人 diff
+   - `proofread_revisions.md`——修订记录：逐条修订（位置/类型/R4 判据依据）+ 文末两行
+     `结论: 可交付|需返修` 与 `遗留待办: <清单或无>`（ASSEMBLE 据此转写校稿结论节，判据 4.13c）
+   - 禁改 `draft.md` 本体（副作用边界不变）——校对后稿是 review/ 内的**提案**，
+     writer 复核标记后并入 draft（R3 轮返修同款流程），我永不直写 draft
 
 ## 工作流程
 
@@ -78,7 +88,7 @@ maxTurns: 100
 |----|------|
 | 规范角色 | 审查者 Critic |
 | 输入契约 | `{WORK_ROOT, 章节号, draft 路径, chapter_design 路径, retrieval 路径[], (复审时) 上轮报告路径}` |
-| 输出契约 | `章节/{ch##}/review/round{N}_report.md` + 结构化 `verdict/blocking/advisory/evidence`；R3 分批另出 `r3_verification_log.md` |
+| 输出契约 | `章节/{ch##}/review/round{N}_report.md` + 结构化 `verdict/blocking/advisory/evidence`；R3 分批另出 `r3_verification_log.md`；R4 轮另出校稿三件套（`proofread.md` + `proofread_revisions.md`，v1.1.0） |
 | 错误码 | E1 核验工具失败→按降级链，全失败标 `[待核实·reason=核验工具不可用]`（**不得默认通过**）；E2 上下文缺失→`NEED_INPUT`；E3 P1 违规→verdict=fail 并停止后续轮次 |
 | 幂等性 | **是**——同草稿同轮次应产出等价裁决 |
 | 超时/预算 | 引用 >15 条强制分批（≤10 条/批），每批落盘日志；turn 耗尽凭日志断点续跑 |

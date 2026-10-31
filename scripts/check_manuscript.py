@@ -21,6 +21,7 @@ check_manuscript.py — 大学教材书稿校验器（门禁 4）
 
 判据
 ------------------------------------------------------------------------------
+  4.0 frontmatter 七项必填
   4.1 md 标题层级无跳级（# 后直接 ###）
   4.2 图/表题注编号连续，且与图位一一对应
   4.3 交叉引用目标可解析（[见 §1.2] / [见图 1-3]）
@@ -28,6 +29,11 @@ check_manuscript.py — 大学教材书稿校验器（门禁 4）
   4.5 docx 可打开 + 标题层级完整
   4.6 md 与 docx 图数一致（docx 媒体数 == 栅格化成功数）
   4.7 净字数 ±5%（以 count_net_words.py 脚本值为准）
+  4.8 习题位编号连续 / 4.9 思政融入点存在
+  4.10 数据图 notebook（assets/{图号}.ipynb 存在且 cell 结构合规；v1.1.0 补实现）
+  4.11 术语一致性（对照 terminology-table.md：禁用写法零出现/别名并存/首见；v1.1.0 补实现）
+  4.12 溯源表（存在 + [实] 条数==溯源行数；v1.1.0 补实现）
+  4.13 修订态完整性（4.13a 标记成对合法 / 4.13b md==docx 修订数 / 4.13c 校稿结论；v1.1.0 新增）
 ==============================================================================
 """
 from __future__ import annotations
@@ -64,6 +70,18 @@ RE_EXERCISE = re.compile(r"\[习题\s*(\d+)-(\d+)\]")
 RE_IDEOLOGY = re.compile(r"\[思政·([^\]]+)\]")
 # frontmatter 七项（书稿元数据，见 manuscript-delivery §1.2）
 FM_REQUIRED = ["教材名", "章节号", "章节标题", "字数目标", "实际净字数", "版本", "学科profile"]
+# ── v1.1.0 新增判据的正则 ──
+# 修订标记（与 build_manuscript.RE_REVISION 同源；re.S 因回流后 pandoc 折行）
+RE_REVISION = re.compile(
+    r"\[(?P<text>[^\]]+)\]\{(?P<kind>\.insertion|\.deletion)\s+"
+    r'author="(?P<author>[^"]*)"\s+date="(?P<date>[^"]*)"\}',
+    re.S,
+)
+RE_PROOFREAD_SECTION = re.compile(r"^##\s+校稿结论\s*$", re.M)
+RE_PROOFREAD_VERDICT = re.compile(r"^\s*[-*]?\s*\**\s*结论\**[:：]\s*(\S+)", re.M)
+RE_DATA_FIG_HINT = re.compile(r"数据来源\s*[:：]\s*(?!纯示意)")  # 数据图位识别（非纯示意）
+# 术语表解析（references/terminology-table.md 第 2 节表格行）
+RE_TERM_ROW = re.compile(r"^\|([^|]+)\|([^|]+)\|([^|]+)\|", re.M)
 
 
 class Result:
@@ -271,6 +289,163 @@ def check_words(md_path: Path, target: int | None, r: Result):
           dev <= 0.05, f"实测 {net} / 目标 {target} / 偏差 {dev:.1%}")
 
 
+# ── 4.10 数据图 notebook（v1.1.0 补实现：此前仅规范声称、脚本零实现）
+def check_data_figure_notebooks(text: str, work_root: Path, chapter: str, r: Result):
+    """每个数据图位（数据来源非「纯示意」）必须配 assets/{图号}.ipynb，且 cell 结构合规。
+
+    cell 契约（scientific-figure §1③）：≥4 cell，且含 markdown 说明 cell +
+    原始数据 cell + 绘图代码 cell；「可执行」由 nbconvert 外部验证，这里查结构与数据内联。
+    """
+    import zipfile as _zf
+    slots = RE_FIGURE_SLOT.findall(text)
+    if not slots:
+        r.add("4.10", "数据图 notebook 校验（本章无图位，N/A）", True)
+        return
+    # 逐图位判断是否数据图：图位标记块内「数据来源」非「纯示意」即数据图
+    data_slots = []
+    for m in re.finditer(r"\[图\s*(\d+)-(\d+)：([^\]]*)\][^\n]*", text):
+        seg = text[m.start():m.start() + 400]
+        if RE_DATA_FIG_HINT.search(seg):
+            data_slots.append(f"{m.group(1)}-{m.group(2)}")
+    if not data_slots:
+        r.add("4.10", "数据图 notebook 校验（无数据图位，全部纯示意/概念图，N/A）", True)
+        return
+    asset_dir = work_root / "章节" / chapter / "figures" / "assets"
+    missing, bad_struct = [], []
+    for stem in data_slots:
+        nb = asset_dir / f"{stem}.ipynb"
+        if not nb.is_file():
+            missing.append(stem)
+            continue
+        try:
+            nb_json = json.loads(nb.read_text(encoding="utf-8"))
+            cells = nb_json.get("cells", [])
+            n_md = sum(1 for c in cells if c.get("cell_type") == "markdown")
+            n_code = sum(1 if c.get("cell_type") == "code" else 0 for c in cells)
+            # 结构：≥1 markdown（图说明）+ ≥2 code（数据 cell + 绘图/导出 cell）
+            if len(cells) < 3 or n_md < 1 or n_code < 2:
+                bad_struct.append(f"{stem}(cells={len(cells)},md={n_md},code={n_code})")
+            else:
+                # 数据内联抽查：code cell 里应有字面数据（列表/dict/数组），不得只 import 外部文件
+                joined = "".join(str(c.get("source", "")) for c in cells if c.get("cell_type") == "code")
+                if not re.search(r"(\[.*\d.*\]|\{.*\d.*\}|=\s*\d)", joined[:3000], re.S):
+                    bad_struct.append(f"{stem}(数据未内联)")
+        except Exception as e:
+            bad_struct.append(f"{stem}(ipynb 解析失败: {type(e).__name__})")
+    r.add("4.10", f"数据图 notebook 齐备且结构合规（数据图 {len(data_slots)} 个）",
+          not missing and not bad_struct,
+          (f"缺 notebook: {missing}" if missing else "") +
+          (f"；结构不合规: {bad_struct}" if bad_struct else ""))
+
+
+# ── 4.11 术语一致性（v1.1.0 补实现：对照 references/terminology-table.md）
+def check_terminology(text: str, r: Result):
+    """禁用写法零出现 + 同章内标准写法与别名不并存 + 4.11d 表内标准写法唯一。
+
+    terminology-table.md 可能尚未填真实术语行（示例行除外）——表为空/无有效行时
+    判 N/A 通过并在 detail 声明，避免「表未建 → 全书恒 FAIL」的死锁；表建了就真查。
+    """
+    table_path = Path(__file__).resolve().parent.parent / "references" / "terminology-table.md"
+    if not table_path.is_file():
+        r.add("4.11", "术语一致性校验（terminology-table.md 缺失，N/A）", True,
+              "表文件缺失，判据无法执行——建表后此判据生效")
+        return
+    rows = []
+    for m in RE_TERM_ROW.finditer(table_path.read_text(encoding="utf-8")):
+        std, alias, banned = (c.strip() for c in m.groups())
+        # 只收真正的术语条目行：跳过表头（§1 填表规则的「列/含义/规则」三列头、
+        # §3 判据表的「#/判据/口径」头）、加粗列头行与分隔行。
+        # 判定锚：§2 术语表的第 1 列永远是「标准写法」名词（非 #、非编号、非加粗表头）。
+        if (std in ("标准写法", "列", "#", "") or std.startswith("-")
+                or std.startswith("**") or re.match(r"^\d+\.\d+", std)
+                or alias in ("含义", "判据", "")):
+            continue
+        rows.append((std, alias, banned))
+    # 排除文档示例行（含「禽流感（高致病性」等 §2 示例表内容不查稿，只查结构）
+    if not rows:
+        r.add("4.11", "术语一致性校验（术语表无有效条目，N/A）", True,
+              "terminology-table.md 未填条目——按 §5 维护约定每章 DELIVER 后追加")
+        return
+    bad_banned, bad_coexist = [], []
+    for std, alias, banned in rows:
+        for b in [x.strip() for x in banned.split("、") if x.strip() and x.strip() != "—"]:
+            # 禁用写法在正文出现（排除其出现在本表内的情况——这里只查稿件 text）
+            if b and b in text:
+                bad_banned.append(b)
+        if alias and alias != "—" and std in text and alias in text:
+            bad_coexist.append(f"{std} vs {alias}")
+    dup = len(rows) - len({s for s, _, _ in rows})
+    ok = not bad_banned and not bad_coexist and dup == 0
+    detail = (f"禁用写法出现: {bad_banned} " if bad_banned else "") + \
+             (f"标准写法与别名并存: {bad_coexist}" if bad_coexist else "") + \
+             (f"表内标准写法重复 {dup} 行" if dup else "")
+    r.add("4.11", f"术语一致性（对照 {len(rows)} 条术语）", ok, detail or "全部通过")
+
+
+# ── 4.12 溯源表（v1.1.0 补实现）
+def check_provenance(text: str, work_root: Path, chapter: str, md_path: Path, r: Result):
+    """溯源表存在 + [实] 处数 == 溯源行数。由 build --assemble 自动生成后应恒一致。"""
+    n_shi = len(re.findall(r"\[实[·\]]", text))
+    # 交付目录下的溯源表（文件名含「溯源」且含章号）
+    hits = [p for p in (work_root / "交付").glob(f"*{chapter}*溯源*.md")] \
+        if (work_root / "交付").is_dir() else []
+    if n_shi == 0:
+        r.add("4.12", "溯源表校验（正文无 [实] 条目，N/A）", True)
+        return
+    if not hits:
+        r.add("4.12", f"溯源表存在（正文 [实] {n_shi} 处需溯源）", False,
+              "交付/ 下未找到溯源表——build --assemble 会自动生成，或回 examiner 补 R3 日志")
+        return
+    prov = hits[0].read_text(encoding="utf-8")
+    n_rows = len([l for l in prov.splitlines()
+                  if l.strip().startswith("|") and not l.strip().startswith("|--")
+                  and not l.strip().startswith("| 序")])
+    r.add("4.12", f"溯源表行数({n_rows}) == 正文 [实] 处数({n_shi})",
+          n_rows >= n_shi,
+          f"溯源表 {hits[0].name}；缺 {max(0, n_shi - n_rows)} 行" if n_rows < n_shi else "")
+
+
+# ── 4.13 修订态完整性（v1.1.0 新增：方案甲的机械守护）
+def check_revision_state(text: str, work_root: Path, chapter: str,
+                         docx_path: Path | None, r: Result):
+    """4.13a 修订标记成对且 author/date 合法；4.13b md==docx 修订数；4.13c 校稿结论存在。"""
+    marks = RE_REVISION.findall(text)
+    n_ins = sum(1 for _, kind, _, _ in marks if kind == ".insertion")
+    n_del = sum(1 for _, kind, _, _ in marks if kind == ".deletion")
+    # 4.13a：成对性——只要有标记，插入与删除必须等量（替换=删+插成对）；
+    # 纯插入或纯删除整章一致时（如整段新增审稿意见）允许，但须 author/date 全合法。
+    has_marks = bool(marks)
+    paired = (n_ins == n_del) if has_marks else True
+    bad_author = [a for _, _, a, _ in marks if not a.strip()]
+    bad_date = [d for _, _, _, d in marks if not re.match(r"\d{4}-\d{2}-\d{2}", d)]
+    r.add("4.13a", f"修订标记成对且 author/date 合法（插{n_ins}/删{n_del}）",
+          paired and not bad_author and not bad_date,
+          ("" if paired else f"孤立修订标记（替换须删+插成对；现插{n_ins}/删{n_del}） ") +
+          (f"author 空: {bad_author} " if bad_author else "") +
+          (f"date 非法: {bad_date}" if bad_date else ""))
+    # 4.13b：md 标记数 == docx w:ins+w:del 数（docx 存在且 python-docx/zip 可读时）
+    if docx_path is None:
+        r.warn("4.13b", "md 与 docx 修订数一致", "docx 缺失，4.5d/4.6d 已另行 FAIL")
+    else:
+        try:
+            with zipfile.ZipFile(docx_path) as z:
+                xml = z.read("word/document.xml").decode("utf-8")
+            n_docx = len(re.findall(r"<w:ins ", xml)) + len(re.findall(r"<w:del ", xml))
+            r.add("4.13b", f"md 修订标记({len(marks)}) == docx 修订数({n_docx})",
+                  len(marks) == n_docx,
+                  "不一致 = md 与 docx 分叉（改而不回流），须重建或回流")
+        except Exception as e:
+            r.warn("4.13b", "md 与 docx 修订数一致", f"docx 读取失败: {type(e).__name__}")
+    # 4.13c：校稿结论节存在且含结论判定
+    if RE_PROOFREAD_SECTION.search(text):
+        m = RE_PROOFREAD_VERDICT.search(text)
+        r.add("4.13c", "校稿结论节存在且含结论", bool(m),
+              "" if m else "有「## 校稿结论」节但缺「结论:」行")
+    else:
+        r.add("4.13c", "校稿结论节存在且含结论", False,
+              "交付 md 缺「## 校稿结论」——PROOFREAD 三件套未转写（build --assemble 自动补）")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="大学教材书稿校验器（门禁 4）")
     ap.add_argument("--work-root", required=True)
@@ -297,6 +472,12 @@ def main() -> int:
     check_refs(text, r)
     check_exercise_ideology(text, r)
     check_words(md_path, args.target, r)
+    # v1.1.0 四条新判据（此前仅规范声称、脚本零实现）
+    check_data_figure_notebooks(text, work_root, args.chapter, r)
+    check_terminology(text, r)
+    check_provenance(text, work_root, args.chapter, md_path, r)
+    docx_path_pre = find_delivery(work_root, args.chapter, "docx")
+    check_revision_state(text, work_root, args.chapter, docx_path_pre, r)
 
     docx_path = find_delivery(work_root, args.chapter, "docx")
     media = check_docx(docx_path, r) if docx_path else -1

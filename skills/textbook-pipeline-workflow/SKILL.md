@@ -26,7 +26,9 @@ version: 1.2.0
 │   ├── sections/{节号}.md         # 节级正文（subject-writer）——大章节强制（批次 C4）
 │   ├── draft.md                   # 章节正文（由 sections/ 拼接，subject-writer）
 │   ├── review/round{N}_report.md  # 审查报告（quality-examiner）
-│   │   └── r3_verification_log.md # 引用核验明细 → 溯源表来源
+│   │   ├── r3_verification_log.md # 引用核验明细 → 溯源表来源（build --assemble 自动转写）
+│   │   ├── proofread.md           # 校对后稿（R4 修订标记版，quality-examiner；v1.1.0）
+│   │   └── proofread_revisions.md # 修订记录+结论行（ASSEMBLE 转写校稿结论节；v1.1.0）
 │   └── figures/{图号}.md          # 图表代码（visual-instructional-designer）
 │       └── assets/{图号}.ipynb    # 数据图的原始数据+绘图代码（批次 C5）
 ├── 知识库/retrieval/
@@ -40,9 +42,10 @@ version: 1.2.0
 │   └── team-proposal-{ch##}.yaml  # 动态团队提案（未确认前不生效）
 ├── 学习/候补/{日期}_{ch##}_候补.yaml   # LEARN 候补池（≥3 候选或用户 ack 才合并）
 └── 交付/
-    ├── {教材名}_{ch##}.md         # 书稿【源格式】（主理人装配；唯一编辑入口）
-    ├── {教材名}_{ch##}.docx       # 书稿【交付格式】（由 md 生成，禁止手改）
-    └── {教材名}_{ch##}.溯源.md     # 溯源表（章节→证据→引用→文本位置；批次 C3）
+    ├── {教材名}_{ch##}.md         # 书稿【源格式】（主理人装配；唯一编辑入口；承载修订标记 §1.5）
+    ├── {教材名}_{ch##}.docx       # 书稿【交付格式】（由 md 生成；Word 修订态审改后须回流 --apply-revisions）
+    ├── {教材名}_{ch##}_审阅.docx  # 审阅版（--revisions：修订标记→Word 真修订；v1.1.0）
+    └── {教材名}_{ch##}.溯源.md     # 溯源表（build --assemble 自动生成；判据 4.12；v1.1.0）
 ```
 
 > **交付形态（2026-10-30 修订）**：交付物是**大学教材书稿**，`.md` 为源、`.docx` 为交付格式。
@@ -74,7 +77,7 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性 |
 | PRODUCE | subject-writer | sections/{节号}.md → draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
 | VERIFY | quality-examiner | 审查报告（R1-R5）+ verdict | PROOFREAD / RETRIEVE / PRODUCE | 4 轮全 pass |
-| PROOFREAD | quality-examiner | 校对后稿 | CONSOLIDATION | 清洁无流程标注 |
+| PROOFREAD | quality-examiner | 校稿三件套：`review/proofread.md`（校对后稿·带修订标记）+ `review/proofread_revisions.md`（修订记录+结论）→ ASSEMBLE 转写进交付 md 的「校稿结论」节（判据 4.13c） | CONSOLIDATION | 修订标记成对（4.13a）+ 结论已出 |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
 | VISUALIZE | visual-instructional-designer | 图表代码包 | ASSEMBLE | 图文一致 |
 | ASSEMBLE | 主理人 | 装配稿 + docx（md 源 → 双格式） | DELIVER | 组件齐全 + docx 构建成功 |

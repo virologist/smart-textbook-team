@@ -3,6 +3,61 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-10-31
+
+### 修订态交付链（方案甲：md 承载修订语义 → docx 渲染 Word 真修订；管家拍板 + 铁律收窄）
+
+> **诊断背景（2026-10-31 从零核查实测）**：① 全包 grep `追踪修订|track changes|w:ins|w:del|批注`
+> = **0 命中**——「审稿校稿须在 Word 追踪修订模式下修改或标注」无任何载体；规范层「docx 禁止手改」
+> 与该要求直接冲突。② 判据 4.10/4.11/4.12 只有 manuscript-delivery §4 声称、`check_manuscript.py`
+> **零实现**（grep `4.10|4.11|4.12|ipynb|溯源|术语` 在 scripts/ 与 tests/ 全 0 命中）。
+> ③ PROOFREAD 态产出「校对后稿」无人产出（examiner 副作用禁改 draft + 无成员认领）——校稿结论无落点。
+> ④ 溯源表「ASSEMBLE 转写」从未发生（`assemble_md()` 不读 r3_verification_log）。
+
+### Added
+- **审稿修订标记（manuscript-delivery §1.5）**：md 源承载修订语义
+  （`[旧]{.deletion author="X" date="D"}[新]{.insertion author="X" date="D"}`），
+  pandoc 渲染为 Word 原生 `<w:ins>`/`<w:del>`（实测 3.13 + `postprocess_docx` 后处理不破坏修订标记）
+- **`build_manuscript.py --revisions`**：构建审阅版 `交付/{教材名}_{ch##}_审阅.docx`
+  （含 Word 真修订态，剔除校稿结论节——内部 QA 不进审阅对象）
+- **`build_manuscript.py --apply-revisions --from-docx <审改过的docx> --revision-mode accept|reject|all`**：
+  Word 审改回流 md（防 md/docx 分叉）；回流自动清洗 TOC 伪标题与转义方括号、重算净字数、补写校稿结论节。
+  三模式语义实测：accept=净稿（标记 0）/ reject=恢复原文 / all=保留标记（2 处往返无损）
+- **溯源表自动生成**：`--assemble` 从 `review/r3_verification_log.md` 转写
+  `交付/{教材名}_{ch##}.溯源.md`（兑现 §4.1 从未发生的承诺；日志缺失 → WARN + 4.12 FAIL）
+- **校稿结论落盘**：PROOFREAD 三件套（`review/proofread.md` 校对后稿·修订标记版 +
+  `review/proofread_revisions.md` 修订记录+结论行）→ ASSEMBLE 自动转写进交付 md
+  「## 校稿结论」节（判据 4.13c）；结论/修订计数/遗留待办随 docx 交付
+- **门禁 4 四条新判据（`check_manuscript.py` 真实现）**：
+  **4.10** 数据图 ipynb（存在 + cell 结构合规 + 数据内联抽查；此前零实现）；
+  **4.11** 术语一致性（对照 terminology-table 4 条，N/A 豁免防空表死锁；此前零实现）；
+  **4.12** 溯源表（`[实]` 处数 == 溯源行数；此前零实现）；
+  **4.13** 修订态完整性（4.13a 标记成对+author/date 合法 / 4.13b md 标记数==docx 修订数——
+  「改而不回流」机械拦截 / 4.13c 校稿结论存在）
+- **静态契约 F36a-f（6 条）**：判据实装守护、双支柱（--revisions/--apply-revisions）、
+  铁律收窄文案、PROOFREAD 三件套三方一致（examiner 义务/pipeline 产出/路径登记）、
+  结论行格式同源、显式 --assemble 重装语义。**245 → 252 计分项**
+- **CI 第 7 道扩展**：修订往返回归（审阅版含 w:ins/w:del 断言 + 回流 accept 标记清零 +
+  回流后重建 docx 再 strict 全过）
+
+### Changed
+- **铁律收窄（管家拍板）**：「docx 禁止手改」→「**改 docx 不回流才禁止**」——docx 允许且推荐
+  在 Word 追踪修订模式下审改；违规对象从「在 docx 上改」换成「改完不回流」（4.13b 拦截）
+- **PROOFREAD 断链修复**：13 态表产出列落主「校稿三件套」；examiner 增第 6 条核心能力
+  （校对后稿以修订标记呈现——「生成者≠审查者」靠修改可见维持，禁改 draft 本体的边界不变）；
+  path-ownership 登记两条 review/ 路径 + 交付/ 动作扩写
+- **显式 `--assemble` 重装语义**：交付 md 已存在时从 `章节/` 重装覆盖（旧语义只在缺失时装配
+  → PROOFREAD 三件套完成后旧交付稿永不更新——实测断链）；溯源表+校稿结论转写移出
+  assemble-only 分支，两条路径都补
+- 版本四处同步 2.2.2 → 2.3.0；README 主理人体积声明 16.0KB → 18.4KB（M10a/M10c 实际拦截后修正）
+
+### Verified
+- 四套门禁全绿：静态契约 252/252（1.000）+ router 40/40 + vendor 6/6 + manifest 31/31
+- CI 模拟（第 7 道全流程含修订往返）：构建 exit 0 / 审阅版含 w:ins+w:del / strict 全过 /
+  回流后标记清零且「修订表述」在文 / 回流后重建再 strict 全过
+- 负向实验：孤立修订标记 → 4.13a FAIL；删校稿结论节 → 4.13c FAIL；删溯源表 → 4.12 FAIL；
+  数据图位缺 ipynb → 4.10 FAIL（补合规 notebook 后转 PASS）；md/docx 修订数不一致 → 4.13b FAIL
+
 ## [2.2.2] - 2026-10-30
 
 ### 批次 1：机制补强（独立从零诊断后，按用户拍板 Q1-Q5 执行；低风险项先行）

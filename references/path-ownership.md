@@ -31,12 +31,14 @@ version: 1.0.0
 | `章节/{ch##}/draft.md` | subject-writer | 写/改（版本 R1→R2→R3 递增；由 sections/ 拼接） | 只读；**examiner/designer 均不得直接修改**（修正意见走回传清单，由编排者转 writer） |
 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner | 写/改 | 只读 |
 | `章节/{ch##}/review/r3_verification_log.md` | quality-examiner | append | 只读 |
+| `章节/{ch##}/review/proofread.md` | quality-examiner | 写/改（校对后稿·带修订标记，v1.1.0） | 只读 |
+| `章节/{ch##}/review/proofread_revisions.md` | quality-examiner | 写/改（修订记录+结论行，v1.1.0） | 只读 |
 | `章节/{ch##}/review/interventions.md` | smart-textbook-team-team-lead | append | 只读 |
 | `章节/{ch##}/figures/{图号}.md` | visual-instructional-designer | 写/改 | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.mmd/.svg` | visual-instructional-designer | 写（图表源码） | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.ipynb` | visual-instructional-designer | 写（数据图代码：原始数据+绘图同存，批次 C5 新增） | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.png/.pdf` | **smart-textbook-team-team-lead**（由 `build_manuscript.py` 栅格化/导出） | 写 | 只读 |
-| `交付/`（全部） | smart-textbook-team-team-lead | 写/改 | **禁写** |
+| `交付/`（全部） | smart-textbook-team-team-lead | 写/改（含审阅版 docx、溯源表、校稿结论节转写；v1.1.0） | **禁写** |
 | `运行态/workflow-state.yaml` | smart-textbook-team-team-lead（写 `phase`/`circuit`/`budget`）；成员仅增量 patch `artifacts.<自己字段>` | 见左 | 只 patch 自身 `artifacts` 子树 |
 | `运行态/progress.md` | smart-textbook-team-team-lead；成员经 `scripts/progress.py update` 写自己 phase 行 | upsert 自身 phase 行 | 禁改他人 phase 行、禁 init |
 | `运行态/trace.jsonl` | 全体 append（各自 `record_trace.py`） | append | append（append-only，不冲突） |
@@ -63,3 +65,7 @@ version: 1.0.0
   - 新增 `运行态/dynamic-members.yaml`、`运行态/team-proposal-*.yaml`、`学习/团队档案/` 登记
   - 修正 `学习/候补/` → `学习/候补/`（拼音残留 typo，D-9）
   - 覆盖路径数 15 → 20
+- v1.2.0 [2026-10-31] 修订态交付链（v1.1.0 方案甲）：
+  - 新增 `review/proofread.md` + `review/proofread_revisions.md`（校稿三件套，归属 quality-examiner——修复 PROOFREAD「校对后稿」无人产出断链）
+  - `交付/` 归属者动作扩写：含审阅版 docx 构建、溯源表自动生成、校稿结论节转写
+  - 交付 docx 的 Word 修订态审改属审稿场景例外；**回流动作（--apply-revisions）归编排者**（docx 审改不改归属，改而不回流才违规）

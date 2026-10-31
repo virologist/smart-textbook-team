@@ -1,7 +1,7 @@
 ---
 name: manuscript-delivery
-description: "University textbook MANUSCRIPT delivery spec (not slides): Markdown as the single source of truth, DOCX as the deliverable format. Defines md structure contract (heading hierarchy, frontmatter metadata, figure/exercise/ideology markers, cross-reference syntax), built-in DOCX typesetting defaults with override mechanism, and the dual-track figure strategy (md keeps renderable code; docx embeds rasterized PNG). Load in ASSEMBLE/DELIVER phases, or whenever the deliverable format, docx typesetting, or figure handling is in question. Trigger words: 书稿 / docx / 交付格式 / 版式 / 题注 / 目录 / 参考文献格式 / 图表栅格化 / manuscript."
-version: 1.0.0
+description: "University textbook MANUSCRIPT delivery spec (not slides): Markdown as the single source of truth carrying revision semantics, DOCX as the deliverable + review vehicle rendered with real Word tracked changes (w:ins/w:del). Defines md structure contract (heading hierarchy, frontmatter, figure/exercise/ideology markers, cross-reference syntax, review-revision marks §1.5, proofread-conclusion §4.2), built-in DOCX typesetting with override, dual-track figures, review-copy build (--revisions) and Word-backflow (--apply-revisions). Load in ASSEMBLE/DELIVER/PROOFREAD phases, or whenever deliverable format, docx typesetting, revision marks, or figure handling is in question. Trigger words: 书稿 / docx / 交付格式 / 版式 / 题注 / 目录 / 参考文献格式 / 图表栅格化 / 修订 / 追踪修订 / 审阅版 / manuscript."
+version: 1.1.0
 ---
 
 # manuscript-delivery — 大学教材书稿交付规格（md 源 + docx 交付）
@@ -13,17 +13,21 @@ version: 1.0.0
 
 ## 0. 交付形态铁律
 
-| 格式 | 定位 | 路径 | 可否手改 |
+| 格式 | 定位 | 路径 | 修订态政策（v1.1.0 放宽） |
 |---|---|---|---|
-| **Markdown** | **源格式 · 唯一真相**（可编辑、可复用、可 diff、可版本化） | `交付/{教材名}_{ch##}.md` | ✅ 唯一编辑入口 |
-| **DOCX** | **交付格式**（供出版社/教务处/排版流转） | `交付/{教材名}_{ch##}.docx` | ❌ **禁止手改**（改则与源分叉） |
+| **Markdown** | **源格式 · 唯一真相**（可编辑、可复用、可 diff、可版本化） | `交付/{教材名}_{ch##}.md` | ✅ 唯一编辑入口；**修订语义在此承载**（§1.5） |
+| **DOCX** | **交付格式 + 审稿工作载体**（Word 追踪修订模式审改） | `交付/{教材名}_{ch##}.docx` | ✅ **允许且推荐在 Word 追踪修订模式下修改/批注**（方案甲，2026-10-31 管家确认） |
+| **审阅版 DOCX** | 含真修订态的审稿交付 | `交付/{教材名}_{ch##}_审阅.docx` | ✅ 由审稿修订标记渲染生成（§5.1） |
 
-**禁止**：
-1. ❌ 先出 docx 再改 docx——任何修改必须回到 md 重新构建
-2. ❌ 把 docx 当作源——它是一次性产物，可由 md 完全重建
-3. ❌ 交付 md 与 docx 内容不一致的版本（门禁 4 会拦截）
+**禁止（v1.1.0 收窄为一条）**：
+1. ❌ **改 docx 不回流**——在 Word 里接受/拒绝修订或做任何修改后，必须回流 md（`build_manuscript.py --apply-revisions`，§5.2）再重建；否则 md 与 docx 分叉，md 不再是真相（门禁 4.13 拦截）
 
-**为什么 md 是源**：教材是长周期资产（修订版、多章节复用、跨学期维护）。docx 是二进制，diff 与合并基本不可用；md 可 git 管理，且 Mermaid/表格源码可编辑复用——这正是「双轨图表」要保的东西。
+> **v1.1.0 铁律修订（2026-10-31，管家拍板方案甲）**：原文案「docx 不得手工直接修改（见 §0 政策表）」
+> 与「审稿/校稿须在 Word 追踪修订模式下修改或标注」直接冲突——修订无载体。
+> 现改为：**修订允许发生在 docx（Word 追踪修订态），但 md 必须同步承载修订语义**；
+> 分叉 = 交付物内部矛盾，按门禁 4 处置。docx 由 md 完全重建的能力不变。
+
+**为什么 md 仍是源**：教材是长周期资产（修订版、多章节复用、跨学期维护）。docx 是二进制，diff 与合并基本不可用；md 可 git 管理，且修订标记（§1.5）让审稿意见同样可 diff、可核验——**md 承载修订语义，docx 只是修订语义的 Word 渲染态**。
 
 ---
 
@@ -87,6 +91,29 @@ version: 1.0.0
 ```
 
 编号按**正文首次引用顺序**（顺序编码制），不按字母序。
+
+### 1.5 审稿修订标记（v1.1.0 新增 · 方案甲核心）
+
+> **物理载体**：修订语义存于 md 源（可 diff、可 git、可机械核验）；
+> 构建时由 pandoc 渲染为 Word 原生修订（`<w:ins>`/`<w:del>`），审稿人在 Word 里所见即所得。
+> 实测依据：pandoc ≥2.x 支持，本仓实测 pandoc 3.13 + 后处理不破坏修订标记（2026-10-31）。
+
+| 语义 | md 写法 | 渲染到 Word |
+|---|---|---|
+| 插入新文本 | `[新表述]{.insertion author="严正词" date="2026-10-31"}` | 红色下划线插入修订 |
+| 删除旧文本 | `[旧表述]{.deletion author="严正词" date="2026-10-31"}` | 红色删除线删除修订 |
+| 替换（删+插成对） | `[旧]{.deletion author="A" date="D"}[新]{.insertion author="A" date="D"}` | 一处完整替换修订 |
+| 审稿批注（不改文） | `<!-- 批注(严正词): 建议补数据来源 -->`（HTML 注释） | md 保留；docx 审阅版剔除或转尾注 |
+
+**规则**：
+1. `author` 必须是成员 ID 或真实审稿人姓名（溯源用）；`date` 为 ISO `YYYY-MM-DD`
+2. 修订标记**只出现在正文段落**，禁入 frontmatter / 图表位 / 代码块（pandoc 不解析块内 span）
+3. **交付态成对约束**：一处替换必须 deletion+insertion 成对、同 author 同 date——孤立标记由判据 4.13 拦截
+4. 正式发布版（用户接受全部修订后）用 `--apply-revisions` 生成净稿，标记清零（4.13a 校验）
+
+**校稿结论写入文档（§4.2 契约的落点）**：PROOFREAD 轮的校稿结论以 `## 校稿结论` 节写入
+交付 md（构建时同步进 docx）——含「结论：可交付/需返修」、按轮次汇总的修订计数
+（插入 N 处/删除 N 处/批注 N 条）、遗留待办与责任人。**结论缺失 = 门禁 4.13c FAIL**。
 
 ---
 
@@ -232,6 +259,13 @@ python3 scripts/check_manuscript.py \
 | 4.9 | 思政融入点已标注（存在性） | 回 writer |
 | 4.10 | **数据图 notebook**（`assets/{图号}.ipynb` 存在且可执行，配对每个数据图位；见 `skills/scientific-figure`） | 补建或回 designer |
 | 4.11 | **术语一致性**（对照 `references/terminology-table.md`：禁用写法零出现 / 同概念多写法未并存 / 首见位置正确） | 回 writer |
+| 4.12 | **溯源表**（`交付/{教材名}_{ch##}.溯源.md` 存在；`[实]` 条数 == 溯源行数；标识符在参考文献中存在；由 `--assemble` 自动生成） | 回 examiner 补 R3 日志后重建 |
+| 4.13 | **修订态完整性**（4.13a 修订标记成对且 author/date 合法；4.13b md 标记与 docx 修订数一致；4.13c 校稿结论节存在且含结论） | 回 examiner/重建 |
+
+> **v1.1.0 实现补齐说明（2026-10-31）**：4.10–4.12 此前只有本表声称、
+> `check_manuscript.py` **零实现**（实测 grep `4.10|4.11|4.12|ipynb|溯源|术语` 在
+> scripts/ 与 tests/ 全部 0 命中——属「规范声称超出实际能力」缺陷复发）。
+> 本版三条判据与 4.13 已在脚本真实落地，由负向实验守护（破坏对应物必 FAIL）。
 
 ## 4.1 溯源表（交付物必含，批次 C3）
 
@@ -257,9 +291,27 @@ python3 scripts/check_manuscript.py \
 **门禁 4.12（本 skill 契约）**：交付前检查——① 溯源表存在；② `[实]` 条数 == 溯源行数；
 ③ 溯源行的标识符编号在参考文献中存在。三者任一不满足 → FAIL。
 
-> 生成方式：examiner R3 核验时已逐条记录「位置 + 标识符 + 结果」到
-> `章节/{ch##}/review/r3_verification_log.md` → ASSEMBLE 阶段据此转写为溯源表
-> （**不改内容，只做格式转换**，避免二次引入不一致）。
+> 生成方式（v1.1.0 起自动）：examiner R3 核验时已逐条记录「位置 + 标识符 + 结果」到
+> `章节/{ch##}/review/r3_verification_log.md` → ASSEMBLE 阶段
+> `build_manuscript.py --assemble` **自动转写**为 `交付/{教材名}_{ch##}.溯源.md`
+> （不改内容，只做格式转换，避免二次引入不一致）。日志缺失 → 构建器 WARN +
+> 判据 4.12 FAIL（溯源表是交付物必备件，不再是"有则附"的软要求）。
+
+### 4.2 校稿结论（v1.1.0 新增 · 修复 PROOFREAD 断链）
+
+> **断链实测（2026-10-31）**：pipeline 13 态表声明 PROOFREAD 产出「校对后稿」，
+> 但 quality-examiner 契约为「只写 review/ 下文件；禁止改 draft」——
+> 全包无任何成员产出「校对后稿」，校稿结论更无落点。
+
+**PROOFREAD 态产出改为三个文件**（归属 quality-examiner，登记进 path-ownership）：
+
+| 产出 | 路径 | 内容 |
+|---|---|---|
+| 校对后稿 | `章节/{ch##}/review/proofread.md` | 在 draft 基础上仅做风格/术语修订的稿子，修改处**全部带修订标记**（§1.5）——生成者≠审查者的分离靠「修改可见」维持 |
+| 修订记录 | `章节/{ch##}/review/proofread_revisions.md` | 逐条修订清单：位置/类型(插删)/理由(对应 R4 判据)/作者 |
+| 校稿结论 | 写入交付 md 的 `## 校稿结论` 节（由 ASSEMBLE 从上行两件转写） | 结论(可交付/需返修) + 修订计数 + 遗留待办 + 责任人 |
+
+**门禁 4.13（修订态完整性，判据见下表）**：md 修订标记与 docx 修订态一致 + 校稿结论已写入。
 
 ---
 
@@ -267,12 +319,41 @@ python3 scripts/check_manuscript.py \
 
 | 阶段 | 变化 |
 |---|---|
+| `PROOFREAD` | 产出三件套：校对后稿（带修订标记）+ 修订记录 + 校稿结论（§4.2；v1.1.0 修复无人产出断链） |
 | `CONSOLIDATION` | 六项统稿 checklist 不变，新增第 7 项：交叉引用可解析性 |
-| `ASSEMBLE` | 装配 md（既有）→ **构建 docx（本 skill）** |
-| `DELIVER` | `present_files` 交付 **md + docx 双格式** + 质量报告（含未栅格化图表数） |
+| `ASSEMBLE` | 装配 md（含校稿结论节）→ 自动生成溯源表 → **构建 docx（默认带修订态）** |
+| `DELIVER` | `present_files` 交付 **md + docx（+审阅版，如有修订）+ 溯源表** + 质量报告（含未栅格化图表数、修订计数、`[待核实]` 数） |
+
+### 5.1 审阅版（v1.1.0 新增）
+
+```bash
+# 构建审阅版：md 中的修订标记 → Word 真修订态（w:ins/w:del，含 author/date）
+python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter ch01 --revisions
+# 产物：交付/{教材名}_{ch##}_审阅.docx —— 出版社/作者在 Word 里逐条接受或拒绝
+```
+
+- 审阅版**不含校稿结论节**（结论属内部 QA，正文修订才是审阅对象）
+- md 与交付 docx 始终含修订标记（真相态）；净稿只在用户明确要求时生成
+
+### 5.2 Word 审改回流（v1.1.0 新增 · 防 md/docx 分叉）
+
+```bash
+# 审稿人在 Word 里接受/拒绝/继续标注修订后，回流 md：
+python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter ch01 \
+    --apply-revisions --from-docx 交付/{教材名}_{ch##}_审阅.docx
+# 行为：pandoc --track-changes=accept|reject 按 --revision-mode 读 docx → 覆写交付 md
+#       → 删除/接受后的 docx 由 md 重建 → 三格式重新对齐
+```
+
+- 回流后交付 docx **必须重建**（禁止保留旧 docx）——判据 4.13b 校验 md 标记数 == docx 修订数
+- 回流是编排者（team-lead）职责，登记进 path-ownership（docx 审改属审稿场景例外，回流动作仍归编排）
 
 > **注意**：`pipeline skill` 目录树中的 `交付/{教材名}_{ch##}.md` 现为**源格式**；docx 为同名的派生交付物，两者成套交付。
 
 ## 变更记录
 
+- v1.1.0 [2026-10-31] 修订态交付链（方案甲，管家拍板）：铁律收窄为「改 docx 不回流才禁止」；
+  新增 §1.5 审稿修订标记（md 承载修订语义 → pandoc 渲染 Word 真修订）；§4.2 校稿三件套
+  修复 PROOFREAD 无人产出断链；判据 4.10/4.11/4.12/4.13 在脚本真实落地（此前三条零实现）；
+  溯源表改为 --assemble 自动生成；§5.1 审阅版 + §5.2 Word 审改回流。
 - v1.0.0 [2026-10-30] 初版：兑现被虚构引用的 docx 交付链；确立 md 源 + docx 交付双格式铁律、双轨图表（含栅格化三级降级）、内置版式默认 + 三级覆写、门禁 4 七项判据。

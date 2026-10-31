@@ -75,6 +75,16 @@ RE_FIGURE_SLOT = re.compile(r"\[图\s*(\d+)-(\d+)：([^\]]*)\]")
 # 题注行：允许带 `[` 前缀（图位占位与题注被合并进同一段落时 pandoc 会保留方括号）
 RE_CAPTION = re.compile(r"^\s*\[?(图|表)\s*\d+-\d+")
 RE_FENCE = re.compile(r"```(mermaid|svg)\s*\n(.*?)```", re.S)
+# ── 审稿修订标记（v1.1.0 方案甲：md 承载修订语义 → pandoc 渲染 Word 真修订）──
+# 插入/删除 span：[文本]{.insertion author="X" date="D"} / [文本]{.deletion author="X" date="D"}
+# re.S：回流后 pandoc 会把长 span 折行（author 与 date 可能分行），须跨行匹配
+RE_REVISION = re.compile(
+    r"\[(?P<text>[^\]]+)\]\{(?P<kind>\.insertion|\.deletion)\s+"
+    r'author="(?P<author>[^"]*)"\s+date="(?P<date>[^"]*)"\}',
+    re.S,
+)
+# 校稿结论节（PROOFREAD 三件套的落点，ASSEMBLE 转写）
+RE_PROOFREAD_SECTION = re.compile(r"^##\s+校稿结论\s*$", re.M)
 # 注：Markdown 表格不栅格化——pandoc 会转成 docx 原生表格（可编辑、可选中）。
 # （原 RE_TABLE_FENCE 常量从未被使用，属死代码，已删除）
 
@@ -379,6 +389,144 @@ def run_pandoc(md_path: Path, docx_path: Path, reference_doc: str | None) -> boo
     return docx_path.is_file()
 
 
+# ──────────────────────────────────────────────── 溯源表自动生成（v1.1.0）
+def generate_provenance(work_root: Path, chapter: str, textbook: str, text: str) -> Path | None:
+    """把 examiner R3 的 r3_verification_log.md 转写为溯源表（不改内容只转格式）。
+
+    此前 §4.1 只在规范里写「ASSEMBLE 据此转写」但无人执行——溯源表从不落盘。
+    判据 4.12 要求溯源表是交付必备件，故 --assemble 时自动生成；日志缺失 → WARN + None
+    （由 check_manuscript 4.12 判 FAIL，不在这里静默放过）。
+    """
+    log_path = work_root / "章节" / chapter / "review" / "r3_verification_log.md"
+    if not log_path.is_file():
+        log(f"溯源表源缺失：{log_path}（examiner R3 未落盘核验日志）→ "
+            "溯源表无法生成，交付时判据 4.12 将 FAIL", "WARN")
+        return None
+
+    n_shi = len(re.findall(r"\[实[·\]]", text))   # 正文 [实]/[实·xx] 出现处数
+    rows = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line.startswith("|") or line.startswith("|--") or line.startswith("| 位置"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) >= 4:
+            rows.append(cells[:5] if len(cells) >= 5 else cells + ["—"] * (5 - len(cells)))
+
+    out = work_root / "交付" / f"{textbook}_{chapter}.溯源.md"
+    lines = [
+        f"# {textbook} {chapter} 溯源表",
+        "",
+        "> 由 `build_manuscript.py --assemble` 从 examiner R3 核验日志自动转写（不改内容只转格式）。",
+        f"> 正文 `[实]` 处数：{n_shi} ｜ 溯源行数：{len(rows)} ｜ 二者应相等（判据 4.12）。",
+        "",
+        "| 序 | 正文位置 | 陈述要点 | 标识符/来源 | 核验状态 |",
+        "|---|---|---|---|---|",
+    ]
+    for i, c in enumerate(rows, 1):
+        lines.append("| " + " | ".join([str(i)] + c[:4]) + " |")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    log(f"溯源表已生成：{out}（{len(rows)} 行）")
+    return out
+
+
+# ──────────────────────────────────────────── 校稿结论转写（v1.1.0 §4.2）
+def append_proofread_conclusion(work_root: Path, chapter: str, md_path: Path) -> bool:
+    """把 PROOFREAD 三件套（校对后稿+修订记录）的结论转写进交付 md 的「校稿结论」节。
+
+    PROOFREAD 断链修复：此前「校对后稿」无人产出、校稿结论无落点。
+    校对后稿缺失 → 不阻塞装配（PROOFREAD 可能尚未跑），但结论缺失会被 4.13c 拦在 DELIVER。
+    """
+    if RE_PROOFREAD_SECTION.search(md_path.read_text(encoding="utf-8")):
+        log("交付 md 已含校稿结论节，跳过转写")
+        return True
+
+    rev_path = work_root / "章节" / chapter / "review" / "proofread_revisions.md"
+    pr_path = work_root / "章节" / chapter / "review" / "proofread.md"
+    n_ins = n_del = 0
+    verdict, pending = "未完成校稿（PROOFREAD 三件套缺失）", "—"
+    if rev_path.is_file():
+        rev_text = rev_path.read_text(encoding="utf-8")
+        n_ins = len(re.findall(r"\.insertion", rev_text))
+        n_del = len(re.findall(r"\.deletion", rev_text))
+        m = re.search(r"结论[:：]\s*(.+)", rev_text)
+        if m:
+            verdict = m.group(1).strip()
+        m2 = re.search(r"遗留待办[:：]\s*(.+)", rev_text, re.M)
+        if m2:
+            pending = m2.group(1).strip()
+    src = pr_path.name if pr_path.is_file() else "（校对后稿未产出）"
+
+    section = (
+        "\n\n## 校稿结论\n\n"
+        f"- **结论**：{verdict}\n"
+        f"- **修订计数**：插入 {n_ins} 处 / 删除 {n_del} 处\n"
+        f"- **校对后稿**：`章节/{chapter}/review/{src}`\n"
+        f"- **遗留待办**：{pending}\n"
+        f"- **生成方式**：ASSEMBLE 由 review/proofread_revisions.md 自动转写（判据 4.13c）\n"
+    )
+    with md_path.open("a", encoding="utf-8") as f:
+        f.write(section)
+    log(f"校稿结论已写入：{md_path.name}（插入 {n_ins} / 删除 {n_del}｜结论：{verdict}）")
+    return True
+
+
+def chapter_title_placeholder(text: str) -> str:
+    """取第一个 # 行作章标题（与主构建分支同逻辑，抽出避免重复）。"""
+    m = re.search(r"^#\s+(.+)$", text, re.M)
+    return m.group(1).strip() if m else ""
+
+
+# ──────────────────────────────────────────── Word 审改回流（v1.1.0 §5.2）
+def apply_revisions(work_root: Path, chapter: str, from_docx: Path,
+                    mode: str = "accept") -> int:
+    """把 Word 里审改后的 docx 回流为交付 md（防 md/docx 分叉）。
+
+    mode: accept=接受全部修订（净稿语义）；reject=拒绝全部（保留原文）；
+          all=保留修订标记（审稿意见入库 md 源）。逐字对齐 pandoc --track-changes 语义。
+    """
+    if not from_docx.is_file():
+        log(f"回流源 docx 不存在：{from_docx}", "ERROR")
+        return 2
+    md_path = find_delivery_md(work_root, chapter)
+    if md_path is None:
+        log(f"未找到交付 md（交付/*_{chapter}.md），无法回流", "ERROR")
+        return 2
+    tmp_dir = Path(tempfile.mkdtemp(prefix="apply_revisions_"))
+    tmp_md = tmp_dir / f"{md_path.stem}__backflow.md"
+    cmd = ["pandoc", str(from_docx), "-f", "docx", "-t", "markdown",
+           f"--track-changes={mode}", "-o", str(tmp_md)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        log(f"回流失败（pandoc exit {r.returncode}）：{(r.stderr or '')[:300]}", "ERROR")
+        return 4
+    # 回流文本替换交付 md 正文（保留 frontmatter——docx 里没有元数据）
+    old_text = md_path.read_text(encoding="utf-8")
+    fm, _ = _split_frontmatter(old_text)
+    new_body = tmp_md.read_text(encoding="utf-8").strip()
+    # 回流清洗（pandoc docx→md 的三类噪声）：
+    # ① TOC 伪标题（pandoc --toc 生成 TOC-Heading，回流时无意义）
+    new_body = re.sub(r"^# Table of Contents\s*\{[^}]*\}\s*\n+", "", new_body, flags=re.M)
+    # ② 转义方括号 \[实\] → [实]（docx 无 md 转义概念，pandoc 保守转义）
+    new_body = new_body.replace("\\[", "[").replace("\\]", "]")
+    # ③ frontmatter 实际净字数重算（回流改变了正文）
+    try:
+        from count_net_words import count_net_words
+        fm = re.sub(r"^实际净字数:.*$", f"实际净字数: {count_net_words(new_body).get('net_final', 0)}",
+                    fm, flags=re.M)
+    except Exception:
+        pass
+    md_path.write_text((f"---\n{fm}\n---\n\n{new_body}\n" if fm else new_body + "\n"),
+                       encoding="utf-8")
+    # 校稿结论节是内部 QA 元数据，docx 审阅版已剔除 → 回流后丢失，此处按 review/ 记录补写回
+    append_proofread_conclusion(work_root, chapter, md_path)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    n_marks = len(RE_REVISION.findall(new_body))
+    log(f"回流完成：{md_path}（mode={mode}，残留修订标记 {n_marks} 处）")
+    log("⚠️  交付 docx 已过时，必须回 md 重建（改而不回流 = 铁律违规，判据 4.13b 拦截）", "WARN")
+    return 0
+
+
 # ──────────────────────────────────────────────────────────── docx 后处理
 def postprocess_docx(docx_path: Path, chapter_title: str) -> bool:
     """python-docx 后处理：中文字体 / 字号 / 行距 / 缩进 / 题注居中 / 页眉页脚。"""
@@ -476,6 +624,16 @@ def main() -> int:
     ap.add_argument("--reference-doc", default=None, help="pandoc 版式模板（覆写内置默认）")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划，不落盘产物")
     ap.add_argument("--report", default=None, help="构建报告 JSON 落盘路径")
+    # ── v1.1.0 修订态交付链（方案甲）──
+    ap.add_argument("--revisions", action="store_true",
+                    help="构建审阅版 docx：md 修订标记 → Word 真修订态（交付/{教材名}_{ch##}_审阅.docx）")
+    ap.add_argument("--apply-revisions", dest="apply_revisions", action="store_true",
+                    help="Word 审改回流：读 --from-docx 的修订，按 --revision-mode 处理后覆写交付 md")
+    ap.add_argument("--from-docx", default=None,
+                    help="--apply-revisions 的回流源 docx（审稿人改过的文件）")
+    ap.add_argument("--revision-mode", dest="revision_mode",
+                    choices=["accept", "reject", "all"], default="accept",
+                    help="回流时如何处理 Word 修订（默认 accept=接受全部 → 净稿）")
     args = ap.parse_args()
 
     work_root = Path(args.work_root).expanduser()
@@ -484,6 +642,14 @@ def main() -> int:
         return 2
 
     chapter = args.chapter
+
+    # 回流模式：独立分支，不走构建管线
+    if args.apply_revisions:
+        if not args.from_docx:
+            log("--apply-revisions 需要 --from-docx 指明回流源", "ERROR")
+            return 2
+        return apply_revisions(work_root, chapter,
+                               Path(args.from_docx).expanduser(), args.revision_mode)
     chapter_dir = work_root / "章节" / chapter
     asset_dir = chapter_dir / "figures" / "assets"
 
@@ -504,11 +670,25 @@ def main() -> int:
             log(f"未找到 交付/*_{chapter}.md；加 --assemble 可从 章节/{chapter}/ 装配", "ERROR")
             return 2
         md_path = assemble_md(work_root, chapter, args.textbook)
+    elif args.assemble:
+        # v1.1.0 语义补强：交付 md 已存在 + 显式 --assemble = 以章节/ 为源重装
+        # （旧语义只在 md 缺失时装配，导致 PROOFREAD 三件套完成后旧交付 md 永不更新——
+        #  校稿结论/溯源表/修订标记全部断链；「交付 md 是源」的正源是 章节/draft.md，
+        #  交付 md 是装配产物，重装不丢用户内容——draft.md 才是唯一编辑入口）
+        log(f"交付 md 已存在但显式 --assemble → 从 章节/{chapter}/ 重新装配覆盖")
+        md_path = assemble_md(work_root, chapter, args.textbook)
+    # 溯源表 + 校稿结论：装配路径都会补（md 已存在但缺结论时同样转写）
+    cur = md_path.read_text(encoding="utf-8")
+    generate_provenance(work_root, chapter, args.textbook, cur)
+    append_proofread_conclusion(work_root, chapter, md_path)
     log(f"输入 md：{md_path}")
 
     text = md_path.read_text(encoding="utf-8")
     slots = RE_FIGURE_SLOT.findall(text)
-    log(f"扫描到图位 {len(slots)} 个")
+    n_rev = len(RE_REVISION.findall(text))
+    log(f"扫描到图位 {len(slots)} 个；修订标记 {n_rev} 处"
+        f"（插入 {len([m for m in RE_REVISION.finditer(text) if m.group('kind') == '.insertion'])}"
+        f" / 删除 {len([m for m in RE_REVISION.finditer(text) if m.group('kind') == '.deletion'])}）")
 
     if args.dry_run:
         print(json.dumps({
@@ -530,6 +710,7 @@ def main() -> int:
         "chapter": chapter,
         "input_md": str(md_path),
         "figure_slots": len(slots),
+        "revision_marks": n_rev,
         "assets": assets,
         "rasterized": sum(1 for a in assets if a.get("raster") == "ok"),
         "not_rasterized": [a["stem"] for a in assets if a.get("raster") != "ok"],
@@ -556,6 +737,24 @@ def main() -> int:
         report["docx_bytes"] = docx_path.stat().st_size
         shutil.rmtree(tmp_dir, ignore_errors=True)
         log(f"docx 构建完成：{docx_path}（{report['docx_bytes']} 字节）")
+
+    # 审阅版（v1.1.0 方案甲）：修订标记 → Word 真修订态
+    if args.revisions and "docx" in args.format:
+        inter_md = build_intermediate_md(text, assets)
+        # 审阅版剔除校稿结论节（内部 QA 产物，不进审阅对象）
+        inter_md = RE_PROOFREAD_SECTION.split(inter_md)[0].rstrip() + "\n"
+        rev_dir = Path(tempfile.mkdtemp(prefix="build_revisions_"))
+        rev_md = rev_dir / f"{md_path.stem}__review_src.md"
+        rev_md.write_text(inter_md, encoding="utf-8")
+        review_docx = md_path.with_name(f"{md_path.stem}_审阅.docx")
+        if not run_pandoc(rev_md, review_docx, args.reference_doc):
+            return 4
+        if not postprocess_docx(review_docx, chapter_title_placeholder(text)):
+            return 4
+        report["review_docx"] = str(review_docx)
+        report["review_revision_marks"] = n_rev
+        shutil.rmtree(rev_dir, ignore_errors=True)
+        log(f"审阅版构建完成：{review_docx}（含 {n_rev} 处 Word 修订）")
 
     if args.report:
         Path(args.report).write_text(json.dumps(report, ensure_ascii=False, indent=2),

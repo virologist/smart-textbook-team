@@ -62,43 +62,70 @@ jobs:
           sudo apt-get install -y -qq pandoc
           python3 -m pip install --quiet python-docx
 
-      # 书稿交付链冒烟（2026-10-30 第 7 道门禁）：
-      # md→docx 构建 + 门禁 4 校验。CI 内 mmdc/Chrome 通常不可用 → 栅格化按设计降级为
-      # 占位框，脚本仍须 exit 0（这正是「不静默丢图」降级路径的回归测试）。
-      # 判据：构建 exit 0 且 docx 落盘；校验 --strict 下结构类判据全 pass。
-      - name: 书稿交付链冒烟（build_manuscript + check_manuscript）
+      # 书稿交付链冒烟（2026-10-30 第 7 道门禁；v2.3.0 扩展：修订态往返回归）：
+      # md→docx 构建 + 门禁 4 校验 + 修订标记→Word 真修订（--revisions）+ 回流（--apply-revisions）。
+      # CI 内 mmdc/Chrome 通常不可用 → 栅格化按设计降级为占位框，脚本仍须 exit 0。
+      # 判据：构建 exit 0 且 docx/审阅版落盘；--strict 全 pass；回流 accept 后标记清零。
+      - name: 书稿交付链冒烟（build_manuscript + check_manuscript + 修订往返）
         run: |
           set -e
           WR=/tmp/stt-ms
-          rm -rf "$WR"; mkdir -p "$WR/章节/ch01/figures" "$WR/交付"
+          rm -rf "$WR"; mkdir -p "$WR/章节/ch01/figures/assets" "$WR/章节/ch01/review" "$WR/交付"
           cat > "$WR/章节/ch01/draft.md" <<'MD'
+          ---
+          教材名: 教材
+          章节号: ch01
+          章节标题: CI 冒烟章
+          字数目标: 71
+          实际净字数: 71
+          版本: R3
+          学科profile: veterinary
+          ---
+
           # 第1章 CI 冒烟章
 
           ## 1.1 概述
 
-          本句为冒烟正文 [实]。交叉引用 [见 §1.2]。
-
-          [图 1-1：冒烟图]
-
-          图 1-1 冒烟图
-
-          ```mermaid
-          graph LR
-            A[起点] --> B[终点]
-          ```
+          本句为冒烟正文 [实]。交叉引用 [见 §1.2]。[原表述]{.deletion author="严正词" date="2026-10-31"}[修订表述]{.insertion author="严正词" date="2026-10-31"}
 
           ## 1.2 小结
 
           结论句 [实]。
 
+          ## 校稿结论
+
+          - **结论**：可交付
+          - **修订计数**：插入 1 处 / 删除 1 处
+          - **遗留待办**：无
+
           ## 参考文献
 
           [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2.
           MD
+          cat > "$WR/章节/ch01/review/r3_verification_log.md" <<'MD'
+          | 位置 | 标识符 | 结果 | 动作 |
+          |------|--------|------|------|
+          | §1.1 | PMID:1 | 通过 | 保留 |
+          | §1.2 | PMID:2 | 通过 | 保留 |
+          MD
           # 单次调用即可（原实现带 `|| 再跑一次` 的兜底，掩盖真实失败原因且拖慢 CI）
-          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble \
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble --revisions \
             --report "$WR/build_report.json"
           test -f "$WR/交付/教材_ch01.docx"
+          test -f "$WR/交付/教材_ch01_审阅.docx"
+          test -f "$WR/交付/教材_ch01.溯源.md"
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
+          # 修订往返回归：Word 修订（w:ins/w:del）真实存在 + 回流 accept 后标记清零
+          python3 - <<'PY'
+          import zipfile
+          xml = zipfile.ZipFile("$WR/交付/教材_ch01_审阅.docx").read("word/document.xml").decode()
+          assert "<w:ins " in xml and "<w:del " in xml, "审阅版无 Word 修订态（方案甲断柱）"
+          PY
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 \
+            --apply-revisions --from-docx "$WR/交付/教材_ch01_审阅.docx" --revision-mode accept
+          grep -q "修订表述" "$WR/交付/教材_ch01.md"
+          # 铁律回归：改而不回流 = 分叉。回流后必须重建 docx，strict 须重新全过
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble
           python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
 
       # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源

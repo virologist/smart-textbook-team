@@ -94,9 +94,10 @@ spawn 祝书白按设计+证据写 draft（R1→R2→R3）；每数据带 `[实]
 ### Phase E: 审查循环 R1-R3（同一问题打回上限 3 轮）
 spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审查 → 结构化 verdict。fail → blocking 清单转祝书白返修→复审。**打回=2 → 我按介入协议执行**（见 pipeline skill：诊断根因 A/B/C/D → 按因处置 → 第 3 轮仍败停机报用户）；全程记 `review/interventions.md`。
 
-### Phase PROOFREAD: 校对（独立于 E 之上，对应 13 态 PROOFREAD；2026-10-15 re-audit 裁决）
+### Phase PROOFREAD: 校对（独立于 E 之上，对应 13 态 PROOFREAD；2026-10-15 re-audit 裁决；v1.1.0 三件套化）
 PROOFREAD 态 = quality-examiner 的 R4 风格审查（AI 腔检测 / 术语一致性 / 学段语言适配 / 排版节奏），与 Phase E 串行且 E 全 pass 后才启动。**为什么从 E 拆出**：让 E 的 4 维矩阵（术语/因果/鉴别/学段）只在结构+深度+数据三轮里出，PROOFREAD 用专门的 R4 检查表（见 quality-examiner.md §核心能力 R4 段），风格问题不影响内容三轮结论。
-**派工动作**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`；blocking 项回 writer 改风格；纯 advisory 直接进 CONSOLIDATION 修。
+**派工动作**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`。
+**产出三件套（v1.1.0，修复「校对后稿」无人产出断链）**：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）。blocking 项回 writer 改风格（writer 复核标记后并入 draft）；纯 advisory 由校对后稿承载。
 **串行硬约束**（与 13 态 SSOT 对齐）：PROOFREAD 不能与 E 并行；PROOFREAD 全 pass 才进下一态。
 
 ### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）
@@ -110,21 +111,31 @@ spawn 绘章图按图表位产规格卡+代码；禁引入正文不存在的数�
 ### Phase ASSEMBLE: 装配（我亲自执行）
 把 `章节/{ch##}/draft.md` + `figures/` + 审查 verdict 摘要 + 质量报告合并为 `交付/{教材名}_{ch##}.md`。
 
-**书稿双格式构建**（规格 SSOT = `skills/manuscript-delivery/SKILL.md`）：
+**书稿双格式构建**（规格 SSOT = `skills/manuscript-delivery/SKILL.md`；v1.1.0 装配同时自动生成溯源表 + 转写校稿结论节）：
 ```bash
 python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
-    [--assemble] [--reference-doc <版式模板.docx>] --report 运行态/build_{ch##}.json
+    [--assemble] [--revisions] [--reference-doc <版式模板.docx>] --report 运行态/build_{ch##}.json
 ```
+- `--assemble`：交付 md 已存在时也会从 `章节/` 重装（draft.md 才是编辑正源）；同时自动生成 `交付/{教材名}_{ch##}.溯源.md`（判据 4.12）并把 PROOFREAD 结论转写进交付 md「校稿结论」节（判据 4.13c）
+- `--revisions`：追加构建**审阅版** `交付/{教材名}_{ch##}_审阅.docx`——md 修订标记渲染为 Word 真修订（w:ins/w:del），供出版社/作者在 Word 里审改
+
+**Word 审改回流**（审稿人在 Word 里接受/拒绝修订后必做；防 md/docx 分叉，判据 4.13b）：
+```bash
+python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
+    --apply-revisions --from-docx 交付/{教材名}_{ch##}_审阅.docx [--revision-mode accept|reject|all]
+```
+回流后必须重建交付 docx（回 md 重建）。
+
 > **勘误（2026-10-29 实测）**：本行此前写「按 CHANGELOG 工具链 `scripts/build_chapter.py` 模板，可选生成 docx」——
 > 实测 `scripts/` 无该文件、CHANGELOG 全文 0 命中 `docx|pandoc|build_chapter`、git 全历史无此文件。
 > **该引用指向不存在的文件且伪造了出处**。现改为 `scripts/build_manuscript.py` 的真实调用。
 
-**交付形态铁律**：`.md` = 源（唯一编辑入口）；`.docx` = 交付格式（由 md 生成，**禁止手改**，改则回 md 重建）。
+**交付形态铁律（v1.1.0 收窄）**：`.md` = 源（唯一编辑入口，承载修订语义）；`.docx` = 交付格式 + 审稿载体（**允许 Word 追踪修订审改**，但改后必须回流 md 再重建——**违规的是「改而不回流」**）。
 
 ### Phase DELIVER: 交付（我亲自执行）
-1. **先过门禁 4**：`python3 scripts/check_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} --strict`（校验表 10 行判据 4.0-4.11+4.8/4.9；FAIL 不得交付——判据 SSOT 见 manuscript-delivery §4）
-2. `present_files` 交付 **md + docx 双格式**，附质量报告与缺口清单
-3. **质量报告必须显式列出「未栅格化图表数」**（栅格化工具不可用时降级为占位框 + 保留源码，绝不静默丢图）
+1. **先过门禁 4**：`python3 scripts/check_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} --strict`（判据族 4.0-4.13；FAIL 不得交付——判据 SSOT 见 manuscript-delivery §4）
+2. `present_files` 交付 **md + docx（+审阅版，含修订时）+ 溯源表** 多件套，附质量报告与缺口清单
+3. **质量报告必须显式列出**：「未栅格化图表数」（栅格化降级不静默丢图）+「修订计数」（插入/删除处数，判据 4.13b 口径）+「`[待核实]` 条数」（溯源表口径）
 
 ### Phase LEARN: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
 从 interventions/核验日志/审查报告提取信号 → 规则草案 → 写候补池 `学习/候补/`；≥3 候选或用户 ack 才合并。

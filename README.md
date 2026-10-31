@@ -1,9 +1,9 @@
 # smart-textbook-team — 智能教材编写天团
 
 > 转换自 content-forge v5 多 Agent 框架（tb-writer 项目），适配 WorkBuddy 专家团规范 v2.0。
-> 版本 2.2.2 | 2026-10-30 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
-> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 245 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 7 道全绿；**9 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / scientific-figure / task-router / team-generation / textbook-pipeline-workflow）；主理人常驻核心 16.0KB
-> **交付形态（v2.2.2）**：大学教材**书稿** —— `.md`（源，唯一编辑入口）+ `.docx`（交付格式，由 md 生成，禁止手改），规格见 `skills/manuscript-delivery/SKILL.md`
+> 版本 2.3.0 | 2026-10-31 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
+> 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 252 计分项全绿（1.000）+ 路由评测 40/40（1.000）+ CI 门禁 7 道全绿；**9 个 skill**（agent-harness-protocol / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / scientific-figure / task-router / team-generation / textbook-pipeline-workflow）；主理人常驻核心 18.4KB
+> **交付形态（v2.3.0）**：大学教材**书稿** —— `.md`（源，唯一编辑入口，**承载审稿修订语义**）+ `.docx`（交付格式 + Word 追踪修订审改载体，改后须回流 md）+ `_审阅.docx`（修订标记→Word 真修订）+ `.溯源.md`（自动生成），规格见 `skills/manuscript-delivery/SKILL.md`
 > **跨专业（v2.2.2）**：学科知识已外置为 profile —— `references/profiles/{veterinary|computer-science|law}.md`，新增学科只需复制改写该文件，**规范本体零学科常量**（默认 veterinary）
 > 真实运行基线（2026-10-15 e2e-p1）：ch08 PRODUCE-R2 + VERIFY-R2 端到端，7/7 引用 PubMed 实检 PASS，dispatch 1.000 / retry 0.50 / rework 0.000
 
@@ -65,7 +65,7 @@
 
 ## 使用
 
-- **WorkBuddy**：专家中心选择「智能教材编写天团」即可启动。主理人糜编澜会先澄清需求（教材名/读者/章节/字数/时数），再按 SOP 推进。Skills 由编排者按需加载（progressive disclosure），常驻核心 16.0KB。
+- **WorkBuddy**：专家中心选择「智能教材编写天团」即可启动。主理人糜编澜会先澄清需求（教材名/读者/章节/字数/时数），再按 SOP 推进。Skills 由编排者按需加载（progressive disclosure），常驻核心 18.4KB。
 - **导出发布包**：`bash scripts/package_release.sh`（自动校验四处版本声明自洽 → 打包 → 回读自检）；`--check` 只校验既有包是否落后于源仓。导出物默认落在 `tb-writer/smart-textbook-team.zip`（不入 git，二进制 3.4MB）。
 - **跨平台**（Claude Code / Claude Desktop / Cursor）：`bash install.sh --dry-run` 预览 → `bash install.sh --target <平台>` 安装；git clone 后 `python3 scripts/assemble_spawn_prompt.py --list-members` 应列出 5 名成员（vendor 兜底开箱可用）。
 

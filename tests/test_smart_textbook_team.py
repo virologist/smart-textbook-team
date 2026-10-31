@@ -794,6 +794,55 @@ def check_executability(ck, expert_dir):
              "n_embed" in cm and "svg" in cm.lower(),
              "只数 png → SVG 图必然误判 FAIL")
 
+    # ── F36：修订态交付链守护（v1.1.0 方案甲，2026-10-31）─────────────────
+    # 背景：判据 4.10/4.11/4.12 此前只有 manuscript-delivery §4 声称、脚本零实现
+    # （实测 grep 4.10|4.11|4.12|ipynb|溯源|术语 在 scripts/ 与 tests/ 全 0 命中）；
+    # PROOFREAD「校对后稿」无人产出（examiner 禁改 draft + 无成员认领）。
+    bm_md = read(os.path.join(expert_dir, "skills", "manuscript-delivery", "SKILL.md"))
+    bm_build = read(os.path.join(expert_dir, "scripts", "build_manuscript.py"))
+    bm_check = cm  # check_manuscript.py 全文（上方已读）
+    px_md = read(os.path.join(expert_dir, "agents", "quality-examiner.md"))
+
+    # F36a: 判据 4.10-4.13 必须在 check_manuscript.py 真实现（函数级，非文案）
+    ck.check("F36a", "F", "check_manuscript 实装 4.10-4.13 判据函数（此前零实现）",
+             all(fid in bm_check for fid in
+                 ("check_data_figure_notebooks", "check_terminology",
+                  "check_provenance", "check_revision_state"))
+             and "4.13c" in bm_check,
+             "规范声称 vs 脚本实现漂移——三条判据+修订态须真实可执行")
+
+    # F36b: build_manuscript 必须支持审阅版与回流（方案甲两根支柱）
+    ck.check("F36b", "F", "build_manuscript 支持 --revisions 审阅版 + --apply-revisions 回流",
+             "--revisions" in bm_build and "apply-revisions" in bm_build
+             and "track-changes" in bm_build and "generate_provenance" in bm_build
+             and "append_proofread_conclusion" in bm_build,
+             "缺任一 = 修订态交付链断柱")
+
+    # F36c: 铁律收窄——「禁止手改」旧文案必须被替换为「改而不回流才禁止」
+    ck.check("F36c", "F", "manuscript-delivery 铁律已收窄（改 docx 不回流才违规）",
+             "改 docx 不回流" in bm_md and "禁止手改" not in bm_md,
+             "旧铁律与 Word 追踪修订审稿直接冲突（2026-10-31 管家拍板放宽）")
+
+    # F36d: PROOFREAD 三件套——examiner 有产出义务 + pipeline 产出列落主 + 路径已登记
+    po_md = read(os.path.join(expert_dir, "references", "path-ownership.md"))
+    pp_md = read(os.path.join(expert_dir, "skills", "textbook-pipeline-workflow", "SKILL.md"))
+    ck.check("F36d", "F", "PROOFREAD 校稿三件套三方一致（examiner 义务/pipeline 产出/路径登记）",
+             "proofread.md" in px_md and "proofread_revisions.md" in px_md
+             and "proofread.md" in pp_md
+             and "review/proofread.md" in po_md,
+             "「校对后稿」断链复发检测：三方任一缺失 = 无人产出")
+
+    # F36e: 校稿结论落盘契约——结论行是 4.13c 的解析锚，格式必须三方同源
+    ck.check("F36e", "F", "校稿结论行格式同源（结论:/遗留待办: 在 examiner 与构建器两侧一致）",
+             "结论" in bm_build and "遗留待办" in bm_build
+             and "结论" in px_md,
+             "ASSEMBLE 转写依赖这两行的字面格式，漂移 = 4.13c 恒 FAIL")
+
+    # F36f: 显式 --assemble 重装语义（防「交付 md 已存在 → 永不更新」断链）
+    ck.check("F36f", "F", "显式 --assemble 时交付 md 已存在则重装（三件套可补写）",
+             "重新装配覆盖" in bm_build,
+             "旧语义 md 存在即跳过 → PROOFREAD 完成后旧交付稿永不更新（实测断链）")
+
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
     # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。
