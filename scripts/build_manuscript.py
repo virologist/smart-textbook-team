@@ -700,13 +700,24 @@ def postprocess_docx(docx_path: Path, chapter_title: str,
         try:
             fp = sec.footer.paragraphs[0]
             fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            # 插入 PAGE 域（Word 打开时自动更新）
-            run = fp.add_run()
-            fld_begin = run._r.add_fldChar("begin")
-            instr = run._r.add_instrText("PAGE")
-            fld_end = run._r.add_fldChar("end")
         except (IndexError, AttributeError):
-            pass
+            continue
+        # 插入 PAGE 域（Word 打开时自动更新）。
+        # B4 修复（ADR-05 附带,B5 登记技术债）：旧写法调用 CT_R 的 add_fldChar 方法,
+        # 该方法不存在（hasattr=False）→ AttributeError 被 except 静默吞掉,
+        # 单章 docx 页码域从未真正写入。现 OxmlElement 权威写法（与 build_book
+        # insert_page_field 同构;因 build_book 反向 import 本模块,不可回引,故内联）,
+        # 且**不套吞错 except**——域写不进去必须当场炸。
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        run = fp.add_run()
+        fld_b = OxmlElement("w:fldChar"); fld_b.set(qn("w:fldCharType"), "begin")
+        instr = OxmlElement("w:instrText"); instr.set(qn("xml:space"), "preserve")
+        instr.text = " PAGE "
+        fld_e = OxmlElement("w:fldChar"); fld_e.set(qn("w:fldCharType"), "end")
+        run._r.append(fld_b)
+        run._r.append(instr)
+        run._r.append(fld_e)
 
     # 双向锚（R5）：先 save 落定版式，再算**最终文本** hash 回写属性，再 save 一次
     doc.save(str(docx_path))

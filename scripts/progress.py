@@ -414,6 +414,37 @@ def _mutate_blocking(work_root: Path, item: str, source: str, resolve: bool) -> 
     return p
 
 
+def rejects_status(work_root: Path) -> int:
+    """ADR-05 §5.2（批次 B4）：读 运行态/reject-counts.json 输出打回计数。
+
+    计数由 `record_trace.py --reject-key "<correlation_id>|<问题指纹>"` 机械累加
+    （跨 task_id 累计,禁止借改名续命）;计数 ≥2 的 key 已触发介入协议——
+    本命令是编排者的可视入口,≥2 的 key 显式标注。
+    """
+    import json
+    counts_file = work_root / '运行态' / 'reject-counts.json'
+    if not counts_file.is_file():
+        print('REJECTS=0（无打回记录）')
+        print('INTERVENTION=0')
+        return 0
+    try:
+        counts = json.loads(counts_file.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as e:
+        print(f'ERROR  reject-counts.json 损坏: {e}', file=sys.stderr)
+        return 2
+    threshold = 2  # SSOT = pipeline §介入协议「打回数 = 2」
+    intervention = []
+    for key in sorted(counts, key=lambda k: (-int(counts[k]), k)):
+        n = int(counts[key])
+        mark = f'  ← 介入协议已触发（≥{threshold}）' if n >= threshold else ''
+        print(f'  {key}: {n}{mark}')
+        if n >= threshold:
+            intervention.append(key)
+    print(f'REJECTS={len(counts)}')
+    print(f'INTERVENTION={1 if intervention else 0}')
+    return 0
+
+
 def show(work_root: Path) -> int:
     p = progress_file(work_root)
     if not p.exists():
@@ -462,6 +493,7 @@ def main() -> int:
 
     sub.add_parser('show', help='读取并打印 progress.md')
     sub.add_parser('book-status', help='输出全书进度矩阵（各章相位）')
+    sub.add_parser('rejects', help='输出打回计数（ADR-05:读运行态/reject-counts.json,≥2 触发介入）')
     args = ap.parse_args()
     wr = Path(args.work_root)
 
@@ -493,6 +525,8 @@ def main() -> int:
         return show(wr)
     elif args.cmd == 'book-status':
         return book_status(wr)
+    elif args.cmd == 'rejects':
+        return rejects_status(wr)
 
     return 0
 

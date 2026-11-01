@@ -3,10 +3,43 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 批次 B2/B3/B5：反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 全书层（ADR-01）
+## [Unreleased] — 批次 B2/B3/B4/B5：反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 硬门槛落盘（ADR-05）+ 全书层（ADR-01）
 
-> 关键路径 B1 → B2 → B3 → B5（GATE2 变更单）；B4 与 B6 未在本轮。
-> 单章流程行为语义除判据口径加固（更严）外不变；全书层为纯增量。
+> 关键路径 B1 → B2 → B3 → B5（GATE2 变更单）已闭合；B4 硬门槛落盘并入本轮，仅 B6 未做。
+> 单章流程行为语义除判据口径加固（更严）外不变；全书层与硬门槛为纯增量（4.14 缺文件 N/A）。
+
+### 硬门槛落盘（ADR-05，批次 B4）
+
+- **R5 评分机械化**：新增 `scripts/score_quality.py`——五维得分（`--dim 名称=得分`）+
+  逐维证据位置（`--evidence`）进脚本，加权/红线/权重和判定机械落盘 `运行态/r5-score.json`；
+  rubric SSOT = `chapter-structure.md §2` 五维表（`--rubric` 可换六维 profile）。
+- **判据 4.14 R5 硬门槛**（check_manuscript）：`r5-score.json` 存在时——total≥80 ∧
+  total==Σ(维度×权重)/100（**独立重算防手改**）∧ 权重和==100（**防伪造权重**）∧
+  每维 ≥1 证据位置 ∧ 缺省五维下权重与 rubric 一致（4.14f）；不存在 → N/A 不阻塞
+  （可先上线观察一月再转 FAIL）。判据表（manuscript-delivery §4）同步补 4.14 行。
+- **打回计数机械化**：`record_trace.py --reject-key "<correlation_id>|<问题指纹>"` 累加
+  `运行态/reject-counts.json`，计数 ≥2 **自动触发介入协议**（打印 INTERVENTION_TRIGGERED）；
+  `progress.py rejects` 可视入口。介入触发从「人工判 2 轮」改为脚本值。
+- **trace 字段补齐**：`confidence` / `gate_verdict`（JSON 化 pass-fail 清单）/ `issues` /
+  `root_cause`（A/B/C/D）4 新字段；`--from-envelope` 5 → **19 字段全解析**
+  （ENVELOPE_FIELDS_PARSED=n/19，解析结果整体落 trace `envelope` 子对象——消除
+  「trace 与信封两张皮」A-09/A-26）。
+- **预算可行化四件套**（harness §2/§3.1）：硬上限 80K→**150K**（A-17：单 spawn 底噪
+  19–29K × 6 ≥114K，80K 算术不可满足）；`tokens_per_phase` 4 态 → **全 13 相位**；
+  黑板模板补 `budget.cuts` 键（A-24：规范要求了模板里不存在的键）；新增
+  **`--skip-skill-preload` 降级档**（预算 ≥80% 跳过非关键 skill 预加载——原降级策略
+  无可执行削减项，超限后无法回落到线内）。
+- **R5 联动**：quality-examiner R5 改「**必须跑 score_quality.py**（脚本为主、LLM 为辅），
+  禁止手写 r5-score.json 绕过脚本」（v2.1.0）。
+- **附带清偿 B5 登记技术债**：build_manuscript 单章 PAGE 域改 `OxmlElement` 权威写法
+  且不套吞错 except——旧 `add_fldChar` 调用 AttributeError 被静默吞掉，单章 docx
+  页码域从未真正写入（F38g 守护：`run._r.add_fldChar` 调用绝迹）。
+- **CI 修复（B5e 待确认点实证）**：「书稿交付链冒烟」夹具 2 处裸 `[实]` 被 B2 的
+  4.12d 拦截（FAIL 1，实测确认）——补 `（PMID:38960123）` 锚后 FAIL 0 / PASS 25。
+  新增 CI 步骤「4.14 硬门槛正负双向」：正向（score_quality 产出+4.14 放行+N/A 放行）
+  + 四负向（total=79 拦 / 权重和≠100 拦 / 证据缺失拦 / 手改 total 拦）+ 打回计数
+  （2 次触发介入）+ 信封 19/19，与 GATE2 量化标准逐条对齐。
+- 静态契约 261 → **269 计分项**（F38a–F38h 8 项硬门槛守护），1.000 全绿。
 
 ### 全书层（ADR-01，批次 B5）
 

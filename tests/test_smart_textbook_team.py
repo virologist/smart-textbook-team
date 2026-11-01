@@ -955,6 +955,138 @@ def check_executability(ck, expert_dir):
         ck.check("F37e", "F", "4.12d 七向行为正确（裸/缺锚/法氏囊病必拦，PMID/本地#锚/Obsidian/书名号法放行）",
                  not _wrong, "；".join(_wrong))
 
+        # F38c: 4.14 R5 硬门槛行为级（ADR-05 批次 B4）——反伪造三向 + N/A 放行
+        import json as _json
+        import pathlib as _pl2
+        _wr2 = _pl2.Path("/tmp/__f38c_probe__")
+        (_wr2 / "运行态").mkdir(parents=True, exist_ok=True)
+        _sc = _wr2 / "运行态" / "r5-score.json"
+
+        def _write_score(total, weight_sum, scores=None, weights=None):
+            _scores = scores or {"知识严谨性": 85, "前沿性": 80, "易懂易学": 85,
+                                 "职业教育适配": 80, "规范性": 80}
+            _weights = weights or {"知识严谨性": 30, "前沿性": 15, "易懂易学": 25,
+                                   "职业教育适配": 20, "规范性": 10}
+            dims = {n: {"score": _scores[n], "weight": _weights[n],
+                        "points": _scores[n] * _weights[n] / 100.0,
+                        "evidence": [f"§1.{i}"]}
+                    for i, n in enumerate(_scores, 1)}
+            _sc.write_text(_json.dumps(
+                {"chapter": "ch01", "dims": dims, "total": total,
+                 "weight_sum": weight_sum, "verdict": "pass"},
+                ensure_ascii=False), encoding="utf-8")
+
+        def _probe414():
+            _r = _cmmod.Result()
+            _cmmod.check_r5_score(_wr2, "ch01", _r)
+            return {i["id"]: i for i in _r.items}
+
+        _wrong = []
+        # 合格文件 → 无 FAIL
+        _write_score(82.75, 100)
+        _m = _probe414()
+        if any(not v["ok"] and v["level"] == "FAIL" for v in _m.values()):
+            _wrong.append(f"合格文件应放行: {_m}")
+        # total=79 → 4.14d 拦
+        _write_score(79.0, 100)
+        _m = _probe414()
+        if _m.get("4.14d", {}).get("ok") is not False:
+            _wrong.append("total=79 未被 4.14d 拦截")
+        # 权重和≠100 → 4.14b 拦（防伪造）
+        _write_score(82.0, 90)
+        _m = _probe414()
+        if _m.get("4.14b", {}).get("ok") is not False:
+            _wrong.append("权重和≠100 未被 4.14b 拦截")
+        # 手改 total 不自洽 → 4.14c 独立重算拦
+        _write_score(82.0, 100, scores={"知识严谨性": 79, "前沿性": 79, "易懂易学": 79,
+                                        "职业教育适配": 79, "规范性": 79})
+        _m = _probe414()
+        if _m.get("4.14c", {}).get("ok") is not False:
+            _wrong.append("total≠Σ(维度×权重)/100 未被 4.14c 拦截")
+        # 缺证据维度 → 4.14e 拦
+        _write_score(82.75, 100)
+        _d = _json.loads(_sc.read_text(encoding="utf-8"))
+        _d["dims"]["规范性"]["evidence"] = []
+        _sc.write_text(_json.dumps(_d, ensure_ascii=False), encoding="utf-8")
+        _m = _probe414()
+        if _m.get("4.14e", {}).get("ok") is not False:
+            _wrong.append("缺证据维度未被 4.14e 拦截")
+        # 权重篡改（dim 集==默认 rubric）→ 4.14f 拦
+        _write_score(82.75, 100,
+                     weights={"知识严谨性": 25, "前沿性": 15, "易懂易学": 25,
+                              "职业教育适配": 20, "规范性": 15})
+        _m = _probe414()
+        if _m.get("4.14f", {}).get("ok") is not False:
+            _wrong.append("权重篡改未被 4.14f 拦截")
+        # 文件不存在 → N/A 不阻塞
+        _sc.unlink()
+        _m = _probe414()
+        if any(not v["ok"] and v["level"] == "FAIL" for v in _m.values()):
+            _wrong.append("缺 r5-score.json 应 N/A 放行")
+        ck.check("F38c", "F", "4.14 六向行为正确（合格放行/79 拦/权重和拦/手改 total 拦/缺证据拦/缺文件 N/A）",
+                 not _wrong, "；".join(_wrong))
+
+    # ── F38：ADR-05 硬门槛落盘守护（批次 B4，2026-11-01）──────────────────
+    # 四个「散文级硬数字」（80 分 / 3 轮 / ≥0.80 / ±5%）此前无结构化载体——
+    # R5 自评、打回计数人工判、信封两张皮、预算超限无法回落。本组断言机械落地。
+
+    _sq = read(os.path.join(expert_dir, "scripts", "score_quality.py"))
+    # F38a: score_quality.py 实装（R5 评分机械化 + r5-score.json 产出）
+    ck.check("F38a", "F", "score_quality.py 实装 R5 机械化（rubric 读取/加权/红线/证据/落盘）",
+             all(s in _sq for s in ("r5-score.json", "weight_sum", "verdict",
+                                    "load_default_rubric", "--evidence")),
+             "score_quality.py 关键构件缺失——R5 仍是 LLM 自评散文")
+
+    # F38b: check_manuscript 实装 4.14 并接入 main
+    ck.check("F38b", "F", "check_manuscript 实装 4.14（反伪造独立重算）并接入 main",
+             "def check_r5_score" in cm and '"4.14"' in cm
+             and "check_r5_score(work_root" in cm,
+             "无 4.14 → 80 分红线不可审计（评审「可审性」失分点）")
+
+    # F38d: record_trace 打回计数机械化 + 4 新字段 + 信封 19 字段
+    _rt = read(os.path.join(expert_dir, "scripts", "record_trace.py"))
+    ck.check("F38d", "F", "record_trace 含 reject-key/4 新字段/信封 19 字段全解析",
+             all(s in _rt for s in ("--reject-key", "reject-counts.json",
+                                    "--confidence", "--gate-verdict", "--issues",
+                                    "--root-cause", "ENVELOPE_FIELDS_PARSED",
+                                    "INTERVENTION_TRIGGERED"))
+             and _rt.count("'") > 0
+             and len(re.findall(r"'agent_id'", _rt)) >= 1
+             and "payload" in _rt and "state_patch" in _rt,
+             "reject-key/新字段/19 字段解析缺一即打回计数与信封对账不可机械化")
+
+    # F38e: progress.py rejects 子命令（打回计数可视入口）
+    _pg = read(os.path.join(expert_dir, "scripts", "progress.py"))
+    ck.check("F38e", "F", "progress.py rejects 子命令（reject-counts.json 读取 + 介入标记）",
+             "def rejects_status" in _pg and "'rejects'" in _pg
+             and "INTERVENTION=" in _pg,
+             "无 rejects 入口 → 打回计数不可查，介入协议触发不可视")
+
+    # F38f: harness 预算可行化四件套（150K/13 相位/cuts 键/skip-skill-preload 降级档）
+    _hs = read(os.path.join(expert_dir, "skills", "agent-harness-protocol", "SKILL.md"))
+    _f38f_miss = [s for s in ("150000", "cuts:", "--skip-skill-preload",
+                              "BOOTSTRAP: 8000", "LEARN: 6000")
+                  if s not in _hs]
+    ck.check("F38f", "F", "harness 预算可行化四件套（150K/13 相位软上限/cuts 键/降级档）",
+             not _f38f_miss, f"缺: {_f38f_miss}——预算超限后无法回落到线内（A-17）")
+
+    # F38g: build_manuscript PAGE 域 OxmlElement（B5 登记技术债清偿）
+    # 口径：查**实际调用** `run._r.add_fldChar`（CT_R 无此方法）是否绝迹；
+    # 注释中的历史说明字样（`add_fldChar`）不判残留——只判可执行代码形态。
+    _bm = read(os.path.join(expert_dir, "scripts", "build_manuscript.py"))
+    ck.check("F38g", "F", "build_manuscript PAGE 域 OxmlElement 权威写法（无 add_fldChar 静默吞错）",
+             "run._r.add_fldChar" not in _bm and "w:fldChar" in _bm and "PAGE" in _bm,
+             "run._r.add_fldChar 调用残留 → CT_R 无此方法，页码域 AttributeError 被 except 吞掉")
+
+    # F38h: R5 联动三方闭环（examiner 必跑脚本 / 判据表 4.14 行 / manuscript-delivery 版本）
+    _ex2 = read(os.path.join(expert_dir, "agents", "quality-examiner.md"))
+    _md2 = read(os.path.join(expert_dir, "skills", "manuscript-delivery", "SKILL.md"))
+    ck.check("F38h", "F", "R5 三方闭环（examiner 必跑 score_quality + 判据表 4.14 行 + 反伪造声明）",
+             "score_quality.py" in _ex2 and "必须跑" in _ex2
+             and re.search(r"^\|\s*4\.14\s*\|", _md2, re.M) is not None
+             and "4.14" in _md2,
+             "R5 机械化三方有一处缺席 → 评分仍可绕过脚本自评")
+
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
     # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。

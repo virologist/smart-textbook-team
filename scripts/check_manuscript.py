@@ -34,6 +34,8 @@ check_manuscript.py — 大学教材书稿校验器（门禁 4）
   4.11 术语一致性（对照 profile §5.1 术语表，三级查找：禁用写法零出现/别名并存/首见；v1.1.0 补实现）
   4.12 溯源表（存在 + [实] 条数==溯源行数；v1.1.0 补实现）
   4.13 修订态完整性（4.13a 标记成对合法 / 4.13b md==docx 修订数 / 4.13c 校稿结论；v1.1.0 新增）
+  4.14 R5 硬门槛（r5-score.json 存在时：total≥80 ∧ total==Σ(维度×权重)/100 ∧
+       权重和==100 ∧ 每维 ≥1 证据位置；不存在 → N/A 不阻塞——ADR-05 硬门槛落盘）
 ==============================================================================
 """
 from __future__ import annotations
@@ -967,6 +969,85 @@ def check_fingerprint(text: str, work_root: Path, chapter: str, r: Result):
               f"属性={fp_attr} 现算={fp_now} —— docx 在构建后被改动且未回流/重建（铁律违规）")
 
 
+# ── 4.14 R5 硬门槛（ADR-05 批次 B4：散文级硬数字 → 结构化文件 + 门禁读取）──
+# 反伪造口径：total 与权重和**独立重算**，不信任文件自报——
+# 手改 total（如 79 伪装 82）或权重和 ≠100（伪造维度权重）必被拦截。
+def check_r5_score(work_root: Path, chapter: str, r: Result):
+    """4.14：r5-score.json 存在时成立——total≥80 ∧ total==Σ(维度×权重)/100
+    ∧ 权重和==100 ∧ 每维 ≥1 证据位置。文件不存在 → N/A（不阻塞，可先上线观察）。"""
+    p = work_root / "运行态" / "r5-score.json"
+    if not p.is_file():
+        r.add("4.14", "R5 硬门槛（r5-score.json 不存在 → N/A，不阻塞）", True)
+        return
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        r.add("4.14", "r5-score.json 可解析", False, f"读取/解析失败: {e}")
+        return
+    dims = data.get("dims")
+    if not isinstance(dims, dict) or not dims:
+        r.add("4.14", "r5-score.json 含维度明细", False,
+              "dims 缺失或为空——评分未逐维落盘，无法复核")
+        return
+    try:
+        total = float(data.get("total"))
+        weight_sum = int(data.get("weight_sum"))
+    except (TypeError, ValueError):
+        r.add("4.14", "r5-score.json 数值字段合法", False,
+              f"total/weight_sum 非数值: total={data.get('total')!r} "
+              f"weight_sum={data.get('weight_sum')!r}")
+        return
+
+    # 4.14b 权重和 == 100（防伪造维度权重）
+    r.add("4.14b", f"权重和 == 100（实际 {weight_sum}）", weight_sum == 100,
+          "权重和 ≠100 = 维度权重被伪造/篡改（ADR-05 反伪造硬口径）")
+
+    # 4.14c total == Σ(维度×权重)/100（独立重算，防手改 total）
+    calc = 0.0
+    shape_ok = True
+    for name, d in dims.items():
+        try:
+            calc += float(d["score"]) * float(d["weight"]) / 100.0
+        except (TypeError, ValueError, KeyError):
+            shape_ok = False
+            break
+    if not shape_ok:
+        r.add("4.14c", "维度明细含 score/weight 数值", False,
+              f"dims 存在缺 score/weight 的维度: {sorted(dims)}")
+    else:
+        r.add("4.14c", f"total({total}) == Σ(维度×权重)/100({round(calc, 4)})",
+              abs(total - calc) <= 0.01,
+              f"独立重算 {round(calc, 4)} ≠ 文件自报 {total} —— total 被手改（反伪造）")
+
+    # 4.14d 80 分红线（散文级硬数字机械化）
+    r.add("4.14d", f"total({total}) ≥ 80（R5 红线）", total >= 80,
+          "总分 <80 = blocking 不交付（chapter-structure §2 / examiner R5）")
+
+    # 4.14e 每维 ≥1 证据位置（评分不可空口）
+    ev_missing = [name for name, d in dims.items()
+                  if not d.get("evidence") or
+                  (isinstance(d.get("evidence"), list)
+                   and not any(str(x).strip() for x in d["evidence"]))]
+    r.add("4.14e", "每维 ≥1 证据位置", not ev_missing,
+          f"缺证据维度: {ev_missing}" if ev_missing else "")
+
+    # 4.14f 缺省五维 rubric 下权重不得篡改（dim 集 == 默认 rubric 集时才成立；
+    # 六维/自定义 profile 走 --rubric，只受 4.14b 权重和约束）
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from score_quality import load_default_rubric
+        rubric = load_default_rubric()
+    except Exception:
+        rubric = {}
+    if rubric and set(dims) == set(rubric):
+        bad = {n: (dims[n].get("weight"), rubric[n])
+               for n in rubric if dims[n].get("weight") != rubric[n]}
+        r.add("4.14f", "维度权重与 rubric SSOT 一致", not bad,
+              f"权重被篡改（文件/rubric）: {bad}" if bad else "")
+    else:
+        r.add("4.14f", "维度权重与 rubric SSOT 一致（自定义维度集，N/A）", True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="大学教材书稿校验器（门禁 4）")
     ap.add_argument("--work-root", required=True)
@@ -1008,6 +1089,7 @@ def main() -> int:
     docx_path_pre = find_delivery(work_root, args.chapter, "docx")
     check_revision_state(text, work_root, args.chapter, docx_path_pre, r)
     check_fingerprint(text, work_root, args.chapter, r)
+    check_r5_score(work_root, args.chapter, r)
 
     docx_path = find_delivery(work_root, args.chapter, "docx")
     media = check_docx(docx_path, r) if docx_path else -1

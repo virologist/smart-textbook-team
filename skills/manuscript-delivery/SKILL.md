@@ -1,7 +1,7 @@
 ---
 name: manuscript-delivery
 description: "University textbook MANUSCRIPT delivery spec (not slides): Markdown as the single source of truth carrying revision semantics, DOCX as the deliverable + review vehicle rendered with real Word tracked changes (w:ins/w:del). Defines md structure contract (heading hierarchy, frontmatter, figure/exercise/ideology markers, cross-reference syntax, review-revision marks §1.5, proofread-conclusion §4.2), built-in DOCX typesetting with override, dual-track figures, review-copy build (--revisions) and Word-backflow (--apply-revisions). Load in ASSEMBLE/DELIVER/PROOFREAD phases, or whenever deliverable format, docx typesetting, revision marks, or figure handling is in question. Trigger words: 书稿 / docx / 交付格式 / 版式 / 题注 / 目录 / 参考文献格式 / 图表栅格化 / 修订 / 追踪修订 / 审阅版 / manuscript."
-version: 1.1.0
+version: 1.3.0
 ---
 
 # manuscript-delivery — 大学教材书稿交付规格（md 源 + docx 交付）
@@ -264,6 +264,7 @@ python3 scripts/check_manuscript.py \
 | 4.12c | **引用标签闭环**（P2-6：每个 `[引]` 必须紧跟可检索来源标识符，且该来源在本章«参考文献»节中存在；裸 `[引]` = FAIL） | 回 writer 补来源，或改标 `[待核实·reason=...]` |
 | 4.12d | **逐处锚定**（ADR-03：正文每个 `[实]` 后同一句窗口内必须有可检索锚——PMID/DOI/ISBN/中文权威源名，或本地源三形态 `[[笔记]]` / `本地:路径#锚` / `ima:{kb}:{doc}`；`本地:` 必须带 `#锚`（小节或 `#L行号`），裸 `[实]` 无锚 = FAIL） | 回 writer 补锚，或改标 `[待核实·reason=...]` |
 | 4.13 | **修订态完整性**（4.13a 修订标记**逐处配对/显式声明**且 author/date 合法——孤立 insertion 必须带 `[整段新增]` 或位于「## …新增」小节；4.13b md 标记与 docx 修订数一致；4.13c 校稿结论节存在且含结论） | 回 examiner/重建 |
+| 4.14 | **R5 硬门槛**（ADR-05：`运行态/r5-score.json` 存在时——total≥80 ∧ total==Σ(维度×权重)/100 ∧ 权重和==100 ∧ 每维 ≥1 证据位置；由 `scripts/score_quality.py` 产出，4.14 独立重算反伪造。文件不存在 → N/A 不阻塞） | 回 examiner 跑 score_quality.py 补评 |
 
 > **v1.1.0 实现补齐说明（2026-10-31）**：4.10–4.12 此前只有本表声称、
 > `check_manuscript.py` **零实现**（实测 grep `4.10|4.11|4.12|ipynb|溯源|术语` 在
@@ -391,6 +392,10 @@ python3 scripts/build_book.py --work-root "$WORK_ROOT"
 
 ## 变更记录
 
+- v1.3.0 [2026-11-01] ADR-05 硬门槛落盘（批次 B4）：判据表补 **4.14 R5 硬门槛**
+  （r5-score.json：total≥80 ∧ total==Σ(维度×权重)/100 ∧ 权重和==100 ∧ 每维 ≥1 证据位置；
+  不存在 → N/A 不阻塞）；附带归位 frontmatter version 漂移（B5 加 v1.2.0 变更记录时
+  漏同步版本号，1.1.0→1.3.0 一次补齐）。
 - v1.2.0 [2026-11-01] 全书层（ADR-01 批次 B5）：新增 §5.3 全书装配（build_book.py 合稿
   语义：图号全书序 / 参考文献合并重编号 / TOC 域 + 连续页码）；单章行为零改动。
 - v1.1.0 [2026-10-31] 修订态交付链（方案甲，管家拍板）：铁律收窄为「改 docx 不回流才禁止」；

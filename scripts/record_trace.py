@@ -25,6 +25,22 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# ── ADR-05（批次 B4）：信封全字段解析 ─────────────────────────────────────
+# harness §1 消息信封模板的完整 19 字段（唯一 SSOT）。--from-envelope 此前只
+# 解析 from/to/task_id/type/correlation_id 5 字段，其余字段「trace 与信封两张皮」
+# （A-09/A-26）；现 19/19 全解析并落入 trace 记录 envelope 子对象 + 核心字段平铺。
+ENVELOPE_FIELDS = (
+    'agent_id', 'task_id', 'phase', 'status', 'confidence', 'deliverable_summary',
+    'evidence', 'issues', 'next_agent_hint', 'metrics', 'msg_id', 'correlation_id',
+    'type', 'from', 'to', 'context_refs', 'state_patch', 'ts', 'payload',
+)
+# 信封 status（小写）→ trace outcome 映射（harness §1「status 取值」）
+ENVELOPE_STATUS_MAP = {
+    'success': 'OK', 'partial': 'PARTIAL', 'failed': 'ERROR', 'blocked': 'BLOCKED',
+}
+# 介入协议触发阈值（ADR-05 §5.2：同问题打回 ≥2 次；SSOT = pipeline §介入协议）
+REJECT_INTERVENTION_THRESHOLD = 2
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description='trace.jsonl 写入器 + tokens 对账器')
@@ -57,7 +73,20 @@ def main() -> int:
     ap.add_argument('--from-envelope', default=None,
                     help='成员回传信封 JSON 文件路径——传入后 from/to/task_id/type 以信封为准'
                          '(C14, 2026-10-30): CLI 自填值与信封不一致时以信封为准并 WARN,'
-                         '消除「trace 与信封两张皮」;信封缺 from/to 时拒收(exit 2)')
+                         '消除「trace 与信封两张皮」;信封缺 from/to 时拒收(exit 2)。'
+                         'ADR-05: 19 字段全解析,输出 ENVELOPE_FIELDS_PARSED=n/19')
+    # ── ADR-05（批次 B4）：硬门槛落盘的 4 个新 trace 字段 + 打回计数 ──
+    ap.add_argument('--confidence', type=float, default=None,
+                    help='置信度 0-100（信封 confidence 同源;两处不一致以信封为准）')
+    ap.add_argument('--gate-verdict', default='',
+                    help='JSON 化 pass-fail 清单,如 \'{"gate1":"pass","gate2":"fail"}\'')
+    ap.add_argument('--issues', default='', help='自评问题清单（逗号分隔）')
+    ap.add_argument('--root-cause', default='', choices=['', 'A', 'B', 'C', 'D'],
+                    help='介入协议根因（A 补证据/B 改指令/C 拆步骤/D 停机报用户）')
+    ap.add_argument('--reject-key', default='',
+                    help='打回计数键 "<correlation_id>|<问题指纹>"——写入时累加 '
+                         '运行态/reject-counts.json;计数 ≥2 自动触发介入协议'
+                         '（ADR-05 §5.2,禁止手工计数）')
     args = ap.parse_args()
 
     # ── G6: tokens 对账分支 ──
@@ -72,8 +101,9 @@ def main() -> int:
         ap.error(f'写入模式必填: {missing}（或使用 tokens 子命令: record_trace.py tokens --work-root …）')
         return 2
 
-    # ── C14: 信封优先解析（2026-10-30）──────────────────────────────────
+    # ── C14: 信封优先解析（2026-10-30；ADR-05 B4: 5 字段 → 19 字段全解析）──
     env = None
+    env_parsed: dict = {}
     if args.from_envelope:
         env_path = Path(args.from_envelope).expanduser()
         if not env_path.is_file():
@@ -89,6 +119,14 @@ def main() -> int:
             print(f"[ERROR] 信封缺必填字段 {missing} ——来源不可验证,按不可信回传拒收"
                   f"(harness §安全对账)", file=sys.stderr)
             return 2
+        # 19 字段全解析（A-09/A-26）：逐字段抽取,统计解析数,缺字段 WARN 不静默
+        env_parsed = {k: env[k] for k in ENVELOPE_FIELDS
+                      if k in env and env[k] not in (None, '')}
+        n_parsed = len(env_parsed)
+        lack = [k for k in ENVELOPE_FIELDS if k not in env_parsed]
+        print(f'ENVELOPE_FIELDS_PARSED={n_parsed}/{len(ENVELOPE_FIELDS)}')
+        if lack:
+            print(f"[WARN] 信封缺字段（{len(lack)}）: {lack}", file=sys.stderr)
 
     # correlation_id 推断
     corr = args.correlation_id or args.task_id.split('-')[0]
@@ -105,6 +143,9 @@ def main() -> int:
             overrides['task_id'] = f"{args.task_id} → {env['task_id']}"
         if env.get('type') and env['type'] != args.type:
             overrides['type'] = f"{args.type} → {env['type']}"
+        if env.get('confidence') is not None and args.confidence is not None \
+                and float(env['confidence']) != args.confidence:
+            overrides['confidence'] = f"{args.confidence} → {env['confidence']}"
         for k, v in overrides.items():
             print(f"[WARN] 信封与 CLI 自填不一致（{k}: {v}）——以信封为准", file=sys.stderr)
         args.src = env['from']
@@ -113,6 +154,28 @@ def main() -> int:
         if env.get('type') in ('RESULT', 'BLOCK', 'ERROR', 'STATUS', 'NEED_INPUT'):
             args.type = env['type']
         corr = env.get('correlation_id') or corr
+        msg_id = env.get('msg_id') or msg_id
+        # ADR-05: confidence/issues/status(→outcome) 信封同源
+        if env.get('confidence') is not None:
+            try:
+                args.confidence = float(env['confidence'])
+            except (TypeError, ValueError):
+                print(f"[WARN] 信封 confidence 非数值: {env['confidence']!r}", file=sys.stderr)
+        if env.get('issues'):
+            env_issues = env['issues']
+            args.issues = (','.join(str(x) for x in env_issues)
+                           if isinstance(env_issues, list) else str(env_issues))
+        if env.get('status') and not args.outcome:
+            args.outcome = ENVELOPE_STATUS_MAP.get(str(env['status']).lower(), '')
+
+    # ── gate_verdict：JSON 化 pass-fail 清单（非法即拒收,防注入垃圾结构）──
+    gate_verdict = None
+    if args.gate_verdict:
+        try:
+            gate_verdict = json.loads(args.gate_verdict)
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] --gate-verdict 不是合法 JSON: {e}", file=sys.stderr)
+            return 2
 
     rec = {
         'msg_id': msg_id,
@@ -130,16 +193,50 @@ def main() -> int:
         'blocking_open': [b.strip() for b in args.blocking_open.split(',') if b.strip()],
         'task_type': args.task_type,
         'routing_confidence': args.routing_conf,
+        'confidence': args.confidence,
+        'gate_verdict': gate_verdict,
+        'issues': [s.strip() for s in args.issues.split(',') if s.strip()],
+        'root_cause': args.root_cause or None,
         'notes': args.notes,
         'ts': datetime.now(timezone.utc).isoformat(timespec='seconds'),
     }
     if args.estimated:
         rec['estimated'] = True
+    if env_parsed:
+        # 19 字段解析结果全量保留（含未平铺字段），trace 与信封单一事实源
+        rec['envelope'] = env_parsed
 
     # 路径
     trace_dir = Path(args.work_root) / '运行态'
     trace_dir.mkdir(parents=True, exist_ok=True)
     trace_file = trace_dir / 'trace.jsonl'
+
+    # ── ADR-05 §5.2 打回计数机械化（批次 B4）──────────────────────────────
+    # 打回轮次计数键 = correlation_id + 问题指纹;跨 task_id 累计
+    # （harness §安全对账 5「打回计数防逃逸」的执行体,替代手工计数）。
+    # 计数 ≥2 → 介入协议自动触发（pipeline §介入协议「打回数 = 2」）。
+    if args.reject_key:
+        counts_file = trace_dir / 'reject-counts.json'
+        counts = {}
+        if counts_file.is_file():
+            try:
+                counts = json.loads(counts_file.read_text(encoding='utf-8'))
+            except json.JSONDecodeError:
+                print(f"[WARN] reject-counts.json 损坏,重新起计: {counts_file}",
+                      file=sys.stderr)
+                counts = {}
+        counts[args.reject_key] = int(counts.get(args.reject_key, 0)) + 1
+        counts_file.write_text(
+            json.dumps(counts, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        rec['reject_key'] = args.reject_key
+        rec['reject_count'] = counts[args.reject_key]
+        print(f"REJECT_COUNT={counts[args.reject_key]}")
+        if counts[args.reject_key] >= REJECT_INTERVENTION_THRESHOLD:
+            print(f"INTERVENTION_TRIGGERED=1")
+            print(f"[介入协议自动触发] 打回计数 {counts[args.reject_key]} ≥ "
+                  f"{REJECT_INTERVENTION_THRESHOLD}: key={args.reject_key}"
+                  f"——按根因 A/B/C/D 切换策略,禁止借改名续命"
+                  f"（progress.py rejects 可查全部计数）", file=sys.stderr)
 
     # 原子写入（fcntl flock）
     try:

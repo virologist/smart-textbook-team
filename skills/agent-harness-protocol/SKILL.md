@@ -1,7 +1,7 @@
 ---
 name: agent-harness-protocol
 description: "Execution-layer harness for multi-agent orchestration: message envelope schema, state blackboard spec, retry/timeout/budget/circuit-breaker rules, trace logging format, and degradation chains. Load when dispatching agents, handling cross-agent state, or when a task stalls, retries, or times out. Trigger words: 任务卡住 / 成员超时 / 重试几次了 / 熔断 / 黑板怎么patch / 信封格式 / 预算耗尽 / 并发写冲突 / dispatch checklist."
-version: 1.4.1
+version: 1.5.0
 ---
 
 # agent-harness-protocol — 多代理编排执行层
@@ -95,7 +95,9 @@ version: 1.4.1
 **`from`/`to` 落地说明（C14，2026-10-30）**：此前 §1 模板无此二字段，但 §安全对账与
 team-lead 调度段都把 `from` 当校验锚——成员按模板回传的信封**必然**被判 `SPOOFED_SENDER`
 （规则恒误杀）。现补入模板 8 扩展字段集；`record_trace.py --from-envelope` 从信封解析
-`from`/`to`/`task_id` 而非 CLI 自填，trace 与信封同源。
+`from`/`to`/`task_id` 而非 CLI 自填，trace 与信封同源。**ADR-05 扩至 19 字段全解析**——
+§1 模板的全部字段（agent_id…payload）均被抽取进 trace 的 `envelope` 子对象并打印
+`ENVELOPE_FIELDS_PARSED=n/19`，消除「trace 与信封两张皮」（A-09/A-26）。
 
 **上下文传递纪律**：给路径，不给内容。确需内联时 ≤500 tokens（如返修的具体句子）。
 
@@ -147,8 +149,14 @@ budget:
   turns_used: 43
   turns_limit: 200
   tokens_used: 12450        # evo-13 增补：累计 token 消耗（含输入/输出）
-  tokens_limit: 80000       # 单章节硬上限；超阈值触发降级（非熔断）
-  tokens_per_phase: {SPECIFY: 8K, RETRIEVE: 16K, PRODUCE: 12K, VERIFY: 10K}  # 单 phase 软上限
+  tokens_limit: 150000      # 单章节硬上限（ADR-05：80K→150K——A-17 实测单 spawn 底噪
+                            # 19–29K × 6 spawn ≥114K，80K 算术不可满足）；超阈值触发降级（非熔断）
+  tokens_per_phase:         # 单 phase 软上限（ADR-05：4 态 → 全 13 态，缺口态降级无据）
+    BOOTSTRAP: 8K, INTAKE: 8K, CLARIFY: 10K, SPECIFY: 10K, RETRIEVE: 20K,
+    PRODUCE: 16K, VERIFY: 14K, PROOFREAD: 10K, CONSOLIDATION: 8K,
+    VISUALIZE: 12K, ASSEMBLE: 10K, DELIVER: 8K, LEARN: 6K
+  cuts: []                  # 降级削减记录（ADR-05：§3.1 要求的键——此前模板缺键（A-24），
+                            # 「削减必须写进 budget.cuts」规范无处落盘）
 circuit: CLOSED
 trace_ref: 运行态/trace.jsonl
 # ── 全书段（ADR-01 B5；多章成书时存在；单章模式无此段，行为零破坏）──
@@ -181,15 +189,17 @@ book:
 
 并发写冲突处理：两成员同时 patch 同一字段时，后写者必须在文件尾部 patch 注释中声明「与 {对方 msg_id} 并发，已按 merge 规则合并」；无法自动合并 → 发 `BLOCK` 给编排者裁决。
 
-**Token 预算规则（evo-13 增补，对标 G3 缺陷）**
+**Token 预算规则（evo-13 增补，对标 G3 缺陷；ADR-05 硬门槛机械化）**
 1. **三重阈值**：
-   - 软上限（`tokens_per_phase[phase]`）：超阈值 → trace 记 WARN，继续运行
-   - 章节硬上限（`tokens_limit = 80K`）：超阈值 → 触发降级而非熔断（见下）
+   - 软上限（`tokens_per_phase[phase]`，全 13 相位）：超阈值 → trace 记 WARN，继续运行
+   - 章节硬上限（`tokens_limit = 150K`，ADR-05 上调）：超阈值 → 触发降级而非熔断（见下）
    - 累计上限（`tokens_used`）：作为黑板状态字段持续累加，便于编排者全局视图
-2. **降级策略（超章节硬上限时）**：
+2. **降级策略（超章节硬上限时；预算 ≥80% 即可启动）**：
+   - **`--skip-skill-preload` 降级档（ADR-05 补）**：跳过非关键 skill 预加载——原降级策略无可执行削减项，预算超限后**无法回落到线内**（A-17）；此档是「降至线内」的必备动作
    - 关闭非关键 phase 的并行分支（仅保留主路径）
    - R3 引用核验改为「仅核验 [实] 标签 + 标题级核验」，放弃逐条 PMID 核验深度（牺牲准确度换成本——仅在用户明确接受时）
-   - 上报用户决定是否放宽预算（默认不允许超 100K）
+   - 上报用户决定是否放宽预算（默认不允许超 180K）
+   - **削减必须写进黑板 `budget.cuts` 列表**（§3.1 硬规则；ADR-05 模板补键后可落盘）并在交付质量报告里声明（用户可见）
 3. **监控对账**（防谎报）：编排者维护每任务实际 token 估算（基于 `tokens_per_phase` 累加），与成员申报值交叉核对；偏差 >30% → trace 警告
 4. **不可豁免**：token 预算不能由成员自关闭；只有用户在 E4 升级时显式同意才可临时放宽（需在 trace 留因）
 5. **LEARN 回流**：超预算 ≥2 次的 phase 列入 LEARN 候补池，信号类型 `token_overrun`，合并门禁与现有候补同（≥3 OPEN 或用户 ack）
@@ -202,7 +212,7 @@ book:
 2. **预算对账（防谎报 turns_used）**：编排者维护每任务实际 turn 计数（spawn 前后差值），与成员申报值交叉核对；申报值 < 实际值 20% 以上 → 记 trace 警告；两次谎报 → 该成员产出降级为待复核
 3. **信封来源校验（防伪造 from）**：编排者只采信「自己 spawn 过的成员 ID」发来的信封；未 spawn 的 from 字段 → 直接丢弃并记 trace（outcome=SPOOFED_SENDER）。msg_id 重复（重放攻击）→ 丢弃后到的
 4. **副作用越界校验（v1.2，evo-9）**：成员产出落盘后，编排者 post-check 产物路径 ∈ 该成员契约声明的副作用范围（如检索员只可写 `知识库/retrieval/`）；越界写（如检索员改 draft）→ **拒收该产物 + trace 记 OUT_OF_SCOPE_WRITE**，按 E2 上报处置
-5. **打回计数防逃逸（v1.2，evo-9；E-G1 阈值统一 2026-10-31）**：打回轮次计数键 = `correlation_id + 问题指纹`（blocking 的违反项类型 + 证据位置），**跨 task_id 累计**——换 task_id（R2→R2b）不重置计数；**计数 ≥2 即触发介入协议**（SSOT = pipeline §介入协议「打回数 = 2」；本条款原「≥3」与之打架，系红队 G1 修复——介入负责处置，第 3 轮仍败才停机报用户，两级语义现已对齐），禁止借改名续命
+5. **打回计数防逃逸（v1.2，evo-9；E-G1 阈值统一 2026-10-31；ADR-05 机械化）**：打回轮次计数键 = `correlation_id + 问题指纹`（blocking 的违反项类型 + 证据位置），**跨 task_id 累计**——换 task_id（R2→R2b）不重置计数；**计数 ≥2 即触发介入协议**（SSOT = pipeline §介入协议「打回数 = 2」；本条款原「≥3」与之打架，系红队 G1 修复——介入负责处置，第 3 轮仍败才停机报用户，两级语义现已对齐），禁止借改名续命。**计数机械落盘（ADR-05 §5.2）**：`record_trace.py --reject-key "<correlation_id>|<指纹>"` 累加进 `运行态/reject-counts.json`，`progress.py rejects` 读取——**禁止手工计数**（人工判 2 轮是18 条回归的根因之一）
 6. **死锁解锁路径（v1.2，evo-9）**：两成员 BLOCK 相互等待（BLOCK 依赖图成环），或 `blocking_open` 非空但责任成员预算已耗尽且悬空超过 1 个调度周期 → 编排者**必须**主动裁决（拆依赖/换责任人/升级用户），禁止悬空等待
 7. **降级疲劳监测（v1.2，evo-9）**：同一 correlation_id 下同一降级层触发 ≥3 次 → 该层进入冷却（后续直接用下层）+ trace 记 DEGRADE_FATIGUE + 上报编排者——既省时也防「疲劳降级」滥用
 
@@ -237,6 +247,8 @@ book:
 | **P4** | `PROOFREAD` R4（风格） | 风格问题不影响可用性 | 可降为只查 AI 腔与术语一致 |
 
 **硬规则**：**禁止**为保 P1/P3 而削减 P0；削减必须写进黑板 `budget` 段的 `cuts:` 列表并在交付质量报告里声明（用户可见）。
+
+**`--skip-skill-preload` 降级档（ADR-05 补，A-17）**：预算达 80% `tokens_limit` 时即允许执行——跳过非关键 skill 预加载（成员所需 skill 按需加载，预加载失败/超时不再阻塞主路径）。原降级策略只写了「保什么」没有「可砍什么」，预算超限后**无法回落到线内**；此档是唯一可机械执行的削减动作。执行后必须：① 削减记入 `budget.cuts`；② trace 留因（`notes` 注明 `skip-skill-preload`）；③ 交付质量报告声明影响面。
 
 ### 3.2 工具健康检查（2026-10-29 补，P19）
 
@@ -323,14 +335,22 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
   --type RESULT --outcome OK --duration-ms 128000 \
   --tokens-in 8000 --tokens-out 12000 --turns 37 \
   --artifacts "章节/ch06/draft.md" \
-  --task-type write-revise --routing-conf 0.92
+  --task-type write-revise --routing-conf 0.92 \
+  --confidence 92 --gate-verdict '{"gate1":"pass","gate2":"fail"}' \
+  --issues "术语2处不一致" --root-cause B \
+  --reject-key "ch06|术语不一致"
 ```
 
 **关键 schema 字段**（与 §1 envelope 对齐）：
 - `task_type`（来自 task-router 路由决策）
 - `routing_confidence`（路由器置信度,离线 eval 用）
+- `confidence`（0-100,成员/信封置信度——ADR-05 补,与 §1 envelope 同源）
+- `gate_verdict`（JSON 化 pass-fail 清单,如 `{"gate1":"pass","gate2":"fail"}`——门禁结论结构化,供可审性证据链）
+- `issues`（自评问题清单）/ `root_cause`（介入协议根因 A/B/C/D——ADR-05 补）
+- `reject_key`（打回计数键 `<correlation_id>|<问题指纹>`——写入时累加 `运行态/reject-counts.json`,计数 ≥2 **自动触发介入协议**;读取入口 `progress.py rejects`。ADR-05 §5.2：打回计数从「人工判 2 轮」改为脚本值）
 - `blocking_open`（H15 缺口,H15 螺旋起点）
 - `tokens_in/out`（per-task 累加,§2 budget cap 实际开销）
+- `envelope`（`--from-envelope` 时附信封 **19 字段**全解析结果——ADR-05：5→19,消除「trace 与信封两张皮」;解析数打印 `ENVELOPE_FIELDS_PARSED=n/19`）
 
 **写入机制**：fcntl flock 原子 append；多成员并发安全。
 
@@ -364,8 +384,12 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
    gates: {gate1: pending, gate2: pending, gate3: pending}
    blocking_open: []
    retries: {}
-   budget: {turns_used: 0, turns_limit: 200, tokens_used: 0, tokens_limit: 80000,
-            tokens_per_phase: {SPECIFY: 8000, RETRIEVE: 16000, PRODUCE: 12000, VERIFY: 10000}}
+   budget: {turns_used: 0, turns_limit: 200, tokens_used: 0, tokens_limit: 150000,
+            tokens_per_phase: {BOOTSTRAP: 8000, INTAKE: 8000, CLARIFY: 10000,
+              SPECIFY: 10000, RETRIEVE: 20000, PRODUCE: 16000, VERIFY: 14000,
+              PROOFREAD: 10000, CONSOLIDATION: 8000, VISUALIZE: 12000,
+              ASSEMBLE: 10000, DELIVER: 8000, LEARN: 6000},
+            cuts: []}   # ADR-05：13 相位软上限 + cuts 削减记录键（缺则 §3.1 削减无处落盘）
    circuit: CLOSED
    trace_ref: 运行态/trace.jsonl
    ```
