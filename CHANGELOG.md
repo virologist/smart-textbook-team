@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### 学段受众 profile 化（#71，2026-11-01 批次 2）
 
+- **终审整改 D-01（P3 报告 §5，2026-11-01 同日闭合）**：`progress.py init/book init`
+  补 audience 四档枚举断言（`validate_audience`，判据 Q2 机械执行体）——非法值
+  exit 2 并提示合法枚举与 SSOT 位置、**不落盘**；空值放行（回落语义归 SSOT §0，
+  本层不静默替默认值）。此前「小学生」等任意值 EXIT=0 落盘，examiner R1 的
+  blocking 声明无机械反查（声明↔行为解耦）。CI「4.14 硬门槛」步追加 Q2 探针
+  （非法拦 / 四档落盘 / 空值放行），步数不变。
+
 - **新建 `references/audience-profiles.md`（唯一新文件，学段判据表 SSOT）**：四档
   （枚举四值见该文件 §0，学科中立措辞不在本条复述）× 五列判据（句长锚点/案例密度/
   公式纪律/结构裁剪/术语铺垫）；audience 未声明 → 回落默认档且**须在 issues 显式

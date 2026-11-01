@@ -71,8 +71,10 @@ AUDIENCE_SKIP_DIRS = {
     "references/profiles",          # 学科化数据源（学段裁剪注记的合法承载位）
     "references/audience-profiles.md",  # 学段判据表 SSOT（词表定义的对象本身）
 }
-# 门禁脚本自身是词表定义者，须排除（否则词表命中自身，永远红）
+# 枚举执行副本位（D-01）：progress.py 的 AUDIENCE_ENUM 是 SSOT §1 表的机械执行体
+# （校验器层唯一合法落点），与门禁自身同为「词表定义者」，须豁免否则永远红
 AUDIENCE_SELF = "scripts/check_domain_neutral.py"
+AUDIENCE_SKIP_FILES = {"scripts/progress.py", AUDIENCE_SELF}
 
 # 扫描范围（相对包根）；references/ 需排除 profiles/ 与 *.example.md
 SCAN_DIRS = ["agents", "skills", "scripts", "references"]
@@ -214,7 +216,7 @@ def check_audience_terms(root: Path) -> tuple[list[dict], list[dict]]:
             if not p.is_file() or p.suffix not in (".md", ".py", ".sh", ".yml", ".yaml"):
                 continue
             rel = p.relative_to(root).as_posix()
-            if rel == AUDIENCE_SELF:
+            if rel in AUDIENCE_SKIP_FILES:
                 continue
             if any(rel == s or rel.startswith(s if s.endswith("/") else s)
                    for s in AUDIENCE_SKIP_DIRS):

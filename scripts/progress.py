@@ -77,6 +77,27 @@ PHASE_ALIAS = {
     'PROOFREAD': 'PROOFREAD-R5',
 }
 
+# ── D-01 终审整改（2026-11-01，#71 判据 Q2 机械执行体）───────────────────
+# audience 四档枚举的 SSOT = references/audience-profiles.md §0/§1（表为唯一权威，
+# 此处硬编码为执行副本——表改档位时须同步本列表，check_audience_terms 门禁同源）。
+# 此前 init/book init 接受任意 audience 值（如「小学生」）EXIT=0 落盘非法值，
+# 而 examiner R1 的「枚举越界 → blocking」是 LLM 层声明、无法反查——机械层先拦，
+# 非法值不进运行态工件（判据 Q2 声明自此有机械反查落点）。
+AUDIENCE_ENUM = ['高职专科', '职业本科', '学术本科', '研究生']
+AUDIENCE_DEFAULT = '职业本科'  # 未声明回落默认档；回落须在 issues 显式声明（SSOT §0）
+
+
+def validate_audience(audience: str) -> str | None:
+    """audience 枚举断言（判据 Q2）：非法值返回错误信息，合法/空返回 None。
+
+    空值放行（book init 缺省语义 = 未声明，由 SSOT §0 回落规则接管，
+    不在本层静默替默认值——回落声明义务在成员，不静默）。
+    """
+    if not audience or audience in AUDIENCE_ENUM:
+        return None
+    return (f'audience 非法值: {audience}; 合法枚举 = {AUDIENCE_ENUM}'
+            f'（SSOT = references/audience-profiles.md §1;未声明留空 → 回落 {AUDIENCE_DEFAULT}）')
+
 
 class LegacyPhaseError(ValueError):
     """传入 ADR-04 改名前的旧相位（VERIFY-R4/VERIFY-R5）。
@@ -507,6 +528,10 @@ def main() -> int:
     wr = Path(args.work_root)
 
     if args.cmd == 'init':
+        err = validate_audience(args.audience)  # D-01: 判据 Q2 机械断言（非法值 exit 2 不落盘）
+        if err:
+            print(f'ERROR  {err}', file=sys.stderr)
+            return 2
         init_progress(wr, args.chapter, args.textbook, args.audience)
         print('OK  progress.md initialized')
     elif args.cmd == 'book':
@@ -514,6 +539,10 @@ def main() -> int:
             chapters = [c.strip() for c in args.chapters.split(',') if c.strip()]
             if not chapters:
                 print('ERROR  --chapters 不能为空', file=sys.stderr)
+                return 2
+            err = validate_audience(args.audience)  # D-01: 同 init（空值放行走回落）
+            if err:
+                print(f'ERROR  {err}', file=sys.stderr)
                 return 2
             init_book(wr, args.textbook, chapters, args.audience, args.word_budget)
             print('OK  book initialized')

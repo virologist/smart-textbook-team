@@ -552,6 +552,24 @@ jobs:
           assert rec["confidence"] == 88 and rec["issues"] == ["术语2处不一致"], rec
           print("信封 PASS: ENVELOPE_FIELDS_PARSED=19/19 且 confidence/issues 同源落 trace")
           PY
+          # Q2 枚举断言（D-01 终审整改，#71）：非法 audience 值必须 exit 2 不落盘；
+          # 四档合法值照常落盘；book init 空值放行（回落语义在 SSOT §0，不在本层静默替默认）
+          WRQ=/tmp/stt-q2
+          rm -rf "$WRQ"; mkdir -p "$WRQ"
+          if python3 scripts/progress.py --work-root "$WRQ" init --chapter ch01 --textbook X \
+            --audience 小学生 2>/tmp/stt-q2-err.txt; then
+            echo "::error::Q2 失守：非法 audience 值未被 progress.py init 拦截"; exit 1
+          fi
+          grep -q "合法枚举" /tmp/stt-q2-err.txt
+          test ! -f "$WRQ/运行态/progress.md"
+          for a in 高职专科 职业本科 学术本科 研究生; do
+            WRA="$WRQ/ok-$a"
+            python3 scripts/progress.py --work-root "$WRA" init --chapter ch01 --textbook X --audience "$a" >/dev/null
+            grep -q "受众: $a" "$WRA/运行态/progress.md"
+          done
+          python3 scripts/progress.py --work-root "$WRQ" book init --textbook Y \
+            --chapters ch01 --audience "" >/dev/null
+          echo "Q2 PASS: audience 枚举断言（非法拦/四档落盘/空值放行走回落）"
 
       # 申诉通道冒烟（#70，2026-11-01 批次 1；判据 A1/A2 机械层探针）：
       # appeal| 前缀键写两次 → progress.py rejects 显示「申诉已用」且 INTERVENTION=0
