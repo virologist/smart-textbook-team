@@ -51,7 +51,19 @@ jobs:
             exit 1
           fi
           rm -f scripts/_leak_probe.py
-          echo "[OK] 学科中立性门禁正负双向通过"
+          # 学段中立探针（#71 批次 2，判据 Q1）：学段常量词回潮通用层必须被拦
+          printf '高职学生优先低认知负荷图式\n' > scripts/_aud_leak_probe.py
+          if python3 scripts/check_domain_neutral.py --root . 2>/dev/null; then
+            echo "::error::负向失败：学段常量词写回通用层未被门禁拦截（判据 Q1 失守）"
+            rm -f scripts/_aud_leak_probe.py
+            exit 1
+          fi
+          rm -f scripts/_aud_leak_probe.py
+          # SSOT 豁免自证：同词写进 audience-profiles §1 表内不触发（豁免路径正确）
+          printf '\n| 探针档 | 每知识块 ≥1 案例锚点 |\n' >> references/audience-profiles.md
+          python3 scripts/check_domain_neutral.py --root .
+          git checkout -- references/audience-profiles.md 2>/dev/null || git restore references/audience-profiles.md 2>/dev/null || true
+          echo "[OK] 学科+学段中立性门禁正负双向通过（SSOT 豁免生效）"
 
       - name: Router 离线评测 (>= 0.80)
         run: python3 tests/test_router_eval.py
@@ -811,6 +823,12 @@ jobs:
             done
           done
           echo "[OK] 三 profile 均含 §5/§6/§7"
+          # ④ audience-profiles 结构断言（#71 批次 2：学段判据 SSOT 三节在场）
+          for s in "## 0. 加载协议" "## 1. 判据表" "## 2. 执行挂点"; do
+            grep -q "$s" references/audience-profiles.md || { echo "::error::audience-profiles.md 缺 $s"; exit 1; }
+          done
+          grep -q "audience:" agents/didactic-architect.md || { echo "::error::architect 缺 audience 声明强制"; exit 1; }
+          echo "[OK] audience-profiles 三节在场 + architect audience 声明强制"
 
       # 三章成书端到端（ADR-01 全书层，2026-11-01 批次 B5）：
       # book init → 逐章 assemble → check_book --strict（5.1–5.5）→ build_book（合稿 md+docx）。

@@ -50,6 +50,30 @@ DOMAIN_TERMS_SOFT = [
 ]
 DOMAIN_TERMS = DOMAIN_TERMS_HARD + DOMAIN_TERMS_SOFT
 
+# ── 规则①b：学段常量词表（ADR-02 同构扩展，#71 批次 2，2026-11-01）─────
+# 病灶同构：学段判据写死在通用层（writer/designer/role-assembly 的「高职学生=…」），
+# 换学段（学术本科/研究生教材）时整体失效。学段判据的唯一 SSOT =
+# references/audience-profiles.md（四档判据表），通用层只能「引用该表」。
+# HARD「判据执行体词」：学段画像/档位判据词——命中 = FAIL（与学科 HARD 同级）。
+AUDIENCE_TERMS_HARD = [
+    "高职学生", "高职生", "高职专科", "职业本科", "学术本科", "研究生",
+    "大专生", "本科生",
+]
+# SOFT「举例措辞词」：说明性举例（如「如高职」）常见于历史注记——WARN 不阻塞。
+AUDIENCE_TERMS_SOFT = [
+    "高职", "专科", "学段画像", "受众画像",
+]
+AUDIENCE_TERMS = AUDIENCE_TERMS_HARD + AUDIENCE_TERMS_SOFT
+
+# 学段词扫描范围与豁免（与学科词同目录集；豁免 = 学段判据的合法载体）
+AUDIENCE_SCAN_DIRS = ["agents", "skills", "scripts", "references"]
+AUDIENCE_SKIP_DIRS = {
+    "references/profiles",          # 学科化数据源（学段裁剪注记的合法承载位）
+    "references/audience-profiles.md",  # 学段判据表 SSOT（词表定义的对象本身）
+}
+# 门禁脚本自身是词表定义者，须排除（否则词表命中自身，永远红）
+AUDIENCE_SELF = "scripts/check_domain_neutral.py"
+
 # 扫描范围（相对包根）；references/ 需排除 profiles/ 与 *.example.md
 SCAN_DIRS = ["agents", "skills", "scripts", "references"]
 SKIP_DIRS = {"references/profiles"}
@@ -156,6 +180,55 @@ def check_domain_terms(root: Path) -> tuple[list[dict], list[dict]]:
     return hard_hits, soft_hits
 
 
+def _iter_audience_lines(path: Path):
+    """学段词扫描的行产出器：.md 扫**正文**（学段画像写死在通用行文里，
+    与学科词只扫代码块不同——学段常量的病灶恰是正文散文）+ 代码块；
+    .py 跳过注释与 docstring（同学科词口径）；.yml/.sh 全行。"""
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    if path.suffix == ".py":
+        ds = _docstring_ranges(text)
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if lineno in ds:
+                continue
+            if line.strip().startswith("#"):
+                continue
+            yield lineno, line
+    else:
+        # .md 正文与代码块都扫（正文是主战场）；.yml/.sh 全行
+        for lineno, line in enumerate(text.splitlines(), 1):
+            yield lineno, line
+
+
+def check_audience_terms(root: Path) -> tuple[list[dict], list[dict]]:
+    """规则①b（#71 批次 2）：学段常量词 HARD → FAIL；SOFT → WARN。
+
+    豁免：references/audience-profiles.md（SSOT 本体）与 references/profiles/
+    （学段裁剪注记的学科化承载位）；门禁自身文件排除。
+    """
+    hard_hits, soft_hits = [], []
+    for d in AUDIENCE_SCAN_DIRS:
+        base = root / d
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*")):
+            if not p.is_file() or p.suffix not in (".md", ".py", ".sh", ".yml", ".yaml"):
+                continue
+            rel = p.relative_to(root).as_posix()
+            if rel == AUDIENCE_SELF:
+                continue
+            if any(rel == s or rel.startswith(s if s.endswith("/") else s)
+                   for s in AUDIENCE_SKIP_DIRS):
+                continue
+            for lineno, line in _iter_audience_lines(p):
+                for term in AUDIENCE_TERMS_HARD:
+                    if term in line:
+                        hard_hits.append({"file": rel, "line": lineno, "term": term})
+                for term in AUDIENCE_TERMS_SOFT:
+                    if term in line:
+                        soft_hits.append({"file": rel, "line": lineno, "term": term})
+    return hard_hits, soft_hits
+
+
 def check_paths(root: Path) -> list[dict]:
     """规则②：硬编码绝对路径 → 文件:行号:路径。"""
     hits = []
@@ -187,10 +260,12 @@ def main() -> int:
 
     root = Path(args.root).expanduser()
     hard_hits, soft_hits = check_domain_terms(root)
+    aud_hard, aud_soft = check_audience_terms(root)
     path_hits = check_paths(root)
 
     if args.json:
         print(json.dumps({"hard_hits": hard_hits, "soft_hits": soft_hits,
+                          "audience_hard_hits": aud_hard, "audience_soft_hits": aud_soft,
                           "path_hits": path_hits}, ensure_ascii=False, indent=2))
     else:
         print("=" * 62)
@@ -208,6 +283,18 @@ def main() -> int:
                 print(f"    {h['file']}:{h['line']}  词「{h['term']}」")
             if len(soft_hits) > 20:
                 print(f"    … 共 {len(soft_hits)} 处")
+        if aud_hard:
+            print(f"✗ 学段常量词命中 {len(aud_hard)} 处（判据基准 = audience-profiles，通用层禁写死）:")
+            for h in aud_hard:
+                print(f"    {h['file']}:{h['line']}  词「{h['term']}」")
+        else:
+            print("✓ 学段常量词（HARD）0 命中")
+        if aud_soft:
+            print(f"⚠ 学段举例措辞 {len(aud_soft)} 处（建议改引用 audience-profiles，不阻塞）:")
+            for h in aud_soft[:20]:
+                print(f"    {h['file']}:{h['line']}  词「{h['term']}」")
+            if len(aud_soft) > 20:
+                print(f"    … 共 {len(aud_soft)} 处")
         if path_hits:
             print(f"✗ 硬编码绝对路径 {len(path_hits)} 处（应用 $EXPERT_DIR 等变量）:")
             for h in path_hits:
@@ -215,11 +302,11 @@ def main() -> int:
         else:
             print("✓ 硬编码绝对路径 0 命中")
         print("-" * 62)
-        n = len(hard_hits) + len(path_hits)
-        print(f"FAIL {n} | WARN {len(soft_hits)}")
+        n = len(hard_hits) + len(path_hits) + len(aud_hard)
+        print(f"FAIL {n} | WARN {len(soft_hits) + len(aud_soft)}")
         print("=" * 62)
 
-    return 1 if (hard_hits or path_hits) else 0
+    return 1 if (hard_hits or path_hits or aud_hard) else 0
 
 
 if __name__ == "__main__":

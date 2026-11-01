@@ -1169,6 +1169,57 @@ def check_executability(ck, expert_dir):
              "申诉通道冒烟" in _wf and "申诉已用" in _wf and "INTERVENTION=0" in _wf,
              "CI 无申诉探针 → appeal 键隔离与申诉已用显示无机械证明（M1 缺口）")
 
+    # ── F41：学段受众 profile 化守护（#71，2026-11-01 批次 2）───────────────
+    # 学段判据此前写死在通用层（writer/designer/role-assembly 的「高职学生=…」），
+    # 属 ADR-02 同构违规。本组断言：SSOT 表在场 + 通用层学段常量 0 命中。
+
+    # F41a: audience-profiles.md SSOT 存在且含四档判据表（表头 + 四档行 + 加载协议）
+    _ap_path = os.path.join(expert_dir, "references", "audience-profiles.md")
+    if os.path.isfile(_ap_path):
+        _ap = read(_ap_path)
+        _ap_miss = [s for s in ("## 0. 加载协议", "## 1. 判据表", "## 2. 执行挂点",
+                                "| 学段 |", "句长锚点", "案例密度", "公式纪律",
+                                "audience", "回落")
+                    if s not in _ap]
+        ck.check("F41a", "F", "audience-profiles.md SSOT（四档判据表 + 加载协议 + 执行挂点）",
+                 not _ap_miss, f"缺关键构件: {_ap_miss}")
+    else:
+        ck.check("F41a", "F", "audience-profiles.md SSOT（四档判据表 + 加载协议 + 执行挂点）",
+                 False, f"不存在: {_ap_path}")
+
+    # F41b: 学段中立门禁机械执行——check_domain_neutral 含学段词表与 SSOT 豁免；
+    # 实跑通用层学段常量 0 命中（复用 domain_neutral 出口，FAIL 计数含学段段）
+    _cdn = read(os.path.join(expert_dir, "scripts", "check_domain_neutral.py"))
+    _cdn_ok = all(s in _cdn for s in ("AUDIENCE_TERMS_HARD", "AUDIENCE_TERMS_SOFT",
+                                      "check_audience_terms", "audience-profiles.md"))
+    try:
+        _cdnp = subprocess.run(
+            [sys.executable, os.path.join(expert_dir, "scripts", "check_domain_neutral.py"),
+             "--root", expert_dir],
+            capture_output=True, text=True, timeout=120)
+        ck.check("F41b", "F", "学段中立门禁（词表+SSOT豁免实装；实跑通用层学段常量 0 命中）",
+                 _cdn_ok and _cdnp.returncode == 0 and "学段常量词（HARD）0 命中" in _cdnp.stdout,
+                 (_cdnp.stdout or _cdnp.stderr)[-300:] if not _cdn_ok else
+                 f"实跑未全绿: {(_cdnp.stdout or _cdnp.stderr)[-200:]}")
+    except Exception as e:                                # pragma: no cover
+        ck.check("F41b", "F", "学段中立门禁（词表+SSOT豁免实装；实跑通用层学段常量 0 命中）",
+                 False, f"执行失败: {e}")
+
+    # F41c: 五处写死段已改挂 SSOT（writer 按档执行 / examiner R1 枚举校验 Q2 /
+    # role-assembly 判据基准引用 / designer 认知负荷挂表 / architect frontmatter 声明）
+    _wr = read(os.path.join(expert_dir, "agents", "subject-writer.md"))
+    _ex3 = read(os.path.join(expert_dir, "agents", "quality-examiner.md"))
+    _ra2 = read(os.path.join(expert_dir, "references", "role-assembly.md"))
+    _dg = read(os.path.join(expert_dir, "agents", "visual-instructional-designer.md"))
+    _da = read(os.path.join(expert_dir, "agents", "didactic-architect.md"))
+    ck.check("F41c", "F", "五处执行挂点改挂 SSOT（writer按档/examiner Q2/role-assembly/designer/architect）",
+             "audience-profiles.md" in _wr and "逐列执行" in _wr
+             and "audience 枚举校验" in _ex3 and "判据 Q2" in _ex3
+             and "audience-profiles.md" in _ra2
+             and "audience-profiles.md" in _dg
+             and "audience:" in _da and "audience-profiles.md" in _da,
+             "学段判据执行挂点缺一 → 写作/审查仍无档位基准可取")
+
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
     # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。

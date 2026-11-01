@@ -33,7 +33,7 @@ description: "Whole-book orchestration spec (ADR-01, dual-layer state machine): 
 # ① 全书初始化：book-spec.md + progress.md「Progress · 全书」段
 python3 scripts/progress.py --work-root "$WORK_ROOT" book init \
     --textbook 教材名 --chapters ch01,ch02,ch03 \
-    [--audience 高职] [--word-budget 300000]
+    [--audience <audience-profiles §0 枚举值>] [--word-budget 300000]
 
 # ② 全书进度矩阵（各章处于哪一相位）
 python3 scripts/progress.py --work-root "$WORK_ROOT" book-status

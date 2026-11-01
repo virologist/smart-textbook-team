@@ -43,7 +43,8 @@ maxTurns: 80
 
 ## 输出规范
 
-- 结构：`chapter_design.md` = frontmatter（版本/日期/门禁状态）+ §A 知识结构 + §B 内容方案 + §C 分节写作计划
+- 结构：`chapter_design.md` = frontmatter（版本/日期/门禁状态/**audience 学段档**）+ §A 知识结构 + §B 内容方案 + §C 分节写作计划
+- **audience 声明强制（#71 批次 2）**：frontmatter 必含 `audience: <枚举值>`，合法值 = `references/audience-profiles.md` §0 四档；未声明 → examiner R1 判 blocking（判据 Q2）
 - 每个知识块必含：`{block_id, 知识域, Bloom 层级, 字数目标, 依赖块, 可并行标记}`
 - 每节必含：`{节号, 节标题, 覆盖知识块, 图表位预留, 习题位预留, 思政融入点}`
 - 设计中不出现任何具体学科数据（那是检索和写作阶段的职责），只标「数据需求」

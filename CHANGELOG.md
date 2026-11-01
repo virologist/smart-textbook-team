@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 > GATE2 变更单 B1–B6 全部闭合。单章流程行为语义除判据口径加固（更严）外不变；
 > 全书层与硬门槛为纯增量（4.14 缺文件 N/A）。
 
+### 学段受众 profile 化（#71，2026-11-01 批次 2）
+
+- **新建 `references/audience-profiles.md`（唯一新文件，学段判据表 SSOT）**：四档
+  （枚举四值见该文件 §0，学科中立措辞不在本条复述）× 五列判据（句长锚点/案例密度/
+  公式纪律/结构裁剪/术语铺垫）；audience 未声明 → 回落默认档且**须在 issues 显式
+  声明**（禁止静默回落，与 profile 缺失回落同纪律）；五维评分与 80 分红线任何档
+  不豁免。
+- **判据 Q1（学段中立，机械）**：`check_domain_neutral.py` 新增学段常量词表段
+  （`check_audience_terms`：HARD 执行体词 → FAIL / SOFT 举例措辞 → WARN）；
+  学段词扫 **md 正文**（学段画像病灶在通用行文，与学科词只扫代码块不同）；
+  豁免 `references/audience-profiles.md`（SSOT 本体）与 `references/profiles/`。
+  FAIL 计数并入既有出口（学科 HARD + 学段 HARD + 硬路径）。
+- **判据 Q2（audience 枚举合法，LLM 执行层）**：examiner R1 校验 chapter_design
+  frontmatter `audience:` ∈ audience-profiles §0 枚举；didactic-architect 输出契约
+  补 frontmatter 必含 `audience:` 声明。不新增脚本（与既有门禁 1 同层）。
+- **五处写死段改挂 SSOT**（不改 `vocational-edu-adapter` role_id——kebab-case
+  稳定标识，保 draft frontmatter 兼容）：subject-writer 学段适配表达改按档逐列执行；
+  visual-instructional-designer 认知负荷判据挂表；quality-examiner R2 学段维
+  「经验式检查」→「按 SSOT 对应档逐列检查」+ R1 判据 Q2；role-assembly §1/§2/§3/§7
+  判据基准与 role_name 挂表；chapter-structure §5 裁剪细则收敛为引用
+  audience-profiles §1（本节只留口径引用）。
+- **测试与 CI**：静态契约 +3 计分项（F41a–F41c：SSOT 结构 / 学段中立门禁实跑 /
+  五处执行挂点），277 → **280**；CI「学科中立性门禁」步扩学段词探针（回潮必须拦 +
+  SSOT 豁免自证）+ audience-profiles 三节结构断言（与三 profile 断言同段）。
+
 ### 评审申诉通道（#70，2026-11-01 批次 1）
 
 - **零新脚本、零新信封字段**：申诉载体 = 既有 RESULT 信封 `issues` 带

@@ -33,7 +33,7 @@ from pathlib import Path
 FIXED = [
     ("textbook-senior-editor", "教材资深编辑",
      ["术语一致性", "引用格式", "段落节奏"]),
-    ("vocational-edu-adapter", "高职学段适配",
+    ("vocational-edu-adapter", "学段适配（按 audience 档）",
      ["学段可消化性", "公式最小化", "案例密度"]),
 ]
 
