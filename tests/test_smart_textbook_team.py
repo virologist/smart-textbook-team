@@ -1128,6 +1128,47 @@ def check_executability(ck, expert_dir):
              and "--skip-skill-preload" in _shim and "budget.cuts" in _shim,
              "M2 制度未落文或降级档 flag 无实现（M3 无法反查）")
 
+    # ── F40：评审申诉通道守护（#70，2026-11-01 批次 1）─────────────────────
+    # 申诉通道此前全包仅 harness §0 一句散文声明（无判据/无 trace 落点/无计数），
+    # 属「静默放行的纯散文」。本组断言把申诉契约钉进静态基准：声明存在性 +
+    # appeal| 前缀键与介入协议的语义隔离（双方有一处缺席即申诉通道退化）。
+
+    # F40a: harness §0 申诉段声明存在性（判据 A1/A2 + 三步裁决 + 键格式）
+    _hs = read(os.path.join(expert_dir, "skills", "agent-harness-protocol", "SKILL.md"))
+    ck.check("F40a", "F", "harness §0 申诉通道声明（APPEAL 载体 + 判据 A1/A2 + 三步裁决）",
+             all(s in _hs for s in ("评审申诉通道", "APPEAL:", "判据 A1", "判据 A2",
+                                    "appeal|", "appeal_denied", "appeal_granted",
+                                    "record_trace.py", "progress.py resolve")),
+             "harness §0 缺申诉段关键构件 → 申诉通道仍是散文声明，不可裁决不可计数")
+
+    # F40b: appeal| 前缀键与介入协议语义隔离（progress.py 显示「申诉已用」；
+    # record_trace.py appeal 键不触发 INTERVENTION_TRIGGERED；rejects 无前缀键仍判介入）
+    _pg = read(os.path.join(expert_dir, "scripts", "progress.py"))
+    _rt = read(os.path.join(expert_dir, "scripts", "record_trace.py"))
+    ck.check("F40b", "F", "appeal| 键隔离（progress 申诉已用标注 + record_trace 不触发介入 + 无前缀键仍介入）",
+             "appeal|" in _pg and "申诉已用" in _pg
+             and _pg.count("appeal|") >= 2          # 显示分支 + 文档口径
+             and "startswith('appeal|')" in _rt     # 介入触发分支的前缀隔离
+             and "REJECT_INTERVENTION_THRESHOLD" in _rt,
+             "appeal 键未与介入协议隔离 → 申诉一次即误触发介入（风险 §5.5 负向断言）")
+
+    # F40c: writer 申诉信封通道 + examiner 申诉复核职责（两端契约在场）
+    _wr = read(os.path.join(expert_dir, "agents", "subject-writer.md"))
+    _ex2 = read(os.path.join(expert_dir, "agents", "quality-examiner.md"))
+    ck.check("F40c", "F", "申诉两端契约（writer APPEAL 信封通道 + examiner 只核新证据）",
+             "APPEAL:" in _wr and "context_refs" in _wr
+             and "申诉通道" in _wr
+             and "申诉复核" in _ex2 and "不重开全轮" in _ex2
+             and "维持原判 / 撤销 blocking / 部分撤销" in _ex2,
+             "writer 侧无申诉入口或 examiner 侧无复核职责 → 申诉流程两端断链")
+
+    # F40d: M1 破坏样本——CI 申诉冒烟步在场（正反双向：appeal 键不触发介入 +
+    # 无前缀键同场景触发；含「申诉 context_refs ⊆ 原 evidence 不受理」负向口径断言）
+    _wf = read(os.path.join(expert_dir, ".github", "workflows", "harness-gate.yml"))
+    ck.check("F40d", "F", "CI 申诉通道冒烟步（appeal 两次写键 + 申诉已用 + INTERVENTION=0 负向）",
+             "申诉通道冒烟" in _wf and "申诉已用" in _wf and "INTERVENTION=0" in _wf,
+             "CI 无申诉探针 → appeal 键隔离与申诉已用显示无机械证明（M1 缺口）")
+
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
     # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。

@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 > GATE2 变更单 B1–B6 全部闭合。单章流程行为语义除判据口径加固（更严）外不变；
 > 全书层与硬门槛为纯增量（4.14 缺文件 N/A）。
 
+### 评审申诉通道（#70，2026-11-01 批次 1）
+
+- **零新脚本、零新信封字段**：申诉载体 = 既有 RESULT 信封 `issues` 带
+  `APPEAL:<问题指纹>` + `context_refs` 附新证据位置；仅针对单项 blocking 提出
+  （correlation_id 级全量重审仍走既有返修循环）。
+- **判据 A1（新证据可判定）**：主理人 diff 申诉 `context_refs` vs 原 blocking 审查
+  报告 evidence 清单，差集非空才受理；A1 属 LLM 编排层（与介入协议同层），不进
+  check_manuscript。
+- **判据 A2（申诉 ≤1 次）**：复用 `record_trace.py --reject-key`，键前缀
+  `appeal|<correlation_id>|<指纹>`；`progress.py rejects` 对 `appeal|` 前缀键显示
+  「申诉已用（该指纹禁再申诉）」。**appeal| 键与介入协议语义隔离**——介入阈值只认
+  无前缀打回键（record_trace 触发分支按前缀跳过 + rejects 的 INTERVENTION 判定排除
+  appeal 键，双向隔离；risk §5.5 负向断言入 CI）。
+- **主理人三步裁决**：① A1/A2 校验不过 → 不受理（trace 记 appeal_denied，不计打回
+  计数）；② 受理 → 派 examiner 只核新证据本身、不重开全轮（结论三选一：维持/撤销/
+  部分撤销）；③ 成立 → `progress.py resolve` 撤销 blocking + trace 记 appeal_granted；
+  不成立 → 维持原判 + 原指纹 reject-key 累加（与介入协议自然衔接）。
+- **契约同步**：harness §0「判定冲突」行下补申诉流程段；subject-writer「SendMessage
+  回传」补申诉信封通道（禁止正文口头申诉、抗辩不豁免返修时限）；quality-examiner
+  补申诉复核职责（核心能力 6）。
+- **测试与 CI**：静态契约 +4 计分项（F40a–F40d：声明存在性 / appeal 键隔离 / 两端
+  契约 / CI 探针在场），273 → **277**；CI +1 步「申诉通道冒烟」（appeal 键两次写 →
+  申诉已用显示 + INTERVENTION=0；block→resolve 撤销闭环；A1 不受理无键增量；对照
+  组无前缀键照常触发介入），CI 18 → **19 步**。
+
 ### 横切验收口径（GATE2 §6，批次 B6）
 
 - **M1 · 破坏样本 15/15 判据族**：CI 步骤「门禁4负向实验扩容」为 4.0–4.14 每族构造

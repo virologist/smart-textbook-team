@@ -86,7 +86,9 @@ def main() -> int:
     ap.add_argument('--reject-key', default='',
                     help='打回计数键 "<correlation_id>|<问题指纹>"——写入时累加 '
                          '运行态/reject-counts.json;计数 ≥2 自动触发介入协议'
-                         '（ADR-05 §5.2,禁止手工计数）')
+                         '（ADR-05 §5.2,禁止手工计数）。`appeal|` 前缀键 = 申诉计数'
+                         '（#70 判据 A2:同一指纹申诉 ≤1 次）,不触发介入协议'
+                         '（progress.py rejects 对其显示「申诉已用」）')
     args = ap.parse_args()
 
     # ── G6: tokens 对账分支 ──
@@ -231,7 +233,10 @@ def main() -> int:
         rec['reject_key'] = args.reject_key
         rec['reject_count'] = counts[args.reject_key]
         print(f"REJECT_COUNT={counts[args.reject_key]}")
-        if counts[args.reject_key] >= REJECT_INTERVENTION_THRESHOLD:
+        # `appeal|` 前缀键 = 申诉计数（#70 判据 A2），不触发介入协议——
+        # 介入阈值只认无前缀打回键（harness §0「评审申诉通道」两语义隔离）
+        if not args.reject_key.startswith('appeal|') \
+                and counts[args.reject_key] >= REJECT_INTERVENTION_THRESHOLD:
             print(f"INTERVENTION_TRIGGERED=1")
             print(f"[介入协议自动触发] 打回计数 {counts[args.reject_key]} ≥ "
                   f"{REJECT_INTERVENTION_THRESHOLD}: key={args.reject_key}"

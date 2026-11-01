@@ -420,6 +420,11 @@ def rejects_status(work_root: Path) -> int:
     计数由 `record_trace.py --reject-key "<correlation_id>|<问题指纹>"` 机械累加
     （跨 task_id 累计,禁止借改名续命）;计数 ≥2 的 key 已触发介入协议——
     本命令是编排者的可视入口,≥2 的 key 显式标注。
+
+    #70 评审申诉通道（2026-11-01 批次 1）：`appeal|` 前缀键是申诉计数
+    （判据 A2:同一指纹申诉 ≤1 次）,显示「申诉已用」标注;**不参与介入协议
+    INTERVENTION 判定**（介入阈值只认无前缀打回键,两语义隔离——申诉误缠诉
+    不等于质量问题打回）。
     """
     import json
     counts_file = work_root / '运行态' / 'reject-counts.json'
@@ -436,6 +441,10 @@ def rejects_status(work_root: Path) -> int:
     intervention = []
     for key in sorted(counts, key=lambda k: (-int(counts[k]), k)):
         n = int(counts[key])
+        if key.startswith('appeal|'):
+            # 申诉键：只显示「申诉已用」标注，不进介入判定（判据 A2）
+            print(f'  {key}: {n}  ← 申诉已用（该指纹禁再申诉）')
+            continue
         mark = f'  ← 介入协议已触发（≥{threshold}）' if n >= threshold else ''
         print(f'  {key}: {n}{mark}')
         if n >= threshold:

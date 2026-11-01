@@ -37,12 +37,36 @@ version: 1.5.0
 | 冲突 | 场景 | 仲裁规则 |
 |------|------|---------|
 | 事实冲突 | scout 多源数据不一致 | 全列出；置信度就低不就高；用户裁决 |
-| 判定冲突 | examiner FAIL vs writer 申诉 | 以 Critic 证据为准；申诉须附新证据 |
+| 判定冲突 | examiner FAIL vs writer 申诉 | 以 Critic 证据为准；申诉须附新证据（流程见下方「评审申诉通道」） |
 | 规格冲突 | 图内数据 vs 正文数据 | 回溯检索摘要 [实] 源；双不符双双退回 |
 | 覆盖冲突 | design 要求 X 写成 Y | 以 design 为契约；契约内缺失=blocking |
 | 资源冲突 | 两成员写同一文件 | 路径表（`references/path-ownership.md`）唯一归属；后写者阻塞重定向 |
 
 仲裁升级链：规则可判 → 编排者判 → 同一问题 2 次介入未解 → 停机通知用户（附证据链）。
+
+**评审申诉通道（#70，2026-11-01 批次 1；主理人为唯一裁决者，零新信封字段、零新脚本）**
+
+writer 对单项 blocking 有异议时走信封申诉——**禁止正文口头申诉**；申诉仅针对
+单项 blocking 提出（correlation_id 级全量重审仍走既有返修循环）；申诉被拒后该问题
+按正常返修执行，**抗辩不豁免返修时限**。
+
+- **载体**：既有 RESULT 信封复用——`issues` 含 `APPEAL:<问题指纹>` + `context_refs`
+  附**新证据**位置（不新增 type，不扩字段枚举）
+- **判据 A1（新证据可判定，主理人机械比对）**：申诉 `context_refs` 与原 blocking
+  审查报告的 evidence 清单做差集，**差集非空才受理**；context_refs ⊆ 原 evidence
+  → 无新证据 → 不受理
+- **判据 A2（同一指纹申诉 ≤1 次）**：计数键 `appeal|<correlation_id>|<指纹>`，
+  经 `record_trace.py --reject-key "appeal|ch01|术语不一致"` 落盘
+  `运行态/reject-counts.json`；`progress.py rejects` 对 `appeal|` 前缀键显示
+  「申诉已用（该指纹禁再申诉）」。**appeal| 前缀键不参与介入协议触发**（介入阈值
+  只认无前缀的打回键，两语义隔离）
+- **主理人三步裁决**：
+  ① 校验 A1/A2 → 任一不过：不受理，trace 记 `appeal_denied`（申诉失败**不**计入
+     打回计数——不受理非打回；仅下述第③步裁决不成立才累加）
+  ② 受理 → 派 quality-examiner 限时复核，**只核新证据本身，不重开全轮**
+  ③ examiner 裁定新证据成立 → `progress.py resolve` 撤销该 blocking + trace 记
+     `appeal_granted`（gates/verdict 相应更新）；不成立 → 维持原判 + 以原问题指纹
+     `reject-key` 累加打回计数（与介入协议自然衔接）
 
 ---
 
