@@ -33,9 +33,15 @@ import os
 import re
 import sys
 
-_INSTALL_DIR = os.path.expanduser(
-    "~/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
-)
+# 安装根解析（N-2，2026-11-01）：EXPERT_DIR 环境变量 > 两个宿主根兜底
+# （WorkBuddy=.workbuddy / CodeBuddy=.codebuddy）> 仓库自身（见 DEFAULT_EXPERT_DIR）。
+_INSTALL_CANDIDATES = [
+    os.path.join(os.path.expanduser("~"), host, "plugins", "marketplaces",
+                 "my-experts", "plugins", "smart-textbook-team")
+    for host in (".workbuddy", ".codebuddy")
+]
+_INSTALL_DIR = os.environ.get("EXPERT_DIR") or next(
+    (p for p in _INSTALL_CANDIDATES if os.path.isdir(p)), _INSTALL_CANDIDATES[0])
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 与 test_smart_textbook_team.py 同策略：CI/纯 clone 态回落到仓库自身
 DEFAULT_EXPERT_DIR = (

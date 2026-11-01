@@ -1,18 +1,22 @@
 ---
-name: terminology-table
+name: terminology-table-example
 discipline: universal
-version: 1.0.0
-displayName: 全书术语一致性表
+version: 2.0.0
+displayName: 术语一致性表示例模板（非权威源）
 ---
 
-# 全书术语一致性表（terminology table）
+# 术语一致性表示例模板（terminology table · example）
 
-> **本文件是「同一概念只能用一种写法」的权威源**。
-> examiner R4（风格审查）+ 门禁 4.11（术语门禁）以本文件为准。
+> **⚠️ 本文件已降级为「示例模板」（ADR-02，2026-11-01 批次 B3）**：
+> 术语表的**权威源**改为三级查找——
+> ① `{WORK_ROOT}/学科标准/术语表.md`（每本书自己的，首选）＞
+> ② `references/profiles/{discipline}.md` §5.1（学科默认）＞
+> ③ 本文件（仅示例，命中时门禁 4.11 WARN「请补充真实术语表」）。
+> 下方的 6 条兽医术语是**解析格式示例**，已搬入 `profiles/veterinary.md` §5.1；
+> 其他学科应复制 §2 的表格式到对应 profile §5.1，而非回填本文件。
 >
-> **2026-10-30 批次 C2 补建**：此前全包 grep「术语表」= 4 处「（如有）」式引用，
-> 但**包内根本没有这张表**，而 citation-verify 只管引用真伪、不管术语统一——
-> 结果「PMID 真实但术语混乱」这一类问题在交付层无人看守。
+> 历史：本文件前身 `terminology-table.md` 是包级单例（批次 C2 建），写死 6 条兽医术语——
+> 跨学科复用时「禁用写法列含 `AI`」会误杀计算机教材（ADR-02 根因 C-01/C-02/A-22）。
 
 ## 1. 填表规则
 

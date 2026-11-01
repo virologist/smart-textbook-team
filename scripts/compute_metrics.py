@@ -31,6 +31,8 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from _profile_loader import read_discipline, load_section7
+
 
 def load_traces(work_root: Path) -> list[dict]:
     trace_file = work_root / '运行态' / 'trace.jsonl'
@@ -173,6 +175,12 @@ def _product_quality(work_root: Path) -> dict | None:
     if not chapters:
         return None
 
+    # B3（ADR-02）：数值触发词从写死兽医指标改为读 profile §7 number_triggers +
+    # 通用单位模式（C-05 病灶「同规则两份口径」——与 assemble_sections 共源）。
+    _discipline = read_discipline(work_root)
+    _domain_terms = load_section7(work_root, _discipline, 'number_triggers')
+    _domain_alt = '|'.join(re.escape(t) for t in _domain_terms)
+
     chapters_out = []
     n_struct_total = n_struct_ok = 0
     n_label_total = n_label_ok = 0
@@ -199,9 +207,11 @@ def _product_quality(work_root: Path) -> dict | None:
         entry['structure'] = f'{ok}/{len(required)}'
 
         # ② 数据标签完整率：数值触发词陈述句带 [实]/[估]/[引]/[待核实] 的比例
+        #    触发词 = profile §7 学科指标（动态）+ 通用单位模式（兜底）
+        _alt_parts = ([_domain_alt] if _domain_alt else [])
+        _alt_parts.append(r'[%％]|\d+(\.\d+)?\s*(?:%|％|倍|次|天|日|周|年|mg|ml|ug)')
         trigger = re.compile(
-            r'[^。！？\n]*(?:发病率|病死率|死亡率|阳性率|检出率|有效|剂量|浓度|'
-            r'效价|比例|[%％]|\d+(\.\d+)?\s*(?:%|％|倍|次|天|日|周|年|mg|ml|ug))[^。！？\n]*[。！？]', re.I)
+            rf'[^。！？\n]*(?:{"|".join(_alt_parts)})[^。！？\n]*[。！？]', re.I)
         label = re.compile(r'\[(?:实|估|引|待核实)[^\]]*\]')
         sents = [s for s in trigger.findall(text + '。') if s]
         # findall 返回 tuple（含捕获组），回原文找

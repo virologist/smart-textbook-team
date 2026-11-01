@@ -56,8 +56,8 @@ confirmed_by_user: true          # 未经确认禁止写 true
 registered_at: "2026-10-30T09:00:00"
 members:
   - member_id: poultry-pathologist-vet
-    role_name: 禽病学领域专家
-    domain: 禽病
+    role_name: 学科领域专家
+    domain: 示例学科
     examines: [术语精确性, 因果链完整性, 鉴别点充分性]
     source_profile: veterinary
 ```

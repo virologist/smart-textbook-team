@@ -103,10 +103,11 @@ spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审�
 
 ### Phase PROOFREAD: R4 校稿 + R5 质量评分（独立于 E 之上，对应 13 态 PROOFREAD；E1 统一裁决 2026-10-31）
 **轮次归属 SSOT（pipeline §轮次归属）**：VERIFY 只跑 R1-R3（内容正确性）；**PROOFREAD 跑 R4+R5**（交付质量）——与 13 态表、examiner 契约三处对齐。
+**相位名以 `progress.py` `PHASE_ORDER` 为准**（唯一权威，本节不复述枚举）：R4/R5 落盘用 `PROOFREAD-R4`/`PROOFREAD-R5`。
 **R4 校稿派工**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`；
 产出三件套：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）。blocking 项回祝书白改风格（复核标记后并入 draft）；纯 advisory 由校对后稿承载。
-**R5 评分派工（同轮追加，此前无人派工的修复）**：`spawn quality-examiner --task_id=ch##-VERIFY-R5 --task_type=review-score`；
-按五维评分（chapter-structure §2）+ **80 分红线**：≥80 才进 CONSOLIDATION；<80 blocking，按维度定点退返修。结果双落盘：审查报告「质量评分」段 + `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase VERIFY-R5`。
+**R5 评分派工（同轮追加，此前无人派工的修复）**：`spawn quality-examiner --task_id=ch##-PROOFREAD-R5 --task_type=review-score`；
+按五维评分（chapter-structure §2）+ **80 分红线**：≥80 才进 CONSOLIDATION；<80 blocking，按维度定点退返修。结果双落盘：审查报告「质量评分」段 + `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase PROOFREAD-R5`。
 **串行硬约束**：PROOFREAD（R4+R5）不能与 E（R1-R3）并行；全 pass 才进下一态。
 
 ### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）
@@ -155,6 +156,7 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 - **W2 只审查**：跳 B/C/D，E → PROOFREAD → CONSOLIDATION（**前置：用户已提供现成 draft.md，否则回退 W1**）
 - **W3 只检索**：A→C→CONSOLIDATION（**前置：用户已明确检索主题与范围，无需设计/撰写**）
 - **W4 补图**：A→VISUALIZE→ASSEMBLE→DELIVER（**前置：draft.md 已存在且全审查通过，仅缺图表**）
+- **W5 全书**（多章成书，ADR-01）：`progress.py book init` → BOOK_SPEC（填 chapter-map.md）→ 逐章跑 W1（CHAPTER_SCHEDULE，每章 strict 过才进下一章）→ `check_book.py --strict`（5.1–5.5）→ `build_book.py`（合稿 md+docx）→ BOOK_DELIVER。全书相位/产物/门禁 SSOT 见 `skills/book-orchestration`；进度矩阵用 `progress.py book-status` 查看
 
 ## 单 agent 直调路由表
 
@@ -201,7 +203,13 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 
 1. **装配**：调确定性脚本生成 spawn 文案，禁止手写/凭记忆拼人设
    ```bash
-   EXPERT_DIR=~/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team
+   # 本包根目录：**优先取环境变量 EXPERT_DIR**（多机 / 非默认安装位必须显式设）；
+   # 未设时按两个已知安装根依次兜底——WorkBuddy 落 .workbuddy、CodeBuddy 落 .codebuddy，
+   # 新机常只装后者（C-23 实测：旧写法写死 .workbuddy → 新机首 spawn 死锁且零线索）。
+   EXPERT_DIR="${EXPERT_DIR:-$(for r in "$HOME/.workbuddy" "$HOME/.codebuddy"; do
+       d="$r/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
+       [ -d "$d" ] && echo "$d" && break; done)}"
+   : "${EXPERT_DIR:?未找到专家包根——请显式 export EXPERT_DIR=<smart-textbook-team 目录>，禁止猜路径}"
    RUN_DIR={WORK_ROOT}/.harness-runs/{task_id}
    python3 "$EXPERT_DIR/scripts/assemble_spawn_prompt.py" \
      --member <member-id> --task-id {ch##}-{PHASE}-{R#} \

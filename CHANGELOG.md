@@ -3,6 +3,75 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 批次 B2/B3/B5：反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 全书层（ADR-01）
+
+> 关键路径 B1 → B2 → B3 → B5（GATE2 变更单）；B4 与 B6 未在本轮。
+> 单章流程行为语义除判据口径加固（更严）外不变；全书层为纯增量。
+
+### 全书层（ADR-01，批次 B5）
+
+- **双层状态机**：`progress.py` `PHASE_ORDER` 扩为 23 相位（5 个 `BOOK_*` 全书相位 +
+  18 个章域相位）；新增 `book init`（book-spec.md + 「Progress · 全书」段，幂等、章清单
+  不符 exit 2 防串书）、`book-status`（全书进度矩阵）。单章 WORK_ROOT 行为零破坏：
+  同一 WORK_ROOT 仅在「做过 book init」时允许多章，否则保留原 exit 2 硬失败。
+- **新增 `scripts/check_book.py`**（全书门禁 5.1–5.5）：5.1 章清单完整 + 各章净字数和
+  vs 总预算 ≤5%；5.2 每章知识域 + chapter-map 依赖序无环（DFS 三色判环，BOOK_SPEC
+  未执行 N/A）；5.3 逐章复用 `check_manuscript --strict`（判据共源，不另立判据）；
+  5.4 复用跨章六项（check_cross_chapter）；5.5 合稿 docx 可开（非 BadZipFile）+
+  docx media 数 == 各章唯一图位对之和 + 字数达标（口径锚定各章交付 md 之和——合稿
+  直数因删章级/增全书参考文献节必然漂移，装机实证）。
+- **新增 `scripts/build_book.py`**（全书装配器）：各章交付 md + book-spec →
+  `{教材名}_合稿.md` + `{教材名}.docx`。图号/表号按全书出现顺序重排（题注/图位/
+  交叉引用同一映射，key=(章序,前缀,序) 三元组——(前缀,序) 二元组会让各章「图 1-1」
+  撞成同一张）；参考文献跨章按条目串去重合并 + 全书重编号；单 pandoc 调用
+  （`--toc` → TOC 域、单 sectPr → 页码连续不分节重启）；版式常量复用 build_manuscript
+  TYPESET。**修复附带发现**：python-docx 的 `CT_R` 无 `add_fldChar` 方法——单章
+  postprocess 的 PAGE 域写入一直在 AttributeError 后被静默吞掉；合稿版改用
+  `OxmlElement` 手工构造域且不吞错。
+- **新增 skill `skills/book-orchestration/SKILL.md`**（全书流程 SSOT）：BOOK_* 相位
+  表 / 命令链 / book-spec 语义 / 5.1–5.5 判据表 / 与单章接缝。
+- **跨章检查 3 → 6 项**（`check_cross_chapter.py`）：新增 ④难度递进（Bloom 单调不减）、
+  ⑤字数分配（各章 vs 预算 ±10%）、⑥图号/表号章内连续性；术语一致性改读 profile §5.1
+  五列表（ADR-02 口径），`--terms` 参数删除。
+- **文档同步**：team-lead 新增 W5 全书工作流；harness §2 黑板 schema 加 `book` 段、
+  §6.3 加全书续跑判定（23 相位）；manuscript-delivery 新增 §5.3 全书装配 + v1.2.0。
+- **清单/安装器同步**：两份 plugin.json + marketplace.json + install.sh（3 处循环 +
+  declared 集合）+ install.ps1（3 处循环）+ README（10 个 skill、261 计分项）全部登记
+  book-orchestration——M7/M9a/M10b/M12d/M13a/M13c 六道清单门禁从红转绿。
+- **CI 第 17 步「三章成书端到端」**：book init → 逐章 assemble → check_book --strict
+  （正向 exit 0）→ build_book（合稿四要素断言：可开 / TOC 域 / 单节页码 / 参考文献去重
+  合并）+ 三个负向（删 frontmatter → 5.3 拦、术语两写法 → 5.4 拦、字数偏离 15% →
+  5.1 拦），与 GATE2 量化标准逐条对齐。
+- 静态契约 258 → **261 计分项**（3 项清单断言），1.000 全绿。
+
+### 反幻觉加固（ADR-03，批次 B2）
+
+- **4.12d 逐处锚定**（修「空集恒真」）：每个 `[实]` 后 120 字符窗口内必须有可检索锚
+  （PMID/DOI/ISBN/中文权威源/本地源三形态 `[[笔记]]`、`本地:路径#锚`、`ima:{kb}:{doc}`），
+  裸 `[实]` FAIL（旧口径集合差为空恒 PASS，C-35 实测伪造合规结论）。
+- **4.13a 逐处配对 + 显式声明**（修「全局单侧放行」）：每个 insertion 须满足
+  同段配对 deletion（±200 字符）/ `[整段新增]` 标签 / 「新增章节」区锚定之一；
+  `n_ins == n_del` 的计数巧合不再放行。
+- `RE_SOURCE_ANCHOR` 收窄：「法」单字后缀误放行「7 日龄法氏囊病」，改 `《…法》` 书名号
+  锚定并补「条例/规程」。
+- H9N2 真实稿回归：FAIL 0（无误杀）；CI 负向⑤⑥⑦落地。
+
+### 判据层学科化（ADR-02，批次 B3）
+
+- **五项判据执行体下沉 profile**（§5.1 术语表五列 / §5.2 章节八要素 / §6 审查基准 /
+  §7 数值触发词）：三 profile（veterinary/computer-science/law）齐备；veterinary §5.2
+  八要素自 chapter-structure.md §1 逐字搬迁（兽医行为零退化）。
+- **术语表三级查找**：`{WORK_ROOT}/学科标准/术语表.md` > profile §5.1 >
+  `terminology-table.example.md`（包级单例降级为示例模板，改名保留历史）。
+- **新增 `scripts/check_domain_neutral.py`**：学科常量词回潮通用层 → FAIL（HARD 执行体
+  词 / SOFT 机构法规词 WARN）；`.py` 用 `ast` 识别 docstring（行级三引号开关曾把
+  self_test 夹具误当代码——假阳性根因）；`.md` 只扫代码块。
+- **新增 `scripts/_profile_loader.py`**（共享加载器）：`read_discipline` /
+  `load_section7` / `load_term_table` 三脚本共源，消灭「同一概念多处定义」。
+- CS 端到端：「人工智能（AI）」4.11 PASS（兽医域 AI 才是禁用）；「资产负债率 68.4%」
+  无标签 3.1 报缺（旧写死 11 个兽医指标，非兽医学科恒绿）。
+- CI 新增学科中立性门禁（正负双向）+ CS 教材章端到端。
+
 ## [2.5.0] - 2026-11-01
 
 ### P1-P3 全量执行（真实章节全链路 + 遗留清单清零）

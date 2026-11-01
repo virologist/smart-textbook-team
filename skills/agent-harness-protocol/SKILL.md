@@ -1,7 +1,7 @@
 ---
 name: agent-harness-protocol
 description: "Execution-layer harness for multi-agent orchestration: message envelope schema, state blackboard spec, retry/timeout/budget/circuit-breaker rules, trace logging format, and degradation chains. Load when dispatching agents, handling cross-agent state, or when a task stalls, retries, or times out. Trigger words: 任务卡住 / 成员超时 / 重试几次了 / 熔断 / 黑板怎么patch / 信封格式 / 预算耗尽 / 并发写冲突 / dispatch checklist."
-version: 1.4.0
+version: 1.4.1
 ---
 
 # agent-harness-protocol — 多代理编排执行层
@@ -133,7 +133,7 @@ team-lead 调度段都把 `from` 当校验锚——成员按模板回传的信�
 路径：`{WORK_ROOT}/运行态/workflow-state.yaml`
 
 ```yaml
-chapter: ch03
+chapter: ch03               # 当前活动章（单章模式与全书模式都保留）
 phase: PRODUCE
 artifacts:
   design: 章节/ch03/chapter_design.md
@@ -151,6 +151,13 @@ budget:
   tokens_per_phase: {SPECIFY: 8K, RETRIEVE: 16K, PRODUCE: 12K, VERIFY: 10K}  # 单 phase 软上限
 circuit: CLOSED
 trace_ref: 运行态/trace.jsonl
+# ── 全书段（ADR-01 B5；多章成书时存在；单章模式无此段，行为零破坏）──
+book:
+  textbook: "..."
+  chapters: {ch01: {phase: DELIVER, gates: {...}}, ch02: {phase: VERIFY-R2, ...}}
+  word_budget: {total: 300000, per_chapter: {ch01: 20000, ...}}
+  figure_index: []          # 全书图号注册表
+  refs_pool: []             # 全书参考文献池
 ```
 
 **操作规则**
@@ -368,7 +375,15 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 3. H15 缺口：`progress.py block --item "..." --source "writer 上报"`
 4. 重启时：`progress.py show` 读当前 phase → `spawn <member> -task_id=ch##-<NEXT>-state=resume`
 
-**schema**（见 progress.py PHASE_ORDER = 13 态 + VERIFY-R1~R4 子阶段）。
+**schema**：相位枚举的**唯一权威** = `scripts/progress.py` 的 `PHASE_ORDER`（共 23 相位 =
+5 个 `BOOK_*` 全书相位 + 18 个章域相位，含 `PRODUCE-R1~R3` / `VERIFY-R1~R3` / `PROOFREAD-R4~R5`
+子轮次与 `PRODUCE`/`VERIFY`/`PROOFREAD` 粗粒度别名）。**本节及其他文档一律不复述枚举值**——
+历史上四份文档各写一份，出现「13 态 + 若干子阶段」「轮次挂在 VERIFY 下」等三种说法并存、
+R4/R5 两个相位全包 0 处写入（僵尸态）。一致性由 `scripts/check_phase_consistency.py`
+机械校验（CI 第 8 道门禁）。
+
+**全书续跑判定（ADR-01 B5）**：多章成书时，重启先看「Progress · 全书」段定 BOOK_* 相位；
+CHAPTER_SCHEDULE 期间再按各章段续跑到 `progress.py book-status` 矩阵定位。单章模式判定不变。
 
 **续跑判定**：team-lead Phase A 必先读 progress.md；若存在 → 跳过已完成 phase 直接进入下一个 IN_PROGRESS。
 

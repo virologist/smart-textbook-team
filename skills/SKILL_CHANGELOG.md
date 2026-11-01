@@ -28,6 +28,18 @@
 
 ## manuscript-delivery（书稿交付规格，2026-10-30 新建）
 
+### v1.1.0 → v1.2.0（批次 B5 · ADR-01 全书层，2026-11-01）
+
+**背景**：单章交付链只管一章；多章成书时目录散、图号章内序、参考文献各编各号，
+无人负责合成「一本书」。ADR-01 确立双层状态机 + 全书装配器（不新增成员）。
+
+**变更**：
+- 新增 §5.3 全书装配：`build_book.py` 合稿语义（图号全书序重排 / 参考文献去重合并
+  + 全书重编号 / TOC 域 + 单节连续页码）
+- 新增 skill `book-orchestration`（全书流程 SSOT：BOOK_* 5 相位 / book-spec /
+  chapter-map / 门禁 5.1–5.5）
+- 单章行为零改动；触发词增补：全书 / 整本 / 多章 / 合稿 / 成书 / book-spec
+
 ### v1.0.0（批次 2，2026-10-30）
 
 **背景**：交付物形态此前无 SSOT。`team-lead.md` Phase ASSEMBLE 曾引用
@@ -56,6 +68,15 @@
 ---
 
 ## agent-harness-protocol（核心骨架，192 行起）
+
+### v1.4.0 → v1.4.1（批次 B1 · ADR-04，2026-11-01）
+
+**修正**：§6.3 尾部 schema 说明原写「PHASE_ORDER = 13 态 + VERIFY-R1~R4 子阶段」——
+与实际 19 项不符，且把 R4 记在 VERIFY 前缀下（R4/R5 属 PROOFREAD 态）。
+现改为「唯一权威 = `progress.py` 的 `PHASE_ORDER`，本节不复述枚举值」，一致性交
+`scripts/check_phase_consistency.py` 机械校验（CI 第 8 道门禁）。
+
+**兼容性**：仅删错述、加引用，无协议行为变化。
 
 ### v1.3.0 → v1.4.0（evo-13, 2026-09-01）
 
@@ -89,6 +110,18 @@
 ---
 
 ## textbook-pipeline-workflow（13 态 SSOT）
+
+### v1.2.0 → v1.2.1（批次 B1 · ADR-04 状态机归一，2026-11-01）
+
+**修正**：§13 态表新增权威源指针——相位枚举唯一权威 = `scripts/progress.py` 的 `PHASE_ORDER`
+（19 相位），本节降为**业务视图**，只引用不复述；R5 落盘相位名由 VERIFY 前缀改为 `PROOFREAD-R5`
+（R4/R5 属 PROOFREAD 态）；§门禁 3 的别名落盘说明同步（旧别名把 VERIFY 指向 R5 的语义错位已修，
+`VERIFY` 现指 `VERIFY-R3`）。
+
+**判据联动**：`scripts/check_phase_consistency.py` 机械校验「文档相位字面量 ⊆ PHASE_ORDER」，
+不一致即 CI 红。
+
+**兼容性**：文案改动，13 态业务语义与门禁触发条件零变化。
 
 ### v1.1.0 → v1.2.0（evo-11, 2026-09-01）
 

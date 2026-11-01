@@ -9,7 +9,7 @@
   "role": "兜底副本（vendored fallback）",
   "priority": "运行时优先联邦真源；仅在联邦 core 缺失时（git clone / CI / 开发态）启用本副本",
   "drift_guard": "tests/test_vendor_core.py —— 安装态若联邦 core 存在则比对 sha256，不一致即 FAIL",
-  "sync_command": "cp ~/.workbuddy/plugins/marketplaces/my-experts/plugins/shared-core/assemble_spawn_prompt.py vendor/shared-core/ && 更新本文件 sha256/lines/synced_at",
+  "sync_command": "EXPERT_DIR=${EXPERT_DIR:?请先 export EXPERT_DIR 指向本专家包根目录}; cp \"$EXPERT_DIR/../shared-core/assemble_spawn_prompt.py\" vendor/shared-core/ && 更新本文件 sha256/lines/synced_at",
   "members": [
     "didactic-architect",
     "literature-scout",

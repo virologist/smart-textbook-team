@@ -5,6 +5,8 @@
 用途:章节跑完后被中断,重启时读此文件恢复 phase + 续 task_id。
 
 状态机:章节生命周期由 13 态管线驱动,本工具记录已完成/待续/阻塞。
+  **相位枚举的唯一权威是下方 PHASE_ORDER（23 相位 = 5 个 BOOK_* 全书相位 + 18 个章域相位）；
+  其余文档只引用不复述**，一致性由 `scripts/check_phase_consistency.py` 机械校验（ADR-04）。
 写入语义:按 phase 行 upsert(同 phase 更新状态/摘要/时间,不新增行);真正的 append-only 审计流是 trace.jsonl。init 幂等:文件已存在且章节一致时直接返回(不覆盖);章节不一致则 exit 2 硬失败(防止多章串档)。
 
 状态取值:DONE / IN_PROGRESS / BLOCKED / BLOCKED_RESOLVED / SKIPPED。
@@ -20,6 +22,9 @@
 
   # 读取当前状态
   python3 scripts/progress.py --work-root /path/to/work show
+
+  # 迁移一个已存在的 progress.md（旧相位名 VERIFY-R4/R5 → PROOFREAD-R4/R5）
+  python3 scripts/progress.py --work-root /path/to/work migrate [--dry-run]
 """
 from __future__ import annotations
 import argparse
@@ -28,13 +33,33 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# ── 相位枚举（**唯一权威源**，ADR-04 状态机归一）──────────────────────────
+# 全包的相位名以本列表为准；四份文档（pipeline / harness / team-lead / examiner）
+# 只许**引用**、不许复述，一致性由 scripts/check_phase_consistency.py 机械校验。
+# 所以任何一处改名都必须改这里，并同步 progress.md 既有行（见 migrate 子命令）。
 PHASE_ORDER = [
+    # 全书域（ADR-01 全书层，2026-11-01 批次 B5）：BOOK_* 前缀与章域相位互不干扰
+    'BOOK_BOOTSTRAP', 'BOOK_SPEC', 'CHAPTER_SCHEDULE', 'BOOK_CONSOLIDATION', 'BOOK_DELIVER',
+    # 章域（18 相位）
     'BOOTSTRAP', 'INTAKE', 'CLARIFY', 'SPECIFY', 'RETRIEVE',
     'PRODUCE-R1', 'VERIFY-R1', 'PRODUCE-R2', 'VERIFY-R2',
-    'PRODUCE-R3', 'VERIFY-R3', 'VERIFY-R4', 'VERIFY-R5',
-    'PROOFREAD', 'CONSOLIDATION', 'VISUALIZE', 'ASSEMBLE',
+    'PRODUCE-R3', 'VERIFY-R3', 'PROOFREAD-R4', 'PROOFREAD-R5',
+    'CONSOLIDATION', 'VISUALIZE', 'ASSEMBLE',
     'DELIVER', 'LEARN',
 ]
+# 全书域相位（BOOK_* 前缀派生，供 book 子命令与 check_book.py 识别）
+BOOK_PHASES = [p for p in PHASE_ORDER if p.startswith('BOOK_')]
+
+# ── ADR-04 改名（2026-11-01 批次 B1）────────────────────────────────────
+# 病史：R4/R5 两轮属 PROOFREAD 态（pipeline §轮次归属 SSOT / examiner 契约），
+# 却记成 VERIFY-R4 / VERIFY-R5。而全包**没有任何一处**以这两个名字写入 progress
+# → 僵尸态；续跑按 PHASE_ORDER 顺序推进，第一个卡点就是它们（顺序 12、13），
+# 中断即必死。
+# 语义不变：只是改名归位，不新增/不删除任何相位，执行顺序仍为 R1→R2→R3→R4→R5。
+LEGACY_PHASE = {
+    'VERIFY-R4': 'PROOFREAD-R4',
+    'VERIFY-R5': 'PROOFREAD-R5',
+}
 
 # ── D-6 修复（2026-10-30 批次 B）─────────────────────────────────────────
 # pipeline skill §门禁3 明确要求「门禁 3 结论记入 运行态/progress.md 的
@@ -42,15 +67,32 @@ PHASE_ORDER = [
 # 实跑 `update --phase PRODUCE` → `ValueError: 未知 phase`
 # → **门禁 3 的结论在协议层面无处可写**（结论落不了盘 = 门禁不可审计）。
 #
-# 现补粗粒度别名：PRODUCE/VERIFY 视为「该阶段当前轮次」的别名，
-# 映射到该阶段**最后一个**轮次（PRODUCE → PRODUCE-R3，VERIFY → VERIFY-R5），
-# 使「记入 PRODUCE 行」的协议语义可执行。
-# VERIFY-R5（2026-10-31 E1 补）：R5 质量评分轮此前无态——examiner 收尾
-# update --phase VERIFY-R5 直接报错，R5 结论无处落盘；VERIFY 别名同步改指 R5。
+# 现补粗粒度别名：PRODUCE/VERIFY/PROOFREAD 视为「该阶段当前轮次」的别名，
+# 映射到该阶段**最后一个**轮次，使「记入 PRODUCE 行」的协议语义可执行。
+# ADR-04 修正：VERIFY 原指向 VERIFY-R5 是语义错位（R4/R5 不属 VERIFY），
+# 现指 VERIFY-R3（VERIFY 的末轮）；PROOFREAD 别名指向 R5（PROOFREAD 的末轮）。
 PHASE_ALIAS = {
     'PRODUCE': 'PRODUCE-R3',
-    'VERIFY': 'VERIFY-R5',
+    'VERIFY': 'VERIFY-R3',
+    'PROOFREAD': 'PROOFREAD-R5',
 }
+
+
+class LegacyPhaseError(ValueError):
+    """传入 ADR-04 改名前的旧相位（VERIFY-R4/VERIFY-R5）。
+
+    刻意**不静默映射**：静默会让旧 WORK_ROOT 的 progress.md 永久留下旧名行，
+    审计表里出现两套名字——正是本包"越修越乱"的那类历史包袱（ADR-04 明文禁止）。
+    正确处置：先 `progress.py migrate` 把旧行改写掉，再按新名写入。
+    """
+
+    def __init__(self, phase: str, correct: str):
+        self.phase = phase
+        self.correct = correct
+        super().__init__(
+            f'已废弃的相位名 {phase} → 正确名是 {correct}'
+            f'（R4/R5 属 PROOFREAD 态，不属 VERIFY）。'
+            f'既有 progress.md 请先执行 `progress.py --work-root <WORK_ROOT> migrate` 改写旧行')
 
 
 def progress_file(work_root: Path) -> Path:
@@ -59,23 +101,9 @@ def progress_file(work_root: Path) -> Path:
     return d / 'progress.md'
 
 
-def init_progress(work_root: Path, chapter: str, textbook: str, audience: str) -> Path:
-    p = progress_file(work_root)
-    if p.exists():
-        existing = p.read_text(encoding="utf-8")
-        if f"Progress · {chapter}" not in existing:
-            # P17 修复(2026-10-29):原实现只 WARN 后 return,调用方误以为 init 成功,
-            # 随后 show 仍返回旧章 → 同一 WORK_ROOT 跑多章必然串档。改为硬失败。
-            m = re.search(r'^# Progress · (\S+)', existing, re.M)
-            cur = m.group(1) if m else '(未知)'
-            print(
-                f"ERROR  progress.md 已存在且章节不符:现有={cur} 请求={chapter}。"
-                f"同一 WORK_ROOT 只服务一章;换章请另建 WORK_ROOT 或先归档旧文件。",
-                file=sys.stderr)
-            sys.exit(2)
-        return p
-    ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
-    body = f"""# Progress · {chapter}
+def _chapter_section(chapter: str, textbook: str, audience: str, ts: str) -> str:
+    """生成单章 progress 段（init_progress 与 book 模式多章追加共用）。"""
+    return f"""# Progress · {chapter}
 
 > 章节: {chapter} ｜ 教材: {textbook} ｜ 受众: {audience} ｜ 初始化: {ts}
 > 续跑方式:重启后 `python3 scripts/progress.py --work-root $WORK_ROOT show` 查看当前 phase,
@@ -99,12 +127,149 @@ spawn smart-textbook-team-team-lead
   → 进入下一个 phase
 ```
 """
-    p.write_text(body, encoding='utf-8')
+
+
+def init_progress(work_root: Path, chapter: str, textbook: str, audience: str) -> Path:
+    p = progress_file(work_root)
+    ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    if p.exists():
+        existing = p.read_text(encoding="utf-8")
+        if f"Progress · {chapter}" not in existing:
+            if "# Progress · 全书" in existing:
+                # ADR-01 全书模式（B5）：同一 WORK_ROOT 可承载多章，追加章段
+                section = _chapter_section(chapter, textbook, audience, ts)
+                p.write_text(existing.rstrip("\n") + "\n\n---\n\n" + section, encoding="utf-8")
+                return p
+            # P17 修复(2026-10-29):原实现只 WARN 后 return,调用方误以为 init 成功,
+            # 随后 show 仍返回旧章 → 同一 WORK_ROOT 跑多章必然串档。改为硬失败。
+            # B5（ADR-01）放宽：仅在「未做过 book init」的单章模式下保留硬失败。
+            m = re.search(r'^# Progress · (\S+)', existing, re.M)
+            cur = m.group(1) if m else '(未知)'
+            print(
+                f"ERROR  progress.md 已存在且章节不符:现有={cur} 请求={chapter}。"
+                f"同一 WORK_ROOT 只服务一章;换章请另建 WORK_ROOT、先归档旧文件，"
+                f"或先 `progress.py book init` 进入全书模式。",
+                file=sys.stderr)
+            sys.exit(2)
+        return p
+    p.write_text(_chapter_section(chapter, textbook, audience, ts), encoding='utf-8')
     return p
 
 
+def book_spec_path(work_root: Path) -> Path:
+    return work_root / '运行态' / 'book-spec.md'
+
+
+def init_book(work_root: Path, textbook: str, chapters: list[str],
+              audience: str = '', word_budget: int = 0) -> Path:
+    """全书层初始化（ADR-01 批次 B5）：写 book-spec.md + progress.md「Progress · 全书」段。
+
+    book-spec.md 是 BOOK_BOOTSTRAP 产物（章清单/每章字数/难度梯度/目标学段），
+    由 check_book.py 5.1/5.2 校验；「Progress · 全书」段承载 BOOK_* 相位 + 章节矩阵。
+    幂等：book-spec.md 已存在且章清单一致 → 直接返回；不一致 → exit 2（防串书）。
+    """
+    spec = book_spec_path(work_root)
+    spec.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    per = word_budget // len(chapters) if (word_budget and chapters) else 0
+    ch_lines = []
+    for i, ch in enumerate(chapters, 1):
+        ch_lines.append(f"  - id: {ch}\n    word_budget: {per}\n"
+                        f"    difficulty: L{i}\n    domain: \n")
+    body = (f"---\n"
+            f"textbook: {textbook}\n"
+            f"audience: {audience}\n"
+            f"total_word_budget: {word_budget or per * len(chapters)}\n"
+            f"chapters:\n" + "".join(ch_lines) +
+            f"---\n\n"
+            f"# 全书规格（book-spec · BOOK_BOOTSTRAP 产物）\n\n"
+            f"> 初始化: {ts} ｜ 由 `progress.py book init` 生成。\n"
+            f"> 每章字数预算 / 难度梯度 / 知识域由主理人在 BOOK_SPEC 相位补全\n"
+            f"> （check_book.py 5.1/5.2 校验）。\n")
+    if spec.exists():
+        old = spec.read_text(encoding='utf-8')
+        old_chs = re.findall(r'^\s*- id: (\S+)', old, re.M)
+        if old_chs == chapters:
+            return spec
+        print(f"ERROR  book-spec.md 已存在且章清单不符:现有={old_chs} 请求={chapters}",
+              file=sys.stderr)
+        sys.exit(2)
+    spec.write_text(body, encoding='utf-8')
+
+    # progress.md「Progress · 全书」段（prepend；已存在则不动）
+    p = progress_file(work_root)
+    matrix = "\n".join(f"| {ch} | — | — |" for ch in chapters)
+    book_section = (f"# Progress · 全书\n\n"
+                    f"> 教材: {textbook} ｜ 章: {', '.join(chapters)} ｜ 初始化: {ts}\n\n"
+                    f"## 阶段进度\n\n"
+                    f"| Phase | 状态 | 摘要 | 时间 |\n"
+                    f"|-------|------|------|------|\n"
+                    f"| BOOK_BOOTSTRAP | DONE | 全书初始化（book-spec.md 已落盘） | {ts} |\n\n"
+                    f"## 章节矩阵\n\n"
+                    f"| 章 | 相位 | 门禁 |\n"
+                    f"|----|------|------|\n"
+                    f"{matrix}\n\n---\n\n")
+    if p.exists():
+        existing = p.read_text(encoding='utf-8')
+        if "# Progress · 全书" not in existing:
+            p.write_text(book_section + existing, encoding='utf-8')
+    else:
+        p.write_text(book_section, encoding='utf-8')
+    return spec
+
+
+def book_status(work_root: Path) -> int:
+    """全书进度矩阵（ADR-01 B5）：读 book-spec.md + progress.md，输出各章相位。"""
+    spec = book_spec_path(work_root)
+    if not spec.exists():
+        print("(book-spec.md 不存在 — 全书未初始化，先 `progress.py book init`)")
+        return 1
+    txt = spec.read_text(encoding='utf-8')
+    m = re.search(r'^textbook: (.+)$', txt, re.M)
+    textbook = m.group(1).strip() if m else '(未知)'
+    chs = re.findall(r'^\s*- id: (\S+)', txt, re.M)
+    p = progress_file(work_root)
+    progress_txt = p.read_text(encoding='utf-8') if p.exists() else ''
+    print(f"全书 · {textbook}（{len(chs)} 章）")
+    print("-" * 44)
+    print(f"{'章':<8}{'相位':<20}{'门禁'}")
+    for ch in chs:
+        # 从章段「## 阶段进度」表里取最后一个非空相位
+        seg = re.search(rf'^# Progress · {re.escape(ch)}\s*\n(.*?)(?=^# Progress · |\Z)',
+                        progress_txt, re.S | re.M)
+        phase = '—'
+        if seg:
+            rows = re.findall(r'^\| ([A-Z][A-Z0-9-]*) \| ([A-Z_]+) \|', seg.group(1), re.M)
+            if rows:
+                phase = rows[-1][0]
+        print(f"{ch:<8}{phase:<20}—")
+    return 0
+
+
+def _upsert_book_phase(text: str, phase: str, status: str, summary: str, ts: str) -> str | None:
+    """在「Progress · 全书」段的阶段进度表里 upsert 一个 BOOK_* 行；无全书段返回 None。"""
+    m = re.search(r'(^# Progress · 全书\s*\n)(.*?)(?=^# Progress · |\Z)', text, re.S | re.M)
+    if not m:
+        return None
+    head, body = m.group(1), m.group(2)
+    pattern = re.compile(rf'^\| {re.escape(phase)} \| .*? \|.*? \|.*? \|$', re.MULTILINE)
+    new_row = f'| {phase} | {status} | {summary} | {ts} |'
+    if pattern.search(body):
+        body = pattern.sub(new_row, body)
+    else:
+        m2 = re.search(r'\n## 章节矩阵', body)
+        if m2:
+            body = body[:m2.start()] + '\n' + new_row + body[m2.start():]
+        else:
+            body = body.rstrip('\n') + '\n' + new_row + '\n'
+    return head + body
+
+
 def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path:
-    # D-6：粗粒度别名（PRODUCE/VERIFY）先解析为该阶段当前轮次
+    # ADR-04：旧名先拦（不静默映射），再解析粗粒度别名
+    if phase in LEGACY_PHASE:
+        raise LegacyPhaseError(phase, LEGACY_PHASE[phase])
+    # D-6：粗粒度别名（PRODUCE/VERIFY/PROOFREAD）先解析为该阶段当前轮次
     phase = PHASE_ALIAS.get(phase, phase)
     if phase not in PHASE_ORDER:
         raise ValueError(f'未知 phase: {phase}; 合法值: {PHASE_ORDER}'
@@ -116,21 +281,28 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path
     text = p.read_text(encoding='utf-8')
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
 
-    # 替换或追加该 phase 行
-    pattern = re.compile(
-        rf'^\| {re.escape(phase)} \| .*? \|.*? \|.*? \|$',
-        re.MULTILINE,
-    )
-    new_row = f'| {phase} | {status} | {summary} | {ts} |'
-    if pattern.search(text):
-        text = pattern.sub(new_row, text)
+    if phase.startswith('BOOK_'):
+        # 全书域：写到「Progress · 全书」段
+        new_text = _upsert_book_phase(text, phase, status, summary, ts)
+        if new_text is None:
+            raise FileNotFoundError(f'progress.md 无「Progress · 全书」段: {p}; 请先 book init')
+        text = new_text
     else:
-        # 找到阶段表最后一行后插入
-        m = re.search(r'(\n## 阻塞清单)', text)
-        if m:
-            text = text[:m.start()] + '\n' + new_row + text[m.start():]
+        # 章域：替换或追加该 phase 行（原有逻辑）
+        pattern = re.compile(
+            rf'^\| {re.escape(phase)} \| .*? \|.*? \|.*? \|$',
+            re.MULTILINE,
+        )
+        new_row = f'| {phase} | {status} | {summary} | {ts} |'
+        if pattern.search(text):
+            text = pattern.sub(new_row, text)
         else:
-            text += '\n' + new_row + '\n'
+            # 找到阶段表最后一行后插入
+            m = re.search(r'(\n## 阻塞清单)', text)
+            if m:
+                text = text[:m.start()] + '\n' + new_row + text[m.start():]
+            else:
+                text += '\n' + new_row + '\n'
 
     # 阻塞清单:由调用方用 `block` 子命令 / 手工维护"## 阻塞清单"段,此处不自动增删。
     # BLOCKED_RESOLVED(2026-10-29 可达性修复)= 该 phase 曾阻塞、现已解除:
@@ -141,6 +313,47 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path
     p.write_text(text, encoding='utf-8')
     print(f'OK  progress[{phase} → {status}]')
     return p
+
+
+def migrate_progress(work_root: Path, dry_run: bool = False) -> int:
+    """把既有 progress.md 里的旧相位名改写为新名（ADR-04 回退/迁移通路）。
+
+    改名是原子操作，但**已交付的 WORK_ROOT** 里的 progress.md 仍留着 VERIFY-R4/R5，
+    直接报错会让在跑的章节续不上。本子命令提供一次性改写，可持续保留一个版本。
+
+    改写范围：整个文件（含阶段表行与摘要文字），只替换**完整 token**，
+    不动 `VERIFY-R40` 这类更长的串。幂等：已无旧名时打印 0 处并 exit 0。
+
+    退出码：0 成功（含无需改写）| 2 progress.md 不存在
+    """
+    # 注意：此处**不走 progress_file()**——那个函数会 mkdir 建目录，
+    # 迁移一个不存在的 WORK_ROOT 时不该留下空壳。
+    p = work_root / '运行态' / 'progress.md'
+    if not p.exists():
+        print(f'ERROR  progress.md 不存在: {p}（先 init，或确认 --work-root 是否正确）',
+              file=sys.stderr)
+        return 2
+    text = p.read_text(encoding='utf-8')
+    new_text = text
+    counts = {}
+    for old, new in LEGACY_PHASE.items():
+        # 前后不许粘连字母数字/连字符，避免误伤 VERIFY-R40 之类
+        pat = re.compile(rf'(?<![A-Za-z0-9-]){re.escape(old)}(?![A-Za-z0-9-])')
+        n = len(pat.findall(new_text))
+        if n:
+            new_text = pat.sub(new, new_text)
+        counts[old] = n
+    total = sum(counts.values())
+    detail = ', '.join(f'{k}→{LEGACY_PHASE[k]} ×{v}' for k, v in counts.items() if v)
+    if dry_run:
+        print(f'DRY-RUN  migrate: 需改写 {total} 处' + (f'（{detail}）' if detail else ''))
+        return 0
+    if total == 0:
+        print('OK  migrate: 无需改写（旧相位名 0 处）')
+        return 0
+    p.write_text(new_text, encoding='utf-8')
+    print(f'OK  migrate: 改写 {total} 处（{detail}）→ {p}')
+    return 0
 
 
 def add_blocking(work_root: Path, item: str, source: str) -> Path:
@@ -234,21 +447,52 @@ def main() -> int:
     p_res.add_argument('--item', required=True, help='登记时的 item 子串')
     p_res.add_argument('--note', default='回填复核通过', help='解除依据（如：检索已回填并复核）')
 
+    p_mig = sub.add_parser(
+        'migrate', help='把既有 progress.md 的旧相位名（VERIFY-R4/R5）改写为 PROOFREAD-R4/R5')
+    p_mig.add_argument('--dry-run', action='store_true', help='只报告需改写处数，不落盘')
+
+    # 全书层（ADR-01 批次 B5）：book 子命令组 + book-status
+    p_book = sub.add_parser('book', help='全书层命令（book init）')
+    sub_book = p_book.add_subparsers(dest='book_cmd', required=True)
+    p_book_init = sub_book.add_parser('init', help='初始化全书（book-spec.md + Progress·全书 段）')
+    p_book_init.add_argument('--textbook', required=True)
+    p_book_init.add_argument('--chapters', required=True, help='逗号分隔，如 ch01,ch02,ch03')
+    p_book_init.add_argument('--audience', default='', help='目标学段')
+    p_book_init.add_argument('--word-budget', type=int, default=0, help='全书总字数目标（默认均分）')
+
     sub.add_parser('show', help='读取并打印 progress.md')
+    sub.add_parser('book-status', help='输出全书进度矩阵（各章相位）')
     args = ap.parse_args()
     wr = Path(args.work_root)
 
     if args.cmd == 'init':
         init_progress(wr, args.chapter, args.textbook, args.audience)
         print('OK  progress.md initialized')
+    elif args.cmd == 'book':
+        if args.book_cmd == 'init':
+            chapters = [c.strip() for c in args.chapters.split(',') if c.strip()]
+            if not chapters:
+                print('ERROR  --chapters 不能为空', file=sys.stderr)
+                return 2
+            init_book(wr, args.textbook, chapters, args.audience, args.word_budget)
+            print('OK  book initialized')
     elif args.cmd == 'update':
-        update_phase(wr, args.phase, args.status, args.summary)
+        # 结构化失败出口：旧名/未知名一律 stderr + 退出码 2，不抛裸 traceback
+        try:
+            update_phase(wr, args.phase, args.status, args.summary)
+        except (FileNotFoundError, ValueError) as e:  # LegacyPhaseError 是 ValueError 子类
+            print(f'ERROR  {e}', file=sys.stderr)
+            return 2
     elif args.cmd == 'block':
         add_blocking(wr, args.item, args.source)
     elif args.cmd == 'resolve':
         resolve_blocking(wr, args.item, args.note)
+    elif args.cmd == 'migrate':
+        return migrate_progress(wr, dry_run=args.dry_run)
     elif args.cmd == 'show':
         return show(wr)
+    elif args.cmd == 'book-status':
+        return book_status(wr)
 
     return 0
 

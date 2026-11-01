@@ -31,7 +31,7 @@ check_manuscript.py — 大学教材书稿校验器（门禁 4）
   4.7 净字数 ±5%（以 count_net_words.py 脚本值为准）
   4.8 习题位编号连续 / 4.9 思政融入点存在
   4.10 数据图 notebook（assets/{图号}.ipynb 存在且 cell 结构合规；v1.1.0 补实现）
-  4.11 术语一致性（对照 terminology-table.md：禁用写法零出现/别名并存/首见；v1.1.0 补实现）
+  4.11 术语一致性（对照 profile §5.1 术语表，三级查找：禁用写法零出现/别名并存/首见；v1.1.0 补实现）
   4.12 溯源表（存在 + [实] 条数==溯源行数；v1.1.0 补实现）
   4.13 修订态完整性（4.13a 标记成对合法 / 4.13b md==docx 修订数 / 4.13c 校稿结论；v1.1.0 新增）
 ==============================================================================
@@ -83,6 +83,40 @@ RE_PROOFREAD_VERDICT = re.compile(r"^\s*[-*]?\s*\**\s*结论\**[:：]\s*(\S+)", 
 # 数据图位识别（非纯示意）：兼容「数据来源：」「数据来源=」「数据来源 =」三种官方写法
 # （R5 红队：manuscript-delivery §2 官方示例用「数据来源=」，只认冒号会整类逃检）
 RE_DATA_FIG_HINT = re.compile(r"数据来源\s*[:：=]\s*(?!纯示意)")
+
+# ── ADR-03 反幻觉加固（2026-11-01 批次 B2）──────────────────────────────
+# 本地知识源三形态的可检索锚（Tier 0 与 PMID/DOI 同等可核验地位，
+# 见 literature-scout「五层降级」Tier 0 / citation-verify §4d）：
+#   ① Obsidian 双链  [[笔记名]] 或 [[路径#小节]]
+#   ② 本地文件     本地:相对路径#小节（或 #L行号）
+#   ③ ima 知识库   ima:{kb_id}:{doc_title}
+RE_OBSIDIAN = re.compile(r"\[\[([^\]\n]+)\]\]")
+# 第一组用贪婪匹配到 # 前（排除 # 与中英文右括号/逗号），# 后为锚（排除右括号防粘连）
+RE_LOCAL_FILE = re.compile(r"本地[:：]\s*([^\s\]\)，,#]+)(?:#([^\s\]\)，,）]+))?")
+RE_IMA = re.compile(r"ima[:：]\s*([^:\s，,]+):([^\s\]\)，,]+)")
+# 4.13a 的显式放行标签：整段/整章新增须声明，不能靠「全局单侧」计数巧合放行
+RE_WHOLE_NEW = re.compile(r"\[整段新增\]")
+# 「## …新增」小节标题（4.13a 放行条件 c：新增章节区）
+RE_NEW_SECTION = re.compile(r"^#{2,4}\s*[^\n]*新增[^\n]*$", re.M)
+
+
+def _has_retrievable_anchor(s: str) -> bool:
+    """ADR-03：窗口内是否含可检索来源锚（学术 + 中文权威 + 本地源三形态）。
+
+    这是 4.12 逐处锚定 / 4.12c 共用的锚判定——「可检索」是硬门槛：
+    本地源必须带可定位串（#小节 或 #L行号），只给路径不带锚仍算不可检索。
+    """
+    if re.search(RE_SOURCE_ANCHOR, s):
+        return True
+    if RE_IMA.search(s):
+        return True
+    if RE_OBSIDIAN.search(s):
+        return True
+    m = RE_LOCAL_FILE.search(s)
+    if m and m.group(2):          # 本地:路径 必须带 #锚，否则不可检索
+        return True
+    return False
+
 
 
 class Result:
@@ -474,23 +508,76 @@ def _exec_nb_fallback(nb_path: Path, timeout: int, reason: str) -> tuple[bool | 
     return True, f"降级直执行通过（{reason}{note}）"
 
 
-# ── 4.11 术语一致性（v1.1.0 补实现；E3 修复解析三缺陷）
-def _parse_term_rows(table_path: Path) -> tuple[list[tuple[str, str, list[str], str]], str]:
-    """解析 terminology-table.md §2 表格 → [(标准写法, 别名, [禁用写法...], 首次出现), ...]。
+# ── 4.11 术语一致性（v1.1.0 补实现；E3 修复解析三缺陷；B3 三级查找）
+def _extract_term_table(text: str) -> str:
+    """从术语表源文本提取「| 标准写法 |…」表头所在的表格（表头起连续 | 行）。
 
-    E3 修复三重缺陷：
-    ① 只取「## 2. 表格式」到下一个 `## ` 之间的表格（旧版全文 grep 把 §1/§3 的
-       三列表、文档示例行全部当条目消费）；
-    ② 解析行内 `\\|` 转义（表格自己 §2 声明的约定，旧版 `[^|]+` 直接错位）；
-    ③ 表头/分隔行严格按「标准写法」列头识别，不再靠枚举排除。
-    P2-5（2026-11-01）：第 4 列「首次出现」纳入解析，供 4.11c 判定用。
+    B3（ADR-02）：术语表权威源从包内单例改为三级查找，来源可能是独立文件
+    （WORK_ROOT/学科标准）或 profile §5.1 内嵌段——两处都可能混有其他表格
+    （§1 填表规则、§5.2 章节结构），故必须精确锚定「标准写法」表头，
+    不能按「## 2.」段硬定位（否则 profile 的 §5.2 章节结构表会被误消费）。
     """
-    text = table_path.read_text(encoding="utf-8")
-    m = re.search(r"##\s*2\..*?(?=\n##\s|\Z)", text, re.S)
-    seg = m.group(0) if m else text
+    lines = text.splitlines()
+    out, in_table = [], False
+    for ln in lines:
+        stripped = ln.strip()
+        if stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if cells and cells[0] == "标准写法":
+                in_table = True
+        if in_table:
+            if stripped.startswith("|"):
+                out.append(ln)
+            else:
+                break
+    return "\n".join(out)
+
+
+def _resolve_term_table(work_root: Path, discipline: str,
+                        expert_dir: Path) -> tuple[str, str, str]:
+    """术语表三级查找 → (表格文本, 来源描述, warn)。ADR-02：权威源不再是包内单例。
+
+    ① {WORK_ROOT}/学科标准/术语表.md（每本书自己的，首选）
+    ② references/profiles/{discipline}.md §5.1（学科默认）
+    ③ references/terminology-table.example.md（仅示例，命中 WARN 提示补真实表）
+    """
+    p1 = work_root / "学科标准" / "术语表.md"
+    if p1.is_file():
+        seg = _extract_term_table(p1.read_text(encoding="utf-8"))
+        if seg:
+            return seg, f"{work_root.name}/学科标准/术语表.md", ""
+    profile = expert_dir / "references" / "profiles" / f"{discipline}.md"
+    if profile.is_file():
+        seg = _extract_term_table(profile.read_text(encoding="utf-8"))
+        if seg:
+            return seg, f"profile:{discipline} §5.1", ""
+    p3 = expert_dir / "references" / "terminology-table.example.md"
+    if p3.is_file():
+        seg = _extract_term_table(p3.read_text(encoding="utf-8"))
+        if seg:
+            return seg, "terminology-table.example.md（示例）", \
+                f"未找到《{work_root.name}》学科标准/术语表.md 或 profile {discipline} " \
+                "§5.1 术语表，已用示例模板——请补充真实术语表（否则禁用写法/别名口径失真）"
+    return "", "无术语表", "三级术语表均缺失"
+
+
+def _read_discipline(text: str) -> str:
+    """从 frontmatter 读「学科profile」值，缺省回落 veterinary（默认 profile）。"""
+    m = re.search(r"^学科profile\s*:\s*(\S+)\s*$", text, re.M)
+    return m.group(1).strip() if m else "veterinary"
+
+
+def _parse_term_rows(table_text: str) -> tuple[list[tuple[str, str, list[str], str]], str]:
+    """解析「| 标准写法 |…」表格 → [(标准写法, 别名, [禁用写法...], 首次出现), ...]。
+
+    E3 修复：① 只消费「标准写法」表头起的表格（不再全文 grep）；② 解析行内 `\\|`
+    转义（表格 §2 声明的约定）；③ 表头/分隔行严格按列头识别。
+    P2-5：第 4 列「首次出现」纳入解析，供 4.11c 判定用。
+    B3：入参从「文件路径」改为「已提取的表格文本」（三级查找由 _resolve_term_table 负责）。
+    """
     rows: list[tuple[str, str, list[str], str]] = []
     header_seen = False
-    for line in seg.splitlines():
+    for line in table_text.splitlines():
         if not line.strip().startswith("|"):
             continue
         # 先按未转义的 | 切列（\| 视为字面量占位 \x00 后还原）
@@ -511,7 +598,7 @@ def _parse_term_rows(table_path: Path) -> tuple[list[tuple[str, str, list[str], 
                        if b.strip() and b.strip() != "—"]
         rows.append((std, alias, banned_list, first_seen))
     if not header_seen:
-        return rows, "未找到 §2 表头行（「| 标准写法 |…」）——表结构异常"
+        return rows, "未找到「| 标准写法 |…」表头行——表结构异常"
     return rows, ""
 
 
@@ -548,27 +635,30 @@ def _occurrences(hay: str, needle: str) -> list[tuple[int, int]]:
     return out
 
 
-def check_terminology(text: str, r: Result, chapter: str = ""):
+def check_terminology(text: str, r: Result, chapter: str = "",
+                      work_root: Path | None = None, discipline: str = ""):
     """禁用写法零出现 + 同章内标准写法与别名不并存 + 表内标准写法唯一（4.11d）
     + 首次出现位置正确（4.11c）。
 
     E3 修复：词界匹配（"AI" 不得命中 "AIV"——英文缩写禁用词用 \\b 词界，
     中文词用原样子串）；示例行/判据表行不再被消费。
-    P2-5（2026-11-01）：补 4.11c 实现——此前该判据只在 §3 表里声明、脚本零实现
-    （「判据表有、校验器没有」= 门禁可被绕过的假绿）。
+    P2-5（2026-11-01）：补 4.11c 实现——此前该判据只在 §3 表里声明、脚本零实现。
+    B3（ADR-02）：术语表权威源三级查找（WORK_ROOT 学科标准 > profile §5.1 > example），
+    学科随 frontmatter「学科profile」切换——计算机教材禁用列不含 AI，兽医教材含 AI。
     """
-    table_path = Path(__file__).resolve().parent.parent / "references" / "terminology-table.md"
-    if not table_path.is_file():
-        r.add("4.11", "术语一致性校验（terminology-table.md 缺失，N/A）", True,
-              "表文件缺失，判据无法执行——建表后此判据生效")
+    expert_dir = Path(__file__).resolve().parent.parent
+    work_root = work_root or Path(".")
+    discipline = discipline or _read_discipline(text)
+    table_text, source, warn = _resolve_term_table(work_root, discipline, expert_dir)
+    if not table_text:
+        r.add("4.11", "术语一致性校验（无术语表，N/A）", True, warn)
         return
-    rows, err = _parse_term_rows(table_path)
+    rows, err = _parse_term_rows(table_text)
     if err and not rows:
         r.add("4.11", "术语一致性校验（表结构异常，N/A）", True, err)
         return
     if not rows:
-        r.add("4.11", "术语一致性校验（术语表无有效条目，N/A）", True,
-              "terminology-table.md 未填条目——按 §5 维护约定每章 DELIVER 后追加")
+        r.add("4.11", "术语一致性校验（术语表无有效条目，N/A）", True, warn)
         return
     bad_banned, bad_coexist, exempted, early_used = [], [], [], []
     cur_no = _chapter_num(chapter)
@@ -615,7 +705,8 @@ def check_terminology(text: str, r: Result, chapter: str = ""):
              (f"表内标准写法重复 {dup} 行（4.11d） " if dup else "") + \
              (f"早于声明首章出现（4.11c）: {early_used} " if early_used else "") + \
              (f"包含关系豁免 4.11b: {exempted}" if exempted else "")
-    r.add("4.11", f"术语一致性（对照 {len(rows)} 条术语）", ok, detail.strip() or "全部通过")
+    r.add("4.11", f"术语一致性（对照 {source} {len(rows)} 条术语）", ok,
+          detail.strip() or "全部通过" + (f"；{warn}" if warn else ""))
 
 
 # ── 4.12 溯源表（v1.1.0 补实现；P1-1 口径修复 2026-11-01）
@@ -637,6 +728,18 @@ def check_provenance(text: str, work_root: Path, chapter: str, md_path: Path, r:
     if n_shi == 0:
         r.add("4.12", "溯源表校验（正文无 [实] 条目，N/A）", True)
         return
+    # ADR-03 4.12d：逐处锚定——每个 [实] 后同一句窗口内必须有可检索锚。
+    # 修「空集恒真」：旧口径只做集合差，[实] 不写标识符 → ids_in_text 为空 → 恒 PASS，
+    # 且 detail 写「全部溯源」主动伪造合规结论（C-35 实测）。逐处锚定把「有声明必有锚」变成硬判据。
+    bare_shi: list[str] = []
+    for _m in re.finditer(r"\[实[·\]]", text):
+        _tail = re.split(r"[。！？\n]", text[_m.end(): _m.end() + 120], maxsplit=1)[0]
+        if not _has_retrievable_anchor(_tail):
+            bare_shi.append(text[max(0, _m.start() - 12): _m.end()].replace("\n", " ").strip())
+    r.add("4.12d", f"逐处锚定（[实] {n_shi} 处，无锚 {len(bare_shi)} 处）",
+          not bare_shi,
+          (f"以下 [实] 后无任何可检索来源: {bare_shi[:5]}" if bare_shi
+           else "每个 [实] 均带可检索锚"))
     if not hits:
         r.add("4.12", f"溯源表存在（正文 [实] {n_shi} 处需溯源）", False,
               "交付/ 下未找到溯源表——build --assemble 会自动生成，或回 examiner 补 R3 日志")
@@ -668,6 +771,15 @@ def check_provenance(text: str, work_root: Path, chapter: str, md_path: Path, r:
         ident = cells[3]  # 序|正文位置|陈述要点|标识符/来源|核验状态 → 第3列=标识符（0起）
         if ident in ("—", "", "待核实"):
             continue
+        # ADR-03：本地源三形态不要求出现在「参考文献」节——按各自可检索性核验。
+        # 存在性由检索员/ima MCP 在 R3 保证，机械层不误杀；「本地:」路径可做文件存在性核验。
+        if RE_OBSIDIAN.search(ident) or RE_IMA.search(ident) or re.search(r"(?i)obsidian[:/]", ident):
+            continue
+        lf = RE_LOCAL_FILE.search(ident)
+        if lf:
+            if not (work_root / lf.group(1)).exists():
+                bad_ident.append(ident[:40])
+            continue
         # 提取标识符中的可检索锚（PMID 数字 / DOI 串 / ISBN / 中文源名词）
         anchors = re.findall(r"PMID[:：]?\s*(\d{5,9})|(10\.\d{4,5}/\S+)|(ISBN[^\s|,，]*)|([\u4e00-\u9fff]{2,12}(?:版|典|法|标准|公告|指南|手册))", ident)
         flat = [a for tup in anchors for a in tup if a]
@@ -692,8 +804,14 @@ def check_provenance(text: str, work_root: Path, chapter: str, md_path: Path, r:
 # ── 4.12c 引用标签闭环（P2-6 新增）
 RE_QUOTE_TAG = re.compile(r"\[引(?:·[^\]]*)?\]")
 # 可检索来源锚：PMID / DOI / ISBN / 中文权威源名（条例、标准、典籍、指南…）
+# B2 收窄（2026-11-01）：原 `(?:版|典|法|标准|公告|指南|手册)` 的「法」单字后缀
+# 会误判「法氏囊病」「免疫法」「一种新方法」等普通词为法规来源（H9N2 真实稿实测：
+# 「7 日龄法氏囊病」被「日龄法」误放行，4.12d 对兽医教材出现漏网）。
+# 「法」改书名号锚定《…法》，并补「条例/规程」（法规/技术文件专属词，误判风险极低；
+# 真实稿「重大动物疫情应急条例」原被漏判）。
 RE_SOURCE_ANCHOR = (r"(PMID[:：]?\s*\d{5,9}|10\.\d{4,5}/\S+|ISBN[^\s|，,]*"
-                    r"|[\u4e00-\u9fff]{2,12}(?:版|典|法|标准|公告|指南|手册))")
+                    r"|《[^》]{2,12}法》"
+                    r"|[\u4e00-\u9fff]{2,12}(?:版|典|标准|公告|指南|手册|条例|规程))")
 
 
 def check_quotation_tags(text: str, r: Result):
@@ -722,9 +840,11 @@ def check_quotation_tags(text: str, r: Result):
             bare.append(text[max(0, m.start() - 10): m.end()].replace("\n", " ").strip())
             continue
         ident = hit.group(1)
+        # 锚提取口径与 RE_SOURCE_ANCHOR 完全一致（B2 同步，防「同一概念两处定义」漂移）
         anchors = re.findall(
             r"PMID[:：]?\s*(\d{5,9})|(10\.\d{4,5}/\S+)|(ISBN[^\s|,，]*)"
-            r"|([\u4e00-\u9fff]{2,12}(?:版|典|法|标准|公告|指南|手册))", ident)
+            r"|(《[^》]{2,12}法》|[\u4e00-\u9fff]{2,12}(?:版|典|标准|公告|指南|手册|条例|规程))",
+            ident)
         flat = [a for tup in anchors for a in tup if a] or [ident]
         if not any(a in refs_body for a in flat):
             dangling.append(ident[:40])
@@ -739,21 +859,47 @@ def check_quotation_tags(text: str, r: Result):
 def check_revision_state(text: str, work_root: Path, chapter: str,
                          docx_path: Path | None, r: Result):
     """4.13a 修订标记成对且 author/date 合法；4.13b md==docx 修订数；4.13c 校稿结论存在。"""
-    marks = RE_REVISION.findall(text)
-    n_ins = sum(1 for _, kind, _, _ in marks if kind == ".insertion")
-    n_del = sum(1 for _, kind, _, _ in marks if kind == ".deletion")
-    # 4.13a 成对性（R5 红队 #3 语义对齐）：**替换必须删+插成对**；§1.5 允许「整章一致的
-    # 纯插入/纯删除」（如整段新增审稿意见）——判据：非替换性的单侧标记整章一致即放行。
-    # 实现：若插删均 >0 则必须等量（= 替换场景）；若只有单侧则放行（= 整章纯插/纯删）。
-    has_marks = bool(marks)
-    mixed = n_ins > 0 and n_del > 0
-    paired = (n_ins == n_del) if mixed else True
+    mark_objs = list(RE_REVISION.finditer(text))
+    marks = [m.groups() for m in mark_objs]
+    n_ins = sum(1 for m in mark_objs if m.group("kind") == ".insertion")
+    n_del = sum(1 for m in mark_objs if m.group("kind") == ".deletion")
+    # ── 4.13a ADR-03 逐处配对（2026-11-01 批次 B2）────────────────────────
+    # 病史（B-17 实测）：旧实现 `paired = (n_ins==n_del) if mixed else True`，
+    # 只看**全局**单侧就放行——一个凭空插入的句子与一份整章新增的审稿意见
+    # 在 4.13a 眼里完全相同，孤立插入写进 draft 再 build 后 4.13a/b/d 全 PASS。
+    # 新口径：每个 insertion 必须满足其一——① 同段(±200 字符)有配对 deletion；
+    # ② ±200 内有 [整段新增] 声明；③ 位于「## …新增」小节。放行必须显式。
+    ins_pos = [m.start() for m in mark_objs if m.group("kind") == ".insertion"]
+    del_pos = [m.start() for m in mark_objs if m.group("kind") == ".deletion"]
+    all_headings = [(m.start(), m.group(2)) for m in RE_HEADING.finditer(text)]
+
+    def _in_new_section(pos: int) -> bool:
+        """最近一个位于 pos 之前的标题是否含「新增」。"""
+        prev = None
+        for hs, title in all_headings:
+            if hs > pos:
+                break
+            prev = title
+        return bool(prev) and ("新增" in prev)
+
+    unpaired = []
+    for pos in ins_pos:
+        lo, hi = max(0, pos - 200), min(len(text), pos + 200)
+        window = text[lo:hi]
+        if any(abs(d - pos) <= 200 for d in del_pos):
+            continue
+        if RE_WHOLE_NEW.search(window):
+            continue
+        if _in_new_section(pos):
+            continue
+        unpaired.append(text[max(0, pos - 15): pos + 15].replace("\n", " ").strip())
     bad_author = [a for _, _, a, _ in marks if not a.strip()]
     bad_date = [d for _, _, _, d in marks if not re.match(r"\d{4}-\d{2}-\d{2}", d)]
-    r.add("4.13a", f"修订标记成对且 author/date 合法（插{n_ins}/删{n_del}）",
-          paired and not bad_author and not bad_date,
-          ("" if paired else f"替换场景插删不等（插{n_ins}/删{n_del}）——替换须删+插成对；"
-                           f"纯插入/纯删除场景不得与另一侧混用 ") +
+    r.add("4.13a",
+          f"修订标记逐处成对/显式声明且 author/date 合法（插{n_ins}/删{n_del}，孤立 {len(unpaired)}）",
+          not unpaired and not bad_author and not bad_date,
+          (f"孤立插入 {len(unpaired)} 处（无配对 deletion、无 [整段新增]、不在新增小节）: "
+           f"{unpaired[:3]} " if unpaired else "") +
           (f"author 空: {bad_author} " if bad_author else "") +
           (f"date 非法: {bad_date}" if bad_date else ""))
     # 4.13b：md 标记数 == docx w:ins+w:del 数（docx 存在且 python-docx/zip 可读时）
@@ -856,7 +1002,7 @@ def main() -> int:
     check_data_figure_notebooks(text, work_root, args.chapter, r,
                                 exec_notebooks=args.exec_notebooks,
                                 exec_timeout=args.exec_timeout)
-    check_terminology(text, r, args.chapter)
+    check_terminology(text, r, args.chapter, work_root)
     check_provenance(text, work_root, args.chapter, md_path, r)
     check_quotation_tags(text, r)
     docx_path_pre = find_delivery(work_root, args.chapter, "docx")

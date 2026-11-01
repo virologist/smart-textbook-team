@@ -25,9 +25,19 @@ import re
 import sys
 
 # ── 配置 ────────────────────────────────────────────────────────────
-_INSTALL_DIR = os.path.expanduser(
-    "~/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
-)
+# 安装根解析（N-2，2026-11-01）：**不再写死单一宿主目录**。优先级：
+#   ① 环境变量 EXPERT_DIR（多机 / 非默认安装位显式指定）
+#   ② 两个宿主安装根兜底：WorkBuddy 落 .workbuddy、CodeBuddy 落 .codebuddy
+#      （新机只装后者时，写死 .workbuddy 会让夹具路径恒失效且零线索）
+#   ③ 仓库自身（CI / 纯 clone 态，见下）
+_PKG_NAME = "smart-textbook-team"
+_INSTALL_CANDIDATES = [
+    os.path.join(os.path.expanduser("~"), host, "plugins", "marketplaces",
+                 "my-experts", "plugins", _PKG_NAME)
+    for host in (".workbuddy", ".codebuddy")
+]
+_INSTALL_DIR = os.environ.get("EXPERT_DIR") or next(
+    (p for p in _INSTALL_CANDIDATES if os.path.isdir(p)), _INSTALL_CANDIDATES[0])
 # 仓库根（tests/ 的上级）——CI / 纯 clone 态下安装路径不存在，须回落到仓库自身，
 # 否则本评测在 GitHub Actions 上会因找不到 plugin.json 直接 FATAL（exit 2）。
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,12 +50,14 @@ DEFAULT_EXPERT_DIR = (
 # 该路径不存在时 F23a 降级为环境观测项（见 check_executability）。
 FIXTURE_ROOT = os.environ.get(
     "STT_FIXTURE_ROOT",
-    "/Users/biodog/Library/CloudStorage/OneDrive-Personal/GPT/Claude/tb-writer"
-    "/tests/fixtures/smart-textbook-team",
+    os.path.join(os.path.expanduser("~"), "Library", "CloudStorage", "OneDrive-Personal",
+                 "GPT", "Claude", "tb-writer", "tests", "fixtures", "smart-textbook-team"),
 )
-MARKETPLACE_JSON = os.path.expanduser(
-    "~/.workbuddy/plugins/marketplaces/my-experts/.codebuddy-plugin/marketplace.json"
-)
+# 宿主 marketplace.json 由安装根反推（<my-experts>/plugins/<包名> → <my-experts>），
+# 不再写死绝对路径；不存在时 E1a/E1b 按环境项观测（不计分）。
+MARKETPLACE_JSON = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(_INSTALL_DIR))),
+    ".codebuddy-plugin", "marketplace.json")
 TEAM_LEAD_ID = "smart-textbook-team-team-lead"
 MEMBER_IDS = [
     "didactic-architect",
@@ -917,6 +929,30 @@ def check_executability(ck, expert_dir):
             if _got != _want:
                 _wrong.append(f"{_name}:期望{_want}实得{_got}")
         ck.check("F37d", "F", "4.12c 四向行为正确（裸/悬空/跨句必拦，正确带源放行）",
+                 not _wrong, "；".join(_wrong))
+
+        # F37e: 4.12d 逐处锚定行为（ADR-03，2026-11-01 批次 B2）
+        # 修「空集恒真」：旧口径 [实] 不写标识符 → 集合空 → 恒 PASS。现「有声明必有锚」。
+        import pathlib as _pl
+        _wr = _pl.Path("/tmp/__f37e_probe__")
+        _mdp = _wr / "交付" / "ch01.md"
+        _cases = [
+            ("裸 [实]", "结论[实]。", False),
+            ("PMID 锚", "结论[实]（PMID:36143363）。", True),
+            ("本地缺 #锚", "结论[实]（本地:章节/ch01/fig/a.png）。", False),
+            ("本地带 #锚", "结论[实]（本地:章节/ch01/fig/a.png#图1）。", True),
+            ("Obsidian 双链", "结论[实]（[[禽病学]]）。", True),
+            ("法氏囊病非法规", "结论[实] 7 日龄法氏囊病。", False),
+            ("动物防疫法书名号", "结论[实]（《动物防疫法》）。", True),
+        ]
+        _wrong = []
+        for _name, _txt, _want in _cases:
+            _r = _cmmod.Result()
+            _cmmod.check_provenance(_txt, _wr, "ch01", _mdp, _r)
+            _d = {i["id"]: i for i in _r.items}.get("4.12d", {})
+            if _d.get("ok") != _want:
+                _wrong.append(f"{_name}:期望{_want}实得{_d.get('ok')}")
+        ck.check("F37e", "F", "4.12d 七向行为正确（裸/缺锚/法氏囊病必拦，PMID/本地#锚/Obsidian/书名号法放行）",
                  not _wrong, "；".join(_wrong))
 
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────

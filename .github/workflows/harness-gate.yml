@@ -11,6 +11,7 @@ name: harness-gate
 #   5) install.sh 语法/干跑冒烟（防安装脚本腐化）
 #   6) package_release.sh 打包冒烟（防导出 zip 长期过期）
 #   7) 书稿交付链冒烟（build_manuscript + check_manuscript；2026-10-30 新增）
+#   8) 相位一致性门禁         PHASE_ORDER 唯一权威，文档只许引用不许复述（ADR-04，2026-11-01）
 on:
   push:
     branches: [master, main]
@@ -26,6 +27,31 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      # 相位一致性门禁（ADR-04 状态机归一，2026-11-01 批次 B1）
+      # 病史：PHASE_ORDER 是唯一权威枚举，却被四份文档给出四种描述；R4/R5 记在
+      # VERIFY 前缀下且全包 0 处写入（僵尸态）→ 续跑按顺序推进必然卡死。
+      # 现把「文档与权威源一致」做成机械判据：不一致 exit 1 并列出 文件:行号:错误值 → 正确值。
+      - name: 相位一致性门禁（PHASE_ORDER 唯一权威）
+        run: python3 scripts/check_phase_consistency.py --root . --verbose
+
+      # 学科中立性门禁（ADR-02 判据层学科化，2026-11-01 批次 B3）：
+      # 五项判据执行体（术语表/八要素/审查基准/数值触发词/跨章正则）已下沉 profile，
+      # 通用层只许「引用 profile」。本门禁禁止学科常量词回潮进通用层
+      # （agents/skills/scripts/references，排除 profiles/ 与 *.example.md）+ 硬编码绝对路径。
+      # 正向：0 命中；负向：把「禽流感」写回 scripts/ 的 .py 字符串字面量 → 必须 exit≠0。
+      - name: 学科中立性门禁（check_domain_neutral.py 正负双向）
+        run: |
+          set -e
+          python3 scripts/check_domain_neutral.py --root .
+          printf 'X = "禽流感回潮探针"\n' > scripts/_leak_probe.py
+          if python3 scripts/check_domain_neutral.py --root . 2>/dev/null; then
+            echo "::error::负向失败：学科常量词写回通用层未被门禁拦截"
+            rm -f scripts/_leak_probe.py
+            exit 1
+          fi
+          rm -f scripts/_leak_probe.py
+          echo "[OK] 学科中立性门禁正负双向通过"
 
       - name: Router 离线评测 (>= 0.80)
         run: python3 tests/test_router_eval.py
@@ -233,7 +259,7 @@ jobs:
 
           ## 1.1 概述
 
-          数据句 [实]。禽流感（AI）缩写滥用。
+          数据句 [实]（PMID:12345678）。禽流感（AI）缩写滥用。
 
           ## 参考文献
 
@@ -257,7 +283,7 @@ jobs:
           python3 - <<'PY'
           p = "/tmp/stt-ms-neg/交付/教材_ch01.md"
           t = open(p, encoding="utf-8").read()
-          t = t.replace("数据句 [实]。", "数据句 [实]。[凭空新句]{.insertion author=\"x\" date=\"2026-10-31\"}")
+          t = t.replace("数据句 [实]（PMID:12345678）。", "数据句 [实]（PMID:12345678）。[凭空新句]{.insertion author=\"x\" date=\"2026-10-31\"}")
           open(p, "w", encoding="utf-8").write(t)
           PY
           if python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict 2>/dev/null; then
@@ -284,6 +310,262 @@ jobs:
             echo "负向④FAIL: 禁用写法 AI 未被拦截"; exit 1
           fi
           echo "负向④ PASS: 4.11 拦截禁用写法"
+
+      # 负向⑤⑥（ADR-03 逐处锚定，2026-11-01 批次 B2）：4.12d 修「空集恒真」——
+      # 旧口径 [实] 不写标识符 → 正文标识符集合为空 → 恒 PASS（C-35 实测伪造合规结论）。
+      # 现「有声明必有锚」是硬判据：裸 [实] 无锚、本地源缺 #锚 均须 FAIL，带 #锚 须 PASS。
+      - name: 门禁4负向实验（4.12d 逐处锚定正负双向）
+        run: |
+          set -e
+          WR2=/tmp/stt-ms-neg2
+          rm -rf "$WR2"; mkdir -p "$WR2/章节/ch01/figures/assets" "$WR2/章节/ch01/review" "$WR2/交付"
+          cat > "$WR2/章节/ch01/draft.md" <<'MD'
+          ---
+          教材名: 教材
+          章节号: ch01
+          章节标题: 锚定负向章
+          字数目标: 30
+          实际净字数: 30
+          版本: R3
+          学科profile: veterinary
+          ---
+
+          # 第1章 锚定负向
+
+          ## 1.1 概述
+
+          数据句 [实]。
+
+          ## 参考文献
+
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2. (PMID:12345678)
+          MD
+          cat > "$WR2/章节/ch01/review/r3_verification_log.md" <<'MD'
+          | 位置 | 标识符 | 结果 | 动作 |
+          |------|--------|------|------|
+          | §1.1 | PMID:12345678 | 通过 | 保留 |
+          MD
+          echo '结论: 可交付' > "$WR2/章节/ch01/review/proofread_revisions.md"
+          python3 scripts/build_manuscript.py --work-root "$WR2" --chapter ch01 --assemble >/dev/null
+          # 负向⑤：4.12d 裸 [实] 无锚 → 必须 FAIL
+          if python3 scripts/check_manuscript.py --work-root "$WR2" --chapter ch01 --strict 2>/dev/null; then
+            echo "负向⑤FAIL: 裸 [实] 无锚未被 4.12d 拦截"; exit 1
+          fi
+          echo "负向⑤ PASS: 4.12d 拦截裸 [实] 无锚"
+          # 负向⑥：4.12d 本地源缺 #锚（只给路径）→ 必须 FAIL
+          python3 - <<'PY'
+          p = "/tmp/stt-ms-neg2/章节/ch01/draft.md"
+          t = open(p, encoding="utf-8").read()
+          t = t.replace("数据句 [实]。", "数据句 [实]（本地:章节/ch01/fig/a.png）。")
+          open(p, "w", encoding="utf-8").write(t)
+          PY
+          rm -rf "$WR2/交付"; mkdir -p "$WR2/交付"
+          python3 scripts/build_manuscript.py --work-root "$WR2" --chapter ch01 --assemble >/dev/null
+          if python3 scripts/check_manuscript.py --work-root "$WR2" --chapter ch01 --strict 2>/dev/null; then
+            echo "负向⑥FAIL: 本地源缺 #锚 未被 4.12d 拦截"; exit 1
+          fi
+          echo "负向⑥ PASS: 4.12d 拦截本地源缺 #锚"
+          # 正向后置⑦：本地源带 #锚 → 4.12d 必须 PASS（防误杀；只验 4.12d，不 --strict 全过）
+          python3 - <<'PY'
+          p = "/tmp/stt-ms-neg2/章节/ch01/draft.md"
+          t = open(p, encoding="utf-8").read()
+          t = t.replace("数据句 [实]（本地:章节/ch01/fig/a.png）。",
+                        "数据句 [实]（本地:章节/ch01/fig/a.png#图1）。")
+          open(p, "w", encoding="utf-8").write(t)
+          PY
+          rm -rf "$WR2/交付"; mkdir -p "$WR2/交付"
+          python3 scripts/build_manuscript.py --work-root "$WR2" --chapter ch01 --assemble >/dev/null
+          python3 scripts/check_manuscript.py --work-root "$WR2" --chapter ch01 --json 2>/dev/null > /tmp/stt-neg2.json || true
+          python3 - <<'PY'
+          import json
+          items = {i["id"]: i for i in json.load(open("/tmp/stt-neg2.json"))["items"]}
+          assert items.get("4.12d", {}).get("ok") is True, \
+              "4.12d 本地源带 #锚 应 PASS，实际: " + str(items.get("4.12d"))
+          print("负向⑦后置 PASS: 本地源带 #锚 通过 4.12d")
+          PY
+
+      # CS 教材章跨学科端到端（ADR-02 判据层学科化，2026-11-01 批次 B3）：
+      # 验证「非兽医学科也能跑通」的解耦证据——CS 术语表无 AI 禁用 → 4.11 放行
+      # 「人工智能（AI）」；通用百分比数值信号（RE_PERCENT 兜底）→ 3.1 报缺标签
+      # （旧实现写死 11 个兽医指标，非兽医学科的百分比数值恒绿，C-05 病灶）。
+      - name: CS 教材章跨学科端到端（4.11 放行 + 3.1 缺标签 + 三 profile 断言）
+        run: |
+          set -e
+          WR=/tmp/stt-cs
+          rm -rf "$WR"; mkdir -p "$WR/章节/ch01/figures/assets" "$WR/章节/ch01/review" "$WR/交付"
+          cat > "$WR/章节/ch01/draft.md" <<'MD'
+          ---
+          教材名: 计算机导论
+          章节号: ch01
+          章节标题: 人工智能概述
+          字数目标: 60
+          实际净字数: 60
+          版本: R1
+          学科profile: computer-science
+          ---
+
+          # 第1章 人工智能概述
+
+          ## 1.1 概述
+
+          人工智能（AI）是计算机科学的分支。
+
+          ## 参考文献
+
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2. (PMID:38960123)
+          MD
+          cat > "$WR/章节/ch01/review/r3_verification_log.md" <<'MD'
+          | 位置 | 标识符 | 结果 | 动作 |
+          |------|--------|------|------|
+          | §1.1 | PMID:38960123 | 通过 | 保留 |
+          MD
+          echo '结论: 可交付' > "$WR/章节/ch01/review/proofread_revisions.md"
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          # ① CS「人工智能（AI）」→ 4.11 必须 PASS（AI 非 CS 禁用写法；兽医域 AI 才是禁用）
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --json 2>/dev/null > /tmp/stt-cs.json || true
+          python3 - <<'PY'
+          import json
+          items = {i["id"]: i for i in json.load(open("/tmp/stt-cs.json"))["items"]}
+          assert items.get("4.11", {}).get("ok") is True, "CS 4.11 应放行 人工智能（AI）: " + str(items.get("4.11"))
+          print("[OK] CS 4.11 放行 人工智能（AI）")
+          PY
+          # ② 3.1 通用百分比兜底：资产负债率 68.4% 无标签 → 节级自查必须报缺标签
+          mkdir -p "$WR/章节/ch01/sections"
+          printf '## 1.1 概述\n\n资产负债率 68.4%% 是财务指标示例（无标签）。\n' > "$WR/章节/ch01/sections/1.1.md"
+          if python3 scripts/assemble_sections.py --work-root "$WR" --chapter ch01 2>/dev/null; then
+            echo "::error::3.1 未拦截无标签百分比数值（68.4% 缺标签却通过节级自查）"
+            exit 1
+          fi
+          echo "[OK] CS 3.1 拦截无标签百分比数值（RE_PERCENT 兜底）"
+          # ③ 三 profile 均含 §5/§6/§7（节可标 N/A，但节必须存在）
+          for f in references/profiles/veterinary.md references/profiles/computer-science.md references/profiles/law.md; do
+            for s in "## 5" "## 6" "## 7"; do
+              grep -q "$s" "$f" || { echo "::error::$f 缺 $s 节"; exit 1; }
+            done
+          done
+          echo "[OK] 三 profile 均含 §5/§6/§7"
+
+      # 三章成书端到端（ADR-01 全书层，2026-11-01 批次 B5）：
+      # book init → 逐章 assemble → check_book --strict（5.1–5.5）→ build_book（合稿 md+docx）。
+      # 量化标准：正向 exit 0；三个负向（删 frontmatter / 术语两写法 / 字数偏离 15%）必须 exit≠0。
+      # 判据共源：5.3 复用 check_manuscript、5.4 复用 check_cross_chapter、版式常量复用 build_manuscript。
+      - name: 三章成书端到端（check_book 正负双向 + build_book 合稿）
+        run: |
+          set -e
+          WR=/tmp/stt-book
+          rm -rf "$WR"; mkdir -p "$WR/章节"
+          # ① 夹具：三章同正文（净字数一致），先写 draft 再按实测回写字数目标
+          python3 - <<'PY'
+          import pathlib, sys
+          sys.path.insert(0, "scripts")
+          from count_net_words import count_net_words
+          wr = pathlib.Path("/tmp/stt-book")
+          body_tpl = """# 第{no}章 测试章节
+
+          ## {no}.1 概述
+
+          这是本章概述内容，用于端到端冒烟测试。[实]（PMID:38960123）
+
+          ## {no}.2 小结
+
+          本章小结内容，同样带可检索锚。[实]（PMID:38960123）
+
+          ## 校稿结论
+
+          - **结论**：可交付
+          - **修订计数**：插入 0 处 / 删除 0 处
+          - **遗留待办**：无
+
+          ## 参考文献
+
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2. (PMID:38960123)
+          """
+          # 先测净字数（frontmatter 不计）
+          probe = body_tpl.format(no=1)
+          net = count_net_words(probe)["net_final"]
+          for ch, no in (("ch01", 1), ("ch02", 2), ("ch03", 3)):
+              d = wr / "章节" / ch
+              d.mkdir(parents=True, exist_ok=True)
+              fm = (f"---\n教材名: 测试教材\n章节号: {ch}\n章节标题: 测试章节\n"
+                    f"字数目标: {net}\n实际净字数: {net}\n版本: R1\n学科profile: veterinary\n---\n\n")
+              (d / "draft.md").write_text(fm + body_tpl.format(no=no), encoding="utf-8")
+              (d / "review").mkdir(exist_ok=True)
+              (d / "review" / "r3_verification_log.md").write_text(
+                  "| 位置 | 标识符 | 结果 | 动作 |\n|------|--------|------|------|\n"
+                  "| §1.1 | PMID:38960123 | 通过 | 保留 |\n| §1.2 | PMID:38960123 | 通过 | 保留 |\n",
+                  encoding="utf-8")
+          print("夹具就绪，每章净字数:", net)
+          with open("/tmp/stt-book-net.txt", "w") as f:
+              f.write(str(net))
+          PY
+          NET=$(cat /tmp/stt-book-net.txt)
+          # ② book init（总预算 = 3×净字数 → 5.1 字数判定天然达标）
+          python3 scripts/progress.py --work-root "$WR" book init \
+            --textbook 测试教材 --chapters ch01,ch02,ch03 --word-budget $((NET * 3))
+          # ③ 逐章 assemble（交付 md + docx + 溯源表）
+          for ch in ch01 ch02 ch03; do
+            python3 scripts/build_manuscript.py --work-root "$WR" --chapter "$ch" --assemble >/dev/null
+          done
+          # ④ 正向：check_book --strict 必须 exit 0
+          python3 scripts/check_book.py --work-root "$WR" --strict
+          echo "[OK] check_book 正向 exit 0（5.1–5.5 全过）"
+          # ⑤ 全书装配：合稿 md + docx（TOC 域 / 连续页码 / 参考文献合并 / 图号全书序）
+          python3 scripts/build_book.py --work-root "$WR" --report "$WR/book_report.json"
+          test -f "$WR/交付/测试教材_合稿.md"
+          test -f "$WR/交付/测试教材.docx"
+          # ⑥ 合稿四要素：可开 + TOC 域 + 单节页码 + 参考文献去重合并（三章同 PMID → 仅 1 条）
+          WR="$WR" python3 - <<'PY'
+          import os, re, zipfile
+          from docx import Document
+          p = os.path.join(os.environ["WR"], "交付", "测试教材.docx")
+          Document(p)  # 可开
+          xml = zipfile.ZipFile(p).read("word/document.xml").decode()
+          assert re.search(r'<w:instrText[^>]*>[^<]*TOC', xml), "合稿 docx 无 TOC 域"
+          assert xml.count("<w:sectPr") == 1, "sectPr != 1（页码将分节重启）"
+          merged = open(os.path.join(os.environ["WR"], "交付", "测试教材_合稿.md"),
+                        encoding="utf-8").read()
+          refs = re.findall(r"^\[\d+\] ", merged, re.M)
+          assert len(refs) == 1, f"参考文献应去重合并为 1 条，实际 {len(refs)}"
+          assert "第1章" in merged and "第3章" in merged, "合稿缺章"
+          print("[OK] 合稿四要素：可开 / TOC 域 / 单节页码 / 参考文献去重合并")
+          PY
+          # ⑦ 负向①：删 ch02 交付 md frontmatter → 5.3 必须拦（exit≠0）
+          python3 - <<'PY'
+          import pathlib, re
+          p = next(pathlib.Path("/tmp/stt-book/交付").glob("*_ch02.md"))
+          t = p.read_text(encoding="utf-8")
+          p.write_text(re.sub(r"\A---\s*\n.*?\n---\s*\n", "", t, flags=re.S), encoding="utf-8")
+          PY
+          if python3 scripts/check_book.py --work-root "$WR" --strict 2>/dev/null; then
+            echo "::error::负向①失败：删 frontmatter 未被 5.3 拦截"; exit 1
+          fi
+          echo "[OK] 负向①：5.3 拦截缺 frontmatter 章"
+          # ⑧ 负向②：ch02 写入术语别名「禽流行性感冒」→ 5.4 必须拦
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("/tmp/stt-book/交付/教材_ch02.md")
+          t = p.read_text(encoding="utf-8")
+          p.write_text(t.replace("这是本章概述内容", "这是禽流行性感冒相关内容"), encoding="utf-8")
+          PY
+          if python3 scripts/check_book.py --work-root "$WR" --strict 2>/dev/null; then
+            echo "::error::负向②失败：术语两写法未被 5.4 拦截"; exit 1
+          fi
+          echo "[OK] 负向②：5.4 拦截术语别名"
+          # ⑨ 负向③：全书字数目标改小 15%+ → 5.1 必须拦
+          python3 - <<'PY'
+          import os, pathlib, re
+          net = int(open("/tmp/stt-book-net.txt").read())
+          p = pathlib.Path("/tmp/stt-book/运行态/book-spec.md")
+          t = p.read_text(encoding="utf-8")
+          shrunk = int(net * 3 * 0.85) - 1   # 偏离 >5%（5.1 阈值）且 ≈15%
+          p.write_text(re.sub(r"^total_word_budget: \d+", f"total_word_budget: {shrunk}",
+                              t, flags=re.M), encoding="utf-8")
+          PY
+          if python3 scripts/check_book.py --work-root "$WR" --strict 2>/dev/null; then
+            echo "::error::负向③失败：字数偏离未被 5.1 拦截"; exit 1
+          fi
+          echo "[OK] 负向③：5.1 拦截字数偏离"
+          echo "[OK] 三章成书端到端正负双向全部通过"
 
       # 同步义务: tests/test_smart_textbook_team.py 与 tb-writer 仓库副本保持同源
       # (SSOT 在包内, tb-writer 侧为评测适配器; 任一侧修改须同步另一侧)

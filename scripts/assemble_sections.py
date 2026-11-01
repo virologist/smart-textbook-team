@@ -38,11 +38,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _profile_loader import read_discipline, load_section7
+
 RE_SECTION_FILE = re.compile(r"^(\d+(?:\.\d+)?)\.md$")
 RE_DATA_TAG = re.compile(r"\[(?:实|估|引|待核实)")
 RE_FIG_SLOT = re.compile(r"\[图\s*\d+-\d+[：：]")
-RE_NUMBER_TRIGGER = re.compile(
-    r"(发病率|病死率|死亡率|剂量|浓度|免疫程序|日龄|效价|阳性率|感染率|保护率)")
+# 通用数值信号（兜底）：任何「数字+百分比」陈述都算数值陈述、必须带数据标签。
+# 学科触发词另从 profile §7 加载（B3，ADR-02）——旧实现把 11 个兽医指标写死，
+# 非兽医学科（计算机/法学）的数值陈述恒绿（C-05 病灶）。
+RE_PERCENT = re.compile(r"\d+(?:\.\d+)?\s*[%％]")
 
 
 def log(msg: str, level: str = "INFO") -> None:
@@ -64,15 +68,18 @@ def parse_design_order(design_path: Path) -> list[str]:
     return order
 
 
-def self_check_section(path: Path, sec_no: str) -> list[str]:
+def self_check_section(path: Path, sec_no: str, triggers: list[str] | None = None) -> list[str]:
     """节级自查（pipeline §3.6 步骤②：门禁 3.1/3.4 的节内子集）。返回问题列表。"""
     problems: list[str] = []
     text = path.read_text(encoding="utf-8")
     if not text.strip():
         return [f"{sec_no}: 空文件"]
-    # 标签完整率：数值触发词陈述必须带标签（简化口径：触发词所在行无任一标签即报）
+    # 标签完整率：数值触发词陈述必须带标签（简化口径：触发词所在行无任一标签即报）。
+    # 触发 = 学科触发词（profile §7）命中 或 通用百分比数值信号命中。
+    triggers = triggers or []
     for i, line in enumerate(text.splitlines(), 1):
-        if RE_NUMBER_TRIGGER.search(line) and not RE_DATA_TAG.search(line):
+        hit = any(t and t in line for t in triggers) or bool(RE_PERCENT.search(line))
+        if hit and not RE_DATA_TAG.search(line):
             problems.append(f"{sec_no} 行{i}: 数值触发词陈述缺 [实]/[估]/[引]/[待核实] 标签")
     # 图表位编号一致性：图位章号无须在此校验（整章门禁 3.4 管），但格式须合法
     for m in re.finditer(r"\[图\s*([^\]：:]{1,8})[：:]", text):
@@ -130,9 +137,11 @@ def main() -> int:
 
     # 节级自查（步骤②前置——不过审不得拼接）
     if not args.skip_check:
+        _discipline = read_discipline(work_root, args.chapter)
+        _triggers = load_section7(work_root, _discipline, "number_triggers")
         all_problems: list[str] = []
         for f, s in zip(ordered, order_used):
-            all_problems.extend(self_check_section(f, s))
+            all_problems.extend(self_check_section(f, s, _triggers))
         if all_problems:
             log(f"节级自查未过（{len(all_problems)} 项）——禁止拼接，回 writer 修节：", "ERROR")
             for p in all_problems[:20]:

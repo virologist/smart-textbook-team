@@ -85,7 +85,7 @@ for needle, label in must_have:
         errors.append(f"缺少关键结构: {label}（'{needle}'）")
 
 # 4) 技能循环 ×3 应含 9 技能（匹配 foreach ($s in @(...)) 实际格式）
-declared = {"agent-harness-protocol","citation-verify","learn-protocol","manuscript-delivery",
+declared = {"agent-harness-protocol","book-orchestration","citation-verify","learn-protocol","manuscript-delivery",
             "multi-agent-patterns","scientific-figure","task-router","team-generation","textbook-pipeline-workflow"}
 n_loops = 0
 for m in re.finditer(r"foreach\s*\(\$s\s+in\s+@\(([^)]*)\)\)", t):
@@ -251,7 +251,7 @@ install_claude_code() {
     # skills 复制到 ~/.claude/skills/（Claude Code 自 v2.1.32+ 支持 skills frontmatter 字段）
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
-    for s in agent-harness-protocol citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
+    for s in agent-harness-protocol book-orchestration citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
@@ -279,7 +279,7 @@ install_claude_desktop() {
     done
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
-    for s in agent-harness-protocol citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
+    for s in agent-harness-protocol book-orchestration citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$SKILL_DIR/$s'"
@@ -301,7 +301,7 @@ install_cursor() {
             ok "  .cursor/agents/$a.md"
         fi
     done
-    for s in agent-harness-protocol citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
+    for s in agent-harness-protocol book-orchestration citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$TARGET_DIR/skills/$s'"
             run "cp -R '$REPO_DIR/skills/$s' '$TARGET_DIR/skills/$s'"

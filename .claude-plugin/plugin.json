@@ -27,6 +27,7 @@
   ],
   "skills": [
     "./skills/agent-harness-protocol",
+    "./skills/book-orchestration",
     "./skills/citation-verify",
     "./skills/learn-protocol",
     "./skills/manuscript-delivery",
