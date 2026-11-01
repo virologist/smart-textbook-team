@@ -843,6 +843,82 @@ def check_executability(ck, expert_dir):
              "重新装配覆盖" in bm_build,
              "旧语义 md 存在即跳过 → PROOFREAD 完成后旧交付稿永不更新（实测断链）")
 
+    # ── F37：判据表 ↔ 实现 ↔ 契约三方对齐守护（P1/P2，2026-11-01）──────────
+    # 实测教训（真实章节全链暴露的同类缺陷两例）：
+    #   ① 4.11c 在 terminology-table §3 声明、check_manuscript 零实现；
+    #   ② `[引]` 只有 writer 会产出，examiner R3 与 citation-verify 全程不核 →
+    #      成了绕过 `[实]` 溯源链的后门标签（红队中危 #8 落地验证）。
+    # 共同根因：**"规范声称"与"机械实现"之间没有断言**。故本组断言：
+    #   判据表里出现的顶层判据 ID，脚本必须有对应 r.add(...) 调用。
+
+    # F37a: 4.12c 引用标签闭环已实装并接入 main
+    ck.check("F37a", "F", "check_manuscript 实装 4.12c（[引] 裸标签/悬空来源拦截）并接入 main",
+             'def check_quotation_tags' in cm and '"4.12c"' in cm
+             and "check_quotation_tags(text, r)" in cm,
+             "无 4.12c → 裸 [引] 可绕过 [实] 溯源链直接交稿")
+
+    # F37b: [引] 三方口径闭环（writer 产出义务 / examiner 核验义务 / citation-verify 方法 4c）
+    _w = read(os.path.join(expert_dir, "agents", "subject-writer.md"))
+    _ex = read(os.path.join(expert_dir, "agents", "quality-examiner.md"))
+    _cv = read(os.path.join(expert_dir, "skills", "citation-verify", "SKILL.md"))
+    _miss = [n for n, t in (("writer", _w), ("examiner", _ex), ("citation-verify", _cv))
+             if "[引]" not in t]
+    ck.check("F37b", "F", "`[引]` 三方口径闭环（产出/核验/方法 4c 均不得缺席）",
+             not _miss and "方法 4c" in _cv,
+             f"缺 [引] 口径的文件: {_miss}" + ("" if "方法 4c" in _cv else "；citation-verify 无方法 4c"))
+
+    # F37c: 交付判据表声明的顶层判据 ID，脚本必须有实现（防"表有脚本无"假绿）
+    _md = read(os.path.join(expert_dir, "skills", "manuscript-delivery", "SKILL.md"))
+    declared = set(re.findall(r"^\|\s*(4\.\d+[a-z]?)\s*\|", _md, re.M))
+    implemented = set(re.findall(r'r\.add\(\s*"(4\.\d+[a-z]?)"', cm))
+    # 族 ID 判定：表中可写「4.6」「4.13」而脚本按子判据（4.6a/4.6b/4.6d）实现——
+    # 任一以该 ID 为前缀的实现即视为该族已落地。
+    _gap = sorted(d for d in declared
+                  if not any(i == d or i.startswith(d) for i in implemented)
+                  and d not in {"4.1", "4.2", "4.3", "4.4"})
+    ck.check("F37c", "F", "交付判据表声明的判据 ID 均在 check_manuscript 有实现",
+             not _gap, f"判据表声明但脚本无实现: {_gap}")
+
+    # F37d: 4.12c 的负向行为必须真拦（裸 [引] / 悬空来源），正向必须放行
+    _cmmod = None
+    try:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "_cm_probe", os.path.join(expert_dir, "scripts", "check_manuscript.py"))
+        _cmmod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_cmmod)
+    except Exception as e:                                    # pragma: no cover
+        _cmmod = None
+        _probe_err = str(e)
+
+    if _cmmod is None:                                        # pragma: no cover
+        ck.check("F37d", "F", "4.12c 行为级探针可加载", False,
+                 f"加载 check_manuscript 失败: {_probe_err}")
+    else:
+        class _R:
+            def __init__(self):
+                self.items = []
+
+            def add(self, gid, desc, ok, detail=""):
+                self.items.append((gid, ok, detail))
+
+        _refs = "\n## 参考文献\n\n[1] 作者. 题名[J]. 刊名, 2022, 1(1): 1-2. (PMID:36143363)\n"
+        _cases = [
+            ("裸 [引]", "免疫合格线 log2≥4 [引]。" + _refs, False),
+            ("悬空来源", "免疫合格线 log2≥4 [引]（《兽药典》现行版）。" + _refs, False),
+            ("跨句蹭来源", "免疫合格线 log2≥4 [引]。另有 PMID:36143363。" + _refs, False),
+            ("正确带源", "免疫合格线 log2≥4 [引]（PMID:36143363）。" + _refs, True),
+        ]
+        _wrong = []
+        for _name, _txt, _want in _cases:
+            _r = _R()
+            _cmmod.check_quotation_tags(_txt, _r)
+            _got = _r.items[0][1] if _r.items else None
+            if _got != _want:
+                _wrong.append(f"{_name}:期望{_want}实得{_got}")
+        ck.check("F37d", "F", "4.12c 四向行为正确（裸/悬空/跨句必拦，正确带源放行）",
+                 not _wrong, "；".join(_wrong))
+
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，
     # 只能靠人工想起才改。把校验放进**本测试自身**（它知道真实计分），漂移必被抓。

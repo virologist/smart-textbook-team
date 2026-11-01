@@ -1,6 +1,6 @@
 {
   "name": "smart-textbook-team",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members. v2.1: task-router 13-type routing + trace/progress observability.",
   "author": {
     "name": "TZUVet",

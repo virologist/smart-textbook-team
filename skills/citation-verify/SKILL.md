@@ -1,7 +1,7 @@
 ---
 name: citation-verify
-description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准), plus law-domain precedents/judicial interpretations and CS-domain RFCs/dblp entries against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 法规现行有效 / 判例核验 / 裁判文书 / RFC 现行状态 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
-version: 1.5.0
+description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify [引] quotation tags at conclusion level via method 4c (source retrievable + conclusion locatable + assertion strength not inflated), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准), plus law-domain precedents/judicial interpretations and CS-domain RFCs/dblp entries against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 引标签核验 / 结论有没有被原文支持 / 法规现行有效 / 判例核验 / 裁判文书 / RFC 现行状态 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
+version: 1.6.0
 ---
 
 # citation-verify — 引用核验（零容忍防幻觉）
@@ -115,6 +115,29 @@ WebFetch https://api.crossref.org/works/{DOI}
 > **跨专业提示**：本表为**学科中立**层，任何专业通用；方法 4 的中文表为**中国区特定源**层。
 > 二者并列使用，不互相替代。学科专属源（如某行业的专用标准库）由外部学科 profile 提供。
 
+### 方法 4c：`[引]` 标签结论级核验（P2-6 新增，2026-11-01）
+
+> **为什么单列一条**：`[实]` 核的是**数据**（这个数字对不对），三要素够用；
+> `[引]` 核的是**结论**（"某研究认为 X"），风险不在标识符假，而在
+> **结论被拔高**——文献说"在实验条件下可能相关"，稿子写成"已证实导致"。
+> 三要素只查"原文有这句话吗"（数据点可定位），查不出**外推**。此前本 skill
+> 与 examiner R3 都不管 `[引]`，该标签等于免检（红队中危 #8）。
+
+| 步 | 动作 | 判据 | 处置 |
+|---|---|---|---|
+| ① 来源存在性 | 按标识符走方法 1/2/3/4/4b 定位原文 | 来源可检索、版本现行 | 不可检索 → 裸引/悬空引用 → blocking |
+| ② 结论可定位 | 在原文摘要+全文找**与该句对应的结论陈述** | 原文确有该结论（非仅主题沾边） | 找不到 → blocking（视为编造结论） |
+| ③ 强度一致性 | 比对稿中措辞与原文措辞的**断言强度**（相关性/因果、可能/确定、动物/人、体外/体内、特定条件/普适） | 稿不高于原文强度 | 拔高 → 降级措辞或改标 `[待核实]`；**不得只改标不改文** |
+| ④ 时效性 | 该结论是否已被后续研究推翻/修订 | 5 年内有明确反证 → 标注争议 | 加"存在争议"或改引新证据 |
+
+**`[引]` 的合规形态**（三者缺一即违规）：
+`[引]（来源标识符）` + 来源在「参考文献」节 + 结论经步骤 ②③ 核过。
+**裸 `[引]`（无标识符）= 门禁 4.12c 直接 FAIL**，不进入人工核验环节。
+
+**与 `[待核实]` 的分工**：拿不出可核来源 → 用 `[待核实·reason=...]`；
+拿得出但核不过（结论拔高） → 改措辞或降级为 `[待核实·reason=原文结论强度不足]`。
+**禁止**用 `[引]` 兜住"我知道有这回事但说不清哪篇"的模糊记忆。
+
 ### 方法 5：全部失败
 标注 `[待核实·reason=核验工具不可用]`，**不得默认通过**。
 
@@ -148,5 +171,6 @@ WebFetch https://api.crossref.org/works/{DOI}
 - 权威机构数据（WOAH/Merck/兽药典）：走方法 4 专属链路核验，标 `[实·机构]`/`[实·兽药典]`
 - 英文/国际标准与 DOI：走**方法 4b** 链路核验，标 `[实·DOI]`/`[实·标准]`/`[实·机构]`；预印本必须标 `[实·预印本]` 且不得冒充已发表文献
 - 司法判例/司法解释/RFC/dblp：走方法 4b 新增四行（G5），标 `[实·判例]`/`[实·法规]`/`[实·规范]`/`[实·DOI]`
+- `[引]` 标签：走**方法 4c** 结论级核验（来源可检索 + 原文确有该结论 + 断言强度不外推）；裸 `[引]` 由门禁 4.12c 机械拦截，不进人工核
 - 绝不因「看起来合理」而免检；逐条核验，无一例外
 - 消费者：quality-examiner（R3 报告）、主理人（交付质量报告）

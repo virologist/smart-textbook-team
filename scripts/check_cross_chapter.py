@@ -103,8 +103,13 @@ def check_data_conflicts(chapters: dict[str, str]) -> list[dict]:
     """
     issues = []
     # 「{对象} 的 {指标} 为/约/达 {数值}{单位}」
+    # P3-7 实战修正（2026-11-01）：对象名此前限定为纯汉字 `[\u4e00-\u9fff]{2,10}`，
+    # 而教材里的指标几乎都挂在**病原/毒株名**上（H9N2、H5N1、E. coli、PRRSV），
+    # 全是 ASCII → 真实稿件里最该被抓的一类矛盾**永远不命中**（实测 ch01 1% vs ch02 25%
+    # 双章 [实] 断言，检测器 FAIL 0 静默放过）。现对象允许字母数字与连字符。
     pat = re.compile(
-        r"([\u4e00-\u9fff]{2,10}?)的(?:发病率|病死率|死亡率|阳性率|检出率|感染率)"
+        r"([A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff\- .]{1,14}?)"
+        r"的(?:发病率|病死率|死亡率|阳性率|检出率|感染率)"
         r"[约为达高达]*\s*(\d+(?:\.\d+)?)\s*[%％][^\n]*?\[实\]")
     claims: dict[tuple, list] = defaultdict(list)
     for ch, text in chapters.items():

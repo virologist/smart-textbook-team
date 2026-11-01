@@ -129,6 +129,88 @@ jobs:
           python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble
           python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
 
+      # 数据图执行级门禁（P2-4，2026-11-01）：4.10 的「可执行」此前只是人工承诺——
+      # 结构查得像契约，但语法错/缺依赖/导出路径错一律查不出。现真跑 notebook。
+      # 双向：合规 notebook 必须 exit 0；导出路径写错的必须被 4.10e 拦住。
+      - name: 数据图执行级门禁（4.10e 正负双向）
+        run: |
+          set -e
+          # nbconvert + ipykernel 是「真执行」档的前提；matplotlib 供绘图 cell
+          python3 -m pip install --quiet nbconvert nbformat ipykernel matplotlib
+          WR=/tmp/stt-ms
+          # ① 往冒烟稿里加一个数据图位（数据来源非「纯示意」）+ 对应 4-cell notebook
+          WR="$WR" python3 - <<'PY'
+          import json, os, pathlib
+          wr = pathlib.Path(os.environ["WR"])
+          draft = wr / "章节/ch01/draft.md"
+          txt = draft.read_text(encoding="utf-8")
+          slot = ("[图 1-1：冒烟趋势｜教学目的：验证执行级校验｜数据来源：内联样例数据]\n\n"
+                  "图 1-1 冒烟趋势\n\n")
+          txt = txt.replace("## 1.2 小结", slot + "## 1.2 小结", 1)
+          draft.write_text(txt, encoding="utf-8")
+          nb = {
+              "cells": [
+                  {"cell_type": "markdown", "metadata": {}, "source": ["# 图 1-1 冒烟趋势\n", "教学目的：验证 4.10e\n"]},
+                  {"cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [],
+                   "source": ["# 内联数据\n", "DATA = [1, 2, 3, 2, 4]\n"]},
+                  {"cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [],
+                   "source": ["import matplotlib\n", "matplotlib.use('Agg')\n",
+                              "import matplotlib.pyplot as plt\n",
+                              "fig, ax = plt.subplots(figsize=(4, 2))\n",
+                              "ax.plot(DATA)\n", "ax.set_title('smoke')\n"]},
+                  {"cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [],
+                   "source": ["fig.savefig('1-1.pdf')\n", "fig.savefig('1-1.png', dpi=120)\n",
+                              "print('exported')\n"]},
+              ],
+              "metadata": {"kernelspec": {"name": "python3", "display_name": "Python 3",
+                                         "language": "python"}},
+              "nbformat": 4, "nbformat_minor": 5,
+          }
+          p = wr / "章节/ch01/figures/assets/1-1.ipynb"
+          p.write_text(json.dumps(nb, ensure_ascii=False), encoding="utf-8")
+          print("fixture ready:", p)
+          PY
+          # ② 先装配一次：check_manuscript 读的是「交付 md」，草稿改完必须装配才可见
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble
+          # ②' 插槽会改变净字数 → 按实测值回写 frontmatter 字数目标（4.7 容忍 ±5%），
+          #     否则本步会因为「夹具字数」而非「执行能力」变红（假信号）
+          NW=$(python3 scripts/count_net_words.py "$WR/交付/教材_ch01.md" --json \
+               | python3 -c "import json,sys; print(json.load(sys.stdin)['net'])")
+          WR="$WR" NW="$NW" python3 - <<'PY'
+          import os, pathlib, re
+          p = pathlib.Path(os.environ["WR"]) / "章节/ch01/draft.md"
+          txt = p.read_text(encoding="utf-8")
+          n = os.environ["NW"]
+          txt = re.sub(r"^字数目标: .*$", f"字数目标: {n}", txt, flags=re.M)
+          txt = re.sub(r"^实际净字数: .*$", f"实际净字数: {n}", txt, flags=re.M)
+          p.write_text(txt, encoding="utf-8")
+          print("字数目标 →", n)
+          PY
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble
+          # ③ 执行级校验（真跑并产出 1-1.png；此刻 docx 还没嵌图，故允许非 strict 失败）
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 \
+            --exec-notebooks --exec-timeout 180 || true
+          test -f "$WR/章节/ch01/figures/assets/1-1.png"   # 执行真的产出了预览图
+          # ④ 再装配让 4.6a 有图可嵌，然后全量 strict（含 4.10e）必须全过
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 \
+            --exec-notebooks --exec-timeout 180 --strict
+          echo "[OK] 合规 notebook 执行级校验通过"
+          # ③ 负向：导出路径指到不存在的目录 → 必须 FAIL（这是真实踩过的缺陷形态）
+          WR="$WR" python3 - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ["WR"]) / "章节/ch01/figures/assets/1-1.ipynb"
+          d = json.loads(p.read_text(encoding="utf-8"))
+          d["cells"][3]["source"] = ["fig.savefig('figures/assets/1-1.png')\n"]
+          p.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+          PY
+          if python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 \
+               --exec-notebooks --exec-timeout 180 --strict; then
+            echo "::error::4.10e 未拦住执行失败的 notebook（导出路径错却判通过）"
+            exit 1
+          fi
+          echo "[OK] 4.10e 拦住故障 notebook（正负双向通过）"
+
       # 负向实验（批次 H，2026-10-31：此前 4.10-4.13 声称「负向实验守护」但全仓无实体——
       # 回退判据改动 CI 不会红。现补 4 组破坏性用例，每组必须 FAIL 才算门禁有效）
       - name: 门禁4负向实验（4.10/4.11/4.12b/4.13a 必须拦住破坏样本）

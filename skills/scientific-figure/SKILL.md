@@ -52,7 +52,17 @@ version: 1.0.0
 | **cell 1（markdown）** | 图说明 | 教学目的 / 数据来源 / 抽象方法 / 已知局限 |
 | **cell 2（code）** | **原始数据** | 独立成块，**不依赖外部文件**（数据内联，便于复现）；注明来源与获取日期 |
 | **cell 3（code）** | **绘图代码** | R（ggplot2）或 Python（matplotlib）；**中文标注**；样式可手动精修 |
-| **cell 4（code）** | 输出 | 导出 `figures/assets/{图号}.pdf`（印刷矢量）+ `{图号}.png`（预览） |
+| **cell 4（code）** | 输出 | 导出 `{图号}.pdf`（印刷矢量）+ `{图号}.png`（预览）——**裸文件名，不带目录前缀**（见下方路径约定） |
+
+> **导出路径约定（P2-4 修正，2026-11-01；执行级校验暴露的真实缺陷）**
+> 旧契约写 `savefig('figures/assets/{图号}.pdf')`，但 notebook 的执行 cwd 是**它自己所在目录**
+> （`章节/{ch##}/figures/assets/`）——两者叠加会去找
+> `…/figures/assets/figures/assets/{图号}.pdf`，目录不存在 → 执行必失败。
+> 若改 cwd 到 WORK_ROOT 又会让产物落到 `WORK_ROOT/figures/assets/`（错位）。
+> **现行约定**：cell 4 用**裸文件名** `savefig('{图号}.pdf')` / `savefig('{图号}.png', dpi=DPI)`，
+> 执行时 cwd = notebook 所在目录（= Jupyter 打开 notebook 的默认行为）。
+> 这样 notebook 可整体搬移、可被 `check_manuscript.py --exec-notebooks` 原样执行，
+> 产物天然落在 `章节/{ch##}/figures/assets/`，与 `build_manuscript.py` 的查找路径一致。
 
 **代码便于手动精修**（硬要求）：
 - **禁止**把绘图逻辑塞进一个巨型 cell；按「数据处理 / 样式 / 导出」分步；

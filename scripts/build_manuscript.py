@@ -281,8 +281,29 @@ def write_source_assets(text: str, chapter: str, asset_dir: Path) -> list[dict]:
     return assets
 
 
-def rasterize(assets: list[dict], asset_dir: Path, deps: dict) -> list[dict]:
-    """三级降级栅格化：mmdc → npx mermaid-cli → 保留源码（占位框）。"""
+def rasterize(assets: list[dict], asset_dir: Path, deps: dict,
+              text: str = "") -> list[dict]:
+    """三级降级栅格化：mmdc → npx mermaid-cli → 保留源码（占位框）。
+
+    P1-1 轨道B 补齐（2026-11-01 真实章节实战暴露）：数据图的产物是
+    `{图号}.ipynb` 执行导出的 `{图号}.png`（scientific-figure 契约），
+    不经过 md 代码块——write_source_assets 扫不到它们 → 图位成 orphan →
+    docx 静默无图（4.6a 假不一致）。现补：md 图位在 assets/ 下已有同名
+    `.png`（数据图产物）时直接作为可嵌入资产，与轨道A并列、互不覆盖。
+    """
+    # ── 轨道B：数据图既有 PNG 直接收编（先于 mmdc，不重复栅格化）──
+    if text:
+        covered = {a["stem"] for a in assets}
+        for m in RE_FIGURE_SLOT.finditer(text):
+            stem = f"{m.group(1)}-{m.group(2)}"
+            if stem in covered:
+                continue
+            png = asset_dir / f"{stem}.png"
+            if png.is_file():
+                assets.append({"stem": stem, "kind": "data-png", "src": str(png),
+                               "title": m.group(3), "png": str(png),
+                               "raster": "ok-data", "fence_start": m.start()})
+                log(f"轨道B：数据图 {stem}.png 已存在（notebook 产物），直接嵌入")
     failed = []
     for a in assets:
         png = asset_dir / f"{a['stem']}.png"
@@ -365,6 +386,8 @@ def build_intermediate_md(text: str, assets: list[dict]) -> str:
     （图 1-1 的位置被塞进 orphan 图）。现改为：assets 里记录其源码在原文中的
     偏移（`fence_start`），替换直接按偏移定位，两侧永不分歧。
     """
+    out = text
+
     # 按 fence_start 建立偏移 → 资产映射（orphan 资产也带自己的偏移）
     by_start = {a["fence_start"]: a for a in assets if "fence_start" in a}
     out = text
@@ -382,8 +405,19 @@ def build_intermediate_md(text: str, assets: list[dict]) -> str:
                     f"矢量源码见交付 md 源文件］**\n>\n> 源码文件：`{a['src']}`")
         out = out[:m.start()] + repl + out[m.end():]
 
-    # 移除图位占位标记（docx 渲染态不需要；md 源仍保留）
-    out = RE_FIGURE_SLOT.sub("", out)
+    # 轨道B（P1-1 2026-11-01）：数据图无代码块，其 PNG 替换在**图位标记处**——
+    # 放在 fence 替换之后（保住 text 偏移语义）、通用图位移除之前：
+    # 数据图位 → 图片引用；其余图位 → 移除占位标记（docx 渲染态不需要；md 源仍保留）
+    data_assets = {a["stem"]: a for a in assets if a.get("kind") == "data-png"}
+
+    def _slot_repl(m):
+        stem = f"{m.group(1)}-{m.group(2)}"
+        a = data_assets.get(stem)
+        if a and a.get("png"):
+            return f"![]({a['png']})"
+        return ""          # 非数据图位：维持原语义（占位标记在渲染态移除）
+
+    out = RE_FIGURE_SLOT.sub(_slot_repl, out)
     # 清理因移除产生的连续空行（>2 行 → 2 行）
     out = re.sub(r"\n{3,}", "\n\n", out)
     return out
@@ -774,10 +808,10 @@ def main() -> int:
         }, ensure_ascii=False, indent=2))
         return 0
 
-    # 图表：落盘源码 → 栅格化
+    # 图表：落盘源码 → 栅格化（轨道B 数据图收集在 rasterize 内，assets 为空也须进入——
+    # 数据图场景 write_source_assets 常返回空表，旧 `if assets:` 会把轨道B一起短路）
     assets = write_source_assets(text, chapter, asset_dir)
-    if assets:
-        assets = rasterize(assets, asset_dir, deps)
+    assets = rasterize(assets, asset_dir, deps, text=text)
 
     report = {
         "chapter": chapter,
