@@ -404,7 +404,7 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 子轮次与 `PRODUCE`/`VERIFY`/`PROOFREAD` 粗粒度别名）。**本节及其他文档一律不复述枚举值**——
 历史上四份文档各写一份，出现「13 态 + 若干子阶段」「轮次挂在 VERIFY 下」等三种说法并存、
 R4/R5 两个相位全包 0 处写入（僵尸态）。一致性由 `scripts/check_phase_consistency.py`
-机械校验（CI 第 8 道门禁）。
+机械校验（CI「相位一致性门禁」步）。
 
 **全书续跑判定（ADR-01 B5）**：多章成书时，重启先看「Progress · 全书」段定 BOOK_* 相位；
 CHAPTER_SCHEDULE 期间再按各章段续跑到 `progress.py book-status` 矩阵定位。单章模式判定不变。

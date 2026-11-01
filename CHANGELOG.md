@@ -3,7 +3,7 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 批次 B2/B3/B4/B5/B6：反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 硬门槛落盘（ADR-05）+ 全书层（ADR-01）+ 横切验收口径（GATE2 §6）
+## [Unreleased] — 批次 B1/B2/B3/B4/B5/B6：状态机归一（ADR-04）+ 反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 硬门槛落盘（ADR-05）+ 全书层（ADR-01）+ 横切验收口径（GATE2 §6）
 
 > GATE2 变更单 B1–B6 全部闭合。单章流程行为语义除判据口径加固（更严）外不变；
 > 全书层与硬门槛为纯增量（4.14 缺文件 N/A）。
@@ -123,6 +123,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - CS 端到端：「人工智能（AI）」4.11 PASS（兽医域 AI 才是禁用）；「资产负债率 68.4%」
   无标签 3.1 报缺（旧写死 11 个兽医指标，非兽医学科恒绿）。
 - CI 新增学科中立性门禁（正负双向）+ CS 教材章端到端。
+
+### 状态机归一（ADR-04，批次 B1）
+
+- **PHASE_ORDER 唯一权威归一**：僵尸态 `VERIFY-R4`/`VERIFY-R5` → `PROOFREAD-R4`/`PROOFREAD-R5`
+  （R4/R5 属 PROOFREAD 态，旧名全包 0 处写入）；`PRODUCE`/`VERIFY`/`PROOFREAD` 粗粒度
+  别名修正（`VERIFY` → `VERIFY-R3`）；四方文档（progress / pipeline / harness / team-lead）
+  统一为「唯一权威 = PHASE_ORDER，业务视图只引用不复述枚举」。
+- **相位字面量机械门禁**：新增 `scripts/check_phase_consistency.py`（A/B/C 三层自检：
+  契约快照逐项且顺序比对 / 别名目标合法 / 废弃名不复活）；238 处相位字面量扫描
+  **0 不一致**；CI 新增「相位一致性门禁」步（快失败位）。
+- **LegacyPhaseError + `migrate`**：旧相位名写入报错并提示新名（exit 2）；
+  `progress.py migrate` 一次性迁移旧运行态；续跑演练负向（`VERIFY-R4` 写入被拦）通过。
+- **N-2 路径清理**：用户级插件安装根绝对路径硬编码 → 0 命中（`EXPERT_DIR` 显式解析优先，
+  双宿主安装根兜底）。
+- 静态契约 257 → **258 计分项**，1.000 全绿；行为语义零变化（执行顺序/门禁触发/审查
+  轮次归属逐项不变）。
 
 ## [2.5.0] - 2026-11-01
 

@@ -63,7 +63,7 @@ version: 1.2.1
 
 ## 13 态状态机
 
-> **相位枚举的唯一权威 = `scripts/progress.py` 的 `PHASE_ORDER`（19 相位，含 R1-R5 子轮次）。**
+> **相位枚举的唯一权威 = `scripts/progress.py` 的 `PHASE_ORDER`（23 相位 = 5 个 `BOOK_*` 全书相位 + 18 个章域相位，章域含 R1-R5 子轮次）。**
 > 本节是**业务视图**（13 个粗粒度态），不构成第二份枚举：`PRODUCE`/`VERIFY`/`PROOFREAD`
 > 在脚本里是粗粒度别名，分别落到 `PRODUCE-R3`/`VERIFY-R3`/`PROOFREAD-R5` 行。
 > 两处对不上时以 `PHASE_ORDER` 为准，并由 `scripts/check_phase_consistency.py` 机械拦截（ADR-04）。
