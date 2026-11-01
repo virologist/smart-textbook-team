@@ -98,5 +98,34 @@ _spec = importlib.util.spec_from_file_location("_shared_core_assemble_spawn_prom
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
+# ── 包私有增量：--skip-skill-preload 降级档（ADR-05 / harness §3.1，B6 M3）────
+# 联邦 core 保持无差异（维护纪律：包私有需求走各包增量，不回染 core）。
+# 预算 ≥80% tokens_limit 时编排者加此 flag：spawn 文案注入降级指令，
+# 成员仅强制加载安全底线 skill（agent-harness-protocol / citation-verify），
+# 其余预加载按需、失败不阻塞——「降至线内」的可执行削减动作。
+# 削减须由编排者写入黑板 budget.cuts（M3 反查锚：本段即 flag 的实现行）。
+_SKIP_PRELOAD_NOTE = (
+    "\n## 预算降级档：--skip-skill-preload（ADR-05 / harness §3.1）\n"
+    "预算已达 tokens_limit 的 80%，本次 spawn **跳过非关键 skill 预加载**：\n"
+    "仅强制加载 `agent-harness-protocol` 与 `citation-verify`（安全底线），\n"
+    "「额外预加载 skills」其余项按需加载、失败不阻塞主路径。\n"
+    "编排者已将本削减记入黑板 budget.cuts 并须在交付质量报告声明。\n"
+)
+
+
+def _main_with_skip_preload() -> int:
+    """捕获 core 输出并在头部注入降级指令（flag 的行为实现体）。"""
+    import contextlib
+    import io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = _mod.main()
+    sys.stdout.write(_SKIP_PRELOAD_NOTE + buf.getvalue())
+    return rc
+
+
 if __name__ == "__main__":
+    if "--skip-skill-preload" in sys.argv:
+        sys.argv.remove("--skip-skill-preload")
+        sys.exit(_main_with_skip_preload())
     sys.exit(_mod.main())

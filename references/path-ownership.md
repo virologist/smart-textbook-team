@@ -38,7 +38,10 @@ version: 1.0.0
 | `章节/{ch##}/figures/{图号}.md` | visual-instructional-designer | 写/改 | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.mmd/.svg` | visual-instructional-designer | 写（图表源码） | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.ipynb` | visual-instructional-designer | 写（数据图代码：原始数据+绘图同存，批次 C5 新增） | 只读 |
-| `章节/{ch##}/figures/assets/{图号}.png/.pdf` | **smart-textbook-team-team-lead**（由 `build_manuscript.py` 栅格化/导出） | 写 | 只读 |
+| `章节/{ch##}/figures/assets/{图号}.png/.svg` | **smart-textbook-team-team-lead**（由 `build_manuscript.py` 栅格化/导出） | 写 | 只读 |
+
+> M3 修正记录（B6）：本行原写作 `.png/.pdf`——所声明的 PDF 产出属虚构职责（B-12，
+> 反查无对应实现），已对齐 D-11 口径改为 PNG 栅格 + SVG 矢量直嵌。
 | `交付/`（全部） | smart-textbook-team-team-lead | 写/改（含审阅版 docx、溯源表、校稿结论节转写；v1.1.0） | **禁写** |
 | `运行态/workflow-state.yaml` | smart-textbook-team-team-lead（写 `phase`/`circuit`/`budget`）；成员仅增量 patch `artifacts.<自己字段>` | 见左 | 只 patch 自身 `artifacts` 子树 |
 | `运行态/progress.md` | smart-textbook-team-team-lead；成员经 `scripts/progress.py update` 写自己 phase 行 | upsert 自身 phase 行 | 禁改他人 phase 行、禁 init |

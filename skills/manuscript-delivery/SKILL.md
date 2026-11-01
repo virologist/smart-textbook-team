@@ -7,8 +7,8 @@ version: 1.3.0
 # manuscript-delivery — 大学教材书稿交付规格（md 源 + docx 交付）
 
 > **本 skill 是交付物形态的唯一权威源（SSOT）**。
-> 建立背景（2026-10-29 实测）：`team-lead.md` Phase ASSEMBLE 曾写「按 CHANGELOG 工具链 `scripts/build_chapter.py` 模板，可选生成 docx」——
-> 但 `scripts/` 实测无该文件、CHANGELOG 全文 0 命中 `docx|pandoc|build_chapter`、git 全历史无此文件、全包无版式规范、无 docx 门禁。
+> 建立背景（2026-10-29 实测）：`team-lead.md` Phase ASSEMBLE 曾写「按 CHANGELOG 工具链某模板脚本（虚构名 build_chapter，勘误前原文）可选生成 docx」——
+> 但 `scripts/` 实测无该文件、CHANGELOG 全文 0 命中 `docx|pandoc`、git 全历史无此文件、全包无版式规范、无 docx 门禁。
 > 即：**docx 交付链被声明过但从未存在，且引用了虚构出处**。本 skill 与其配套脚本兑现该承诺。
 
 ## 0. 交付形态铁律

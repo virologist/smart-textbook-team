@@ -3,10 +3,29 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 批次 B2/B3/B4/B5：反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 硬门槛落盘（ADR-05）+ 全书层（ADR-01）
+## [Unreleased] — 批次 B2/B3/B4/B5/B6：反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 硬门槛落盘（ADR-05）+ 全书层（ADR-01）+ 横切验收口径（GATE2 §6）
 
-> 关键路径 B1 → B2 → B3 → B5（GATE2 变更单）已闭合；B4 硬门槛落盘并入本轮，仅 B6 未做。
-> 单章流程行为语义除判据口径加固（更严）外不变；全书层与硬门槛为纯增量（4.14 缺文件 N/A）。
+> GATE2 变更单 B1–B6 全部闭合。单章流程行为语义除判据口径加固（更严）外不变；
+> 全书层与硬门槛为纯增量（4.14 缺文件 N/A）。
+
+### 横切验收口径（GATE2 §6，批次 B6）
+
+- **M1 · 破坏样本 15/15 判据族**：CI 步骤「门禁4负向实验扩容」为 4.0–4.14 每族构造
+  最小破坏样本（frontmatter 缺项/标题跳级/图位缺题注/悬空引用/文献断号/docx 坏 zip/
+  图未栅格化/字数偏离/习题断号/无思政标记/数据图无 notebook/禁用写法/溯源表缺失/
+  孤立修订标记/R5 总分不达标），断言 --strict exit≠0（4.9 存在性为 advisory 级，
+  按设计断言「被标记」不阻断）。负向覆盖 4/14 族 → **15/15**（含 B4 新增 4.14）。
+- **M2 · 原场景不退化**：元规则入 CONTRIBUTING（修 A 必须同时交 ① A 的新负向用例
+  ② 修复前拦住过的东西修复后仍被拦住的回归用例）；M1 基线前置「破坏样本前先证明
+  基线绿」即该规则的执行体。
+- **M3 · 声明与行为解耦校验**：新增 `scripts/check_declaration.py`——文档「由 X 拦截/
+  由 Y 生成」三模式反查（判据号→r.add 实现行 / 脚本能力词→工件词表可反查 /
+  --flag→argparse 注册），查不到 → WARN 进技术债清单。首跑揪出 5 条真债并全部处置：
+  **B-12 PDF 虚构职责**（path-ownership.md:41 声明 .pdf 产出、脚本无 PDF 代码 →
+  对齐 D-11 口径改 PNG/SVG）、`build_chapter.py` 两处幽灵脚本引用（勘误措辞改写）、
+  `--skip-skill-preload` flag 无实现（补进 assemble_spawn_prompt.py shim 包私有增量：
+  注入降级指令，联邦 core 零改动）。终态 **TECH_DEBT=0**（93 条声明全反查）。
+- 静态契约 269 → **273 计分项**（F39a–F39d 4 项横切守护），1.000 全绿；CI 步骤 17 → **18**。
 
 ### 硬门槛落盘（ADR-05，批次 B4）
 

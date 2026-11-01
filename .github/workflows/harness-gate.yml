@@ -541,6 +541,163 @@ jobs:
           print("信封 PASS: ENVELOPE_FIELDS_PARSED=19/19 且 confidence/issues 同源落 trace")
           PY
 
+      # M1 破坏样本矩阵（B6 横切验收口径，GATE2 §6）：每个判据族一个最小破坏样本，
+      # 断言校验器必须拦住——FAIL 级判据 → --strict exit≠0；advisory 级（4.9 存在性）
+      # → 该项必须被标记。此前负向实验只覆盖 4/14 族（4.10/4.11/4.12/4.13），本轮扩到 15/15（含 4.14）。
+      - name: 门禁4负向实验扩容（M1 破坏样本 15/15 判据族）
+        run: |
+          set -e
+          WR=/tmp/stt-m1
+          rm -rf "$WR"; mkdir -p "$WR/章节/ch01/figures/assets" "$WR/章节/ch01/review" "$WR/交付"
+          cat > "$WR/章节/ch01/draft.md" <<'MD'
+          ---
+          教材名: 教材
+          章节号: ch01
+          章节标题: M1 基线章
+          字数目标: 71
+          实际净字数: 71
+          版本: R3
+          学科profile: veterinary
+          ---
+
+          # 第1章 M1 基线章
+
+          ## 1.1 概述
+
+          本句为冒烟正文 [实]（PMID:38960123）。交叉引用 [见 §1.2]。[原表述]{.deletion author="严正词" date="2026-10-31"}[修订表述]{.insertion author="严正词" date="2026-10-31"}
+
+          ## 1.2 小结
+
+          结论句 [实]（PMID:38960123）。
+
+          ## 校稿结论
+
+          - **结论**：可交付
+          - **修订计数**：插入 1 处 / 删除 1 处
+          - **遗留待办**：无
+
+          ## 参考文献
+
+          [1] 作者. 题名[J]. 刊名, 2020, 1(1): 1-2. (PMID:38960123)
+          MD
+          cat > "$WR/章节/ch01/review/r3_verification_log.md" <<'MD'
+          | 位置 | 标识符 | 结果 | 动作 |
+          |------|--------|------|------|
+          | §1.1 | PMID:38960123 | 通过 | 保留 |
+          | §1.2 | PMID:38960123 | 通过 | 保留 |
+          MD
+          python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
+          # 基线必须干净（M2「原场景不退化」：破坏样本前先证明基线绿）
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --strict
+          python3 - <<'PY'
+          import json, re, shutil, subprocess, sys
+          from pathlib import Path
+
+          BASE = Path("/tmp/stt-m1")
+          MD_REL = Path("交付/教材_ch01.md")
+
+          def run_check(wr, extra=()):
+              p = subprocess.run(
+                  [sys.executable, "scripts/check_manuscript.py",
+                   "--work-root", str(wr), "--chapter", "ch01", "--json", "--strict", *extra],
+                  capture_output=True, text=True)
+              items = {i["id"]: i for i in json.loads(p.stdout)["items"]}
+              return p.returncode, items
+
+          def fresh(tag):
+              dst = Path(f"/tmp/stt-m1-{tag}")
+              if dst.exists():
+                  shutil.rmtree(dst)
+              shutil.copytree(BASE, dst)
+              return dst
+
+          def edit_md(wr, fn):
+              p = wr / MD_REL
+              p.write_text(fn(p.read_text(encoding="utf-8")), encoding="utf-8")
+
+          def in_family(item, family):
+              return item == family or re.match(rf"^{re.escape(family)}[a-z]", item)
+
+          results = []
+
+          def case(family, tag, expect_fail, mutate, extra=()):
+              wr = fresh(tag)
+              mutate(wr)
+              rc, items = run_check(wr, extra)
+              hit = {k: v for k, v in items.items() if in_family(k, family)}
+              flagged = any(not v["ok"] for v in hit.values())
+              fail_level = any((not v["ok"]) and v["level"] == "FAIL" for v in hit.values())
+              ok = (flagged and fail_level and rc != 0) if expect_fail else flagged
+              results.append((family, tag, ok, rc, sorted(hit)))
+
+          # ── 15 判据族最小破坏样本 ──
+          case("4.0", "frontmatter缺项", True,
+               lambda wr: edit_md(wr, lambda t: t.replace("学科profile: veterinary\n", "")))
+          case("4.1", "标题跳级", True,
+               lambda wr: edit_md(wr, lambda t: t.replace("## 1.1 概述", "### 1.1 概述")))
+          case("4.2", "图位缺题注", True,
+               lambda wr: edit_md(wr, lambda t: t.replace(
+                   "## 1.2 小结", "[图 1-1：补图]\n\n## 1.2 小结")))
+          case("4.3", "悬空交叉引用", True,
+               lambda wr: edit_md(wr, lambda t: t.replace("[见 §1.2]", "[见 §9.9]")))
+          case("4.4", "参考文献断号", True,
+               lambda wr: edit_md(wr, lambda t: t.replace("[1] 作者", "[2] 作者")))
+          case("4.5", "docx坏zip", True,
+               lambda wr: (wr / "交付/教材_ch01.docx").write_bytes(b"\x00garbage\x01"))
+          case("4.6", "图未栅格化", True,
+               lambda wr: edit_md(wr, lambda t: t.replace(
+                   "## 1.2 小结", "[图 1-1：补图]\n\n图 1-1 补图\n\n## 1.2 小结")),
+               extra=("--require-raster",))
+          case("4.7", "字数偏离", True,
+               lambda wr: edit_md(wr, lambda t: t.replace("字数目标: 71", "字数目标: 200")))
+          case("4.8", "习题断号", True,
+               lambda wr: edit_md(wr, lambda t: t.replace(
+                   "## 1.2 小结", "[习题 1-1] [习题 1-3]\n\n## 1.2 小结")))
+          case("4.9", "无思政标记", False,   # advisory 级（存在性），按设计不阻断
+               lambda wr: None)
+          case("4.10", "数据图无notebook", True,
+               lambda wr: edit_md(wr, lambda t: t.replace(
+                   "## 1.2 小结", "[图 1-1：趋势图]\n\n图 1-1 趋势图\n\n数据来源=试验测定\n\n## 1.2 小结")))
+          case("4.11", "禁用写法出现", True,
+               lambda wr: edit_md(wr, lambda t: t.replace("结论句", "结论句 AIV")))
+          case("4.12", "溯源表缺失", True,
+               lambda wr: (wr / "交付/教材_ch01.溯源.md").unlink())
+          case("4.13", "孤立修订标记", True,
+               lambda wr: edit_md(wr, lambda t: t.replace(
+                   "## 校稿结论", "[新句]{.insertion author=\"严正词\" date=\"2026-01-01\"}\n\n## 校稿结论")))
+          case("4.14", "R5总分不达标", True,
+               lambda wr: (wr / "运行态").mkdir(exist_ok=True) or
+               (wr / "运行态/r5-score.json").write_text(json.dumps({
+                   "chapter": "ch01", "total": 79.0, "weight_sum": 100, "verdict": "fail",
+                   "dims": {"知识严谨性": {"score": 79, "weight": 30, "evidence": ["§1.1"]},
+                            "前沿性": {"score": 79, "weight": 15, "evidence": ["§1.1"]},
+                            "易懂易学": {"score": 79, "weight": 25, "evidence": ["§1.1"]},
+                            "职业教育适配": {"score": 79, "weight": 20, "evidence": ["§1.1"]},
+                            "规范性": {"score": 79, "weight": 10, "evidence": ["§1.1"]}}},
+                   ensure_ascii=False), encoding="utf-8"))
+
+          bad = [r for r in results if not r[2]]
+          for family, tag, ok, rc, hit in results:
+              print(f"  {'✓' if ok else '✗'} [{family}] {tag}（exit={rc}, 命中项={hit[:4]}）")
+          assert not bad, f"M1 破坏样本未被拦截: {bad}"
+          assert len(results) == 15, len(results)
+          print("M1 PASS: 15/15 判据族破坏样本全部被拦截（4.9 advisory 级按设计标记不阻断）")
+          PY
+
+      # M3 声明↔实现反查（B6）：文档声明「由 X 拦截/由 Y 生成」必须能反查到实现行
+      - name: M3 声明与行为解耦校验（check_declaration TECH_DEBT=0）
+        run: |
+          set -e
+          python3 scripts/check_declaration.py --out /tmp/stt-tech-debt.md | tail -4
+          python3 - <<'PY'
+          import subprocess, sys
+          p = subprocess.run([sys.executable, "scripts/check_declaration.py", "--strict"],
+                             capture_output=True, text=True)
+          assert p.returncode == 0, p.stdout + p.stderr
+          assert "TECH_DEBT=0" in p.stdout, p.stdout
+          print("M3 PASS: 93 条声明全部可反查（B-12 类虚构职责已被拦截并修正）")
+          PY
+
       # CS 教材章跨学科端到端（ADR-02 判据层学科化，2026-11-01 批次 B3）：
       # 验证「非兽医学科也能跑通」的解耦证据——CS 术语表无 AI 禁用 → 4.11 放行
       # 「人工智能（AI）」；通用百分比数值信号（RE_PERCENT 兜底）→ 3.1 报缺标签

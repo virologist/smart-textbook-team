@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 
 # ── 配置 ────────────────────────────────────────────────────────────
@@ -1086,6 +1087,46 @@ def check_executability(ck, expert_dir):
              and re.search(r"^\|\s*4\.14\s*\|", _md2, re.M) is not None
              and "4.14" in _md2,
              "R5 机械化三方有一处缺席 → 评分仍可绕过脚本自评")
+
+    # ── F39：B6 横切验收口径守护（M1/M2/M3 元规则，2026-11-01）─────────────
+    # 18 条回归的根因是「验收对象是声明不是行为」。M1 破坏样本 / M2 不退化用例 /
+    # M3 声明↔实现反查三条元规则必须可机械执行，否则制度空转。
+
+    # F39a: check_declaration.py 实装（M3 三模式 + 工件词表）
+    _cd = read(os.path.join(expert_dir, "scripts", "check_declaration.py"))
+    ck.check("F39a", "F", "check_declaration.py 实装 M3（判据反查/工具能力反查/flag 反查）",
+             all(s in _cd for s in ("def check_criterion", "def check_tool", "def check_flag",
+                                    "ARTIFACT_VOCAB", "TECH_DEBT=")),
+             "M3 校验器缺关键构件 → 文档虚构职责（B-12 类）无法反查")
+
+    # F39b: M3 实跑零技术债（93 条声明全反查；B-12 PDF 虚构职责已修正）
+    try:
+        _cdp = subprocess.run(
+            [sys.executable, os.path.join(expert_dir, "scripts", "check_declaration.py")],
+            capture_output=True, text=True, timeout=120)
+        ck.check("F39b", "F", "check_declaration 实跑 TECH_DEBT=0（声明↔实现无断链）",
+                 _cdp.returncode == 0 and "TECH_DEBT=0" in _cdp.stdout,
+                 (_cdp.stdout or _cdp.stderr)[-300:])
+    except Exception as e:                                # pragma: no cover
+        ck.check("F39b", "F", "check_declaration 实跑 TECH_DEBT=0（声明↔实现无断链）",
+                 False, f"执行失败: {e}")
+
+    # F39c: M1 破坏样本矩阵进 CI（15/15 判据族，含 4.14）
+    _wf = read(os.path.join(expert_dir, ".github", "workflows", "harness-gate.yml"))
+    _m1_miss = [f'case("4.{i}"' for i in range(0, 15)] 
+    _m1_miss = [c for c in _m1_miss if c not in _wf]
+    ck.check("F39c", "F", "M1 破坏样本矩阵进 CI（4.0–4.14 十五个判据族全覆盖）",
+             "M1 破坏样本 15/15" in _wf and not _m1_miss,
+             f"CI 缺破坏样本用例: {_m1_miss}")
+
+    # F39d: M2 元规则入 CONTRIBUTING + --skip-skill-preload 行为实装（flag 可反查）
+    _ct = read(os.path.join(expert_dir, "CONTRIBUTING.md"))
+    _shim = read(os.path.join(expert_dir, "scripts", "assemble_spawn_prompt.py"))
+    ck.check("F39d", "F", "M2 元规则入 CONTRIBUTING + --skip-skill-preload 行为实装",
+             "M1" in _ct and "M2" in _ct and "M3" in _ct
+             and "原场景不退化" in _ct
+             and "--skip-skill-preload" in _shim and "budget.cuts" in _shim,
+             "M2 制度未落文或降级档 flag 无实现（M3 无法反查）")
 
     # ── F32：README 计分项声明守护（2026-10-30 补）─────────────────────────
     # 实测教训：静态契约从 199 → 213 → 214 → 226 演进，README 头部声明每次都落后，

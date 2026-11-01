@@ -136,8 +136,8 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 ```
 回流后必须重建交付 docx（回 md 重建）。
 
-> **勘误（2026-10-29 实测）**：本行此前写「按 CHANGELOG 工具链 `scripts/build_chapter.py` 模板，可选生成 docx」——
-> 实测 `scripts/` 无该文件、CHANGELOG 全文 0 命中 `docx|pandoc|build_chapter`、git 全历史无此文件。
+> **勘误（2026-10-29 实测）**：本行此前写「按 CHANGELOG 工具链某模板脚本（虚构名 build_chapter，勘误前原文）可选生成 docx」——
+> 实测 `scripts/` 无该文件、CHANGELOG 全文 0 命中 `docx|pandoc`、git 全历史无此文件。
 > **该引用指向不存在的文件且伪造了出处**。现改为 `scripts/build_manuscript.py` 的真实调用。
 
 **交付形态铁律（v1.1.0 收窄）**：`.md` = 源（唯一编辑入口，承载修订语义）；`.docx` = 交付格式 + 审稿载体（**允许 Word 追踪修订审改**，但改后必须回流 md 再重建——**违规的是「改而不回流」**）。
