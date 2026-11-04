@@ -57,7 +57,11 @@
     "quality-examiner": {
       "role": "质量审查",
       "must_produce": [
-        "章节/{ch}/review/round1_report.md"
+        "章节/{ch}/review/round1_report.md",
+        "章节/{ch}/review/round2_report.md",
+        "章节/{ch}/review/round3_report.md",
+        "章节/{ch}/review/proofread.md",
+        "章节/{ch}/review/proofread_revisions.md"
       ],
       "must_not_write": [
         "章节/{ch}/draft.md",
@@ -67,7 +71,8 @@
       "timeout_budget_s": 1200,
       "max_retry": 3,
       "on_partial": "BLOCK",
-      "on_timeout": "TIMEOUT"
+      "on_timeout": "TIMEOUT",
+      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套——现已登记 R1-R3 报告 + R4 校稿两件套；R5 评分落审查报告「质量评分」段（round3_report 或独立评分文件，编排者 --produce 显式指定）。R45 合并派工（task_type=review-proofread-score）时用 --produce 显式给出 proofread 两件套+评分段路径。"
     },
     "visual-instructional-designer": {
       "role": "图表设计",

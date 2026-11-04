@@ -73,4 +73,6 @@ def is_review_task_type(task_type) -> bool:
 REVIEW_TASK_TYPES = (
     'review-structure', 'review-depth', 'review-citation',
     'review-style', 'review-score', 'review-design', 'review-visual',
+    # B1-3（2026-11-04）：R4+R5 合并单次派工
+    'review-proofread-score',
 )

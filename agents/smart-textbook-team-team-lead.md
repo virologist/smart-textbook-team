@@ -38,7 +38,7 @@ maxTurns: 200
 
 **任何 spawn 前的强制步骤**（加载 `task-router` skill 后执行）：
 
-1. **标注 task_type**：按 router §1 枚举（`design-bloom` / `retrieval-pmid` / `write-skeleton` / `review-citation` 等 15 类）从用户问法或子任务判定
+1. **标注 task_type**：按 router §1 枚举（`design-bloom` / `retrieval-pmid` / `write-skeleton` / `review-citation` 等 16 类）从用户问法或子任务判定
 2. **评估置信度**：router §2 四步评分（**0-100 量纲**，与 envelope `confidence` 同源）；总分 <70 走升级（追问 / 拆任务 / 兜底 fallback）
 3. **envelope 写入 payload.task_type 与 routing_confidence**（trace + 离线 eval 用）
 4. **禁止合并跨 task_type 任务**（"审+补图"必须拆两个独立 spawn）
@@ -104,10 +104,11 @@ spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审�
 ### Phase PROOFREAD: R4 校稿 + R5 质量评分（独立于 E 之上，对应 13 态 PROOFREAD；E1 统一裁决 2026-10-31）
 **轮次归属 SSOT（pipeline §轮次归属）**：VERIFY 只跑 R1-R3（内容正确性）；**PROOFREAD 跑 R4+R5**（交付质量）——与 13 态表、examiner 契约三处对齐。
 **相位名以 `progress.py` `PHASE_ORDER` 为准**（唯一权威，本节不复述枚举）：R4/R5 落盘用 `PROOFREAD-R4`/`PROOFREAD-R5`。
-**R4 校稿派工**：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-style`；
-产出三件套：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）。blocking 项回祝书白改风格（复核标记后并入 draft）；纯 advisory 由校对后稿承载。
-**R5 评分派工（同轮追加，此前无人派工的修复）**：`spawn quality-examiner --task_id=ch##-PROOFREAD-R5 --task_type=review-score`；
+**R4+R5 合并派工**（B1-3，2026-11-04 · 由两次 spawn 合并为一次）：`spawn quality-examiner --task_id=ch##-PROOFREAD --task_type=review-proofread-score`；
+**顺序要求**：先 R4 校稿（产出校对后稿）→ 再 R5 对**校对后稿**评分（R5 评的是校对后稿，此前未定义，合并后消除歧义）。
+产出四件套：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）+ 审查报告「质量评分」段（五维分数 + 逐维证据）+ 双轮 verdict（R4 风格 / R5 评分）。
 按五维评分（chapter-structure §2）+ **80 分红线**：≥80 才进 CONSOLIDATION；<80 blocking，按维度定点退返修。结果双落盘：审查报告「质量评分」段 + `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase PROOFREAD-R5`。
+**为什么合并**：原 R4/R5 两次 spawn 读同一份 draft.md —— 一次多余的派工 + 一次多余的全稿重读。合并后省一轮，且两轮结论同源（同一 examiner 同一上下文，R5 紧接 R4 结论更连贯）。
 **串行硬约束**：PROOFREAD（R4+R5）不能与 E（R1-R3）并行；全 pass 才进下一态。
 
 ### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）

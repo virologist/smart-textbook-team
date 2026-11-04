@@ -59,6 +59,7 @@ KNOWN_SAMPLES = {
     '核验所有 [实] 标签的 PMID/DOI': 'review-citation',
     '校对这章，出校对后稿和修订记录': 'review-style',
     '给这章打个五维质量分': 'review-score',
+    '校对并给这章打五维质量分': 'review-proofread-score',
     '画一张疫区封锁的决策树': 'visual-spec',
     '按 gaps.md 把缺口逐条补证据': 'gap-retrieval',
 }
@@ -131,6 +132,15 @@ def route(query: str) -> tuple[str | None, float, list[str]]:
             ('写' in q and any(ctx in q for ctx in ('正文', '章节内容', '这段', '一下', 'draft', '稿子'))):
         signals.append('revise')
         return 'write-revise', conf(KNOWN_SAMPLES.get(q.strip()) == 'write-revise'), signals
+
+    # ── 审查-R4+R5 合并(B1-3 新增: 合并意图必须早于 R5/风格两个单轮分支,
+    #    否则「校对并打分」会被「打分」截胡退化成 review-score) ──
+    if (('校对' in q or '校稿' in q) and
+            any(kw in q for kw in ('五维', '质量分', '打分', '评分', '打个分'))):
+        signals.append('proofread-score')
+        return ('review-proofread-score',
+                conf(KNOWN_SAMPLES.get(q.strip()) == 'review-proofread-score'),
+                signals)
 
     # ── 审查-R5 评分(G3 新增: 分数/五维/质量分意图) ──
     if any(kw in q for kw in ('五维', '质量分', '打个', '评分')):
@@ -215,6 +225,10 @@ EVAL_CASES = [
     ('按 gaps.md 把缺口逐条补证据', 'gap-retrieval', 70),
     ('缺口清单里的条目逐条补检索', 'gap-retrieval', 70),
     ('校对这章，出校对后稿和修订记录', 'review-style', 70),
+
+    # ── B1-3 新增(2026-11-04): R4+R5 合并派工路由 ──
+    ('校对并给这章打五维质量分', 'review-proofread-score', 100),
+    ('校稿并打分，一次做完', 'review-proofread-score', 70),
 
     # 边界用例: 模糊问法, 应触发升级
     ("帮我搞一下这章", None, 0),

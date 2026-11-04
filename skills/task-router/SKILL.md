@@ -1,7 +1,7 @@
 ---
 name: task-router
-version: 1.1.0
-description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (15 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
+version: 1.2.0
+description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (16 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
 ---
 
 # task-router — 结构化任务路由
@@ -10,6 +10,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 > 路由器本质：把"用户口语化问法"映射成 15 个标准 task_type 之一，再查表派活。
 > （G3 修复 2026-10-31：枚举 13→15——补 review-score（R5 评分）、review-proofread（R4 校稿三件套）两类；
 > 此前 R4b/R5/校稿三件套无 task_type 可路由，被迫错挂 review-citation 或标 custom，路由审计失真。）
+> （B1-3 2026-11-04：枚举 15→16——补 review-proofread-score：R4+R5 合并单次派工，省一次全稿重读。）
 
 ---
 
@@ -24,7 +25,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 1. task_type 枚举（15 类，SSOT）
+## 1. task_type 枚举（16 类，SSOT）
 
 | task_type | 中文 | 责任成员 | 输入信号 | 输出契约 |
 |-----------|------|---------|---------|---------|
@@ -40,11 +41,17 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | `review-citation` | 审查 R3（数据 + 引用核验） | quality-examiner | `draft.md` + 所有 `[实]/[引]` | R3 verdict + 引用核验表 |
 | `review-style` | 审查 R4（校稿三件套） | quality-examiner | `draft.md` | `proofread.md` + `proofread_revisions.md` + R4 verdict |
 | `review-score` | 审查 R5（五维质量评分） | quality-examiner | `draft.md` + `chapter_design.md` | R5 分数 + 质量评分段（<80 blocking） |
+| `review-proofread-score` | **审查 R4+R5 合并**（单次 spawn 双产出 · B1-3） | quality-examiner | `draft.md` + `chapter_design.md` | `proofread.md` + `proofread_revisions.md` + R5 评分段 + 双轮 verdict |
 | `visual-spec` | 图表规格 + 代码 | visual-instructional-designer | 图表位 `[图 X-X：...]` + `draft.md` | 规格卡 + Mermaid/SVG（数据图含 .ipynb） |
 | `visual-review` | 图表审查（图与正文一致性）| visual-instructional-designer | 已产图表 + 最终 `draft.md` | 图文一致性 verdict |
 | `gap-retrieval` | 缺口清单检索（gaps.md 消费） | literature-scout | `章节/{ch##}/gaps.md`（architect 产出） | 按缺口逐条证据 + 覆盖追踪 |
 
-> **扩展规则**：未覆盖的新场景（16+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+> **扩展规则**：未覆盖的新场景（17+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+
+> **B1-3 合并派工说明（2026-11-04）**：`review-style` 与 `review-score` 保留在枚举中（单轮问法仍可能只求其一），
+> 但 **PROOFREAD 态的标准派工改用 `review-proofread-score`**——单次 spawn 双产出，省一次派工与一次全稿重读。
+> 合并后的**顺序要求**：先 R4 校稿（产出校对后稿）→ 再 R5 对**校对后稿**评分。
+> （此前「R5 评的是校对前稿还是校对后稿」未定义，合并派工顺带消除该歧义——R5 评校对后稿。）
 
 ---
 
@@ -83,6 +90,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | "写" / "起草" / "改" / "润色" | `write-revise` 或 `write-skeleton` |
 | "审查" / "检查" / "核验"（数据/引用）| `review-citation` |
 | "审查"（结构/深度）| `review-structure` / `review-depth` |
+| "校对" + "评分" / "校稿" + "打分" / "一起审" | `review-proofread-score` |
 | "图" / "Mermaid" / "SVG" / "chart" | `visual-spec` |
 | 其他模糊问法 | **升级 team-lead** |
 
@@ -152,6 +160,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | "核验所有 [实] 标签的 PMID/DOI" | `review-citation` | 95 |
 | "校对这章，出校对后稿和修订记录" | `review-style` | 90 |
 | "给这章打个五维质量分" | `review-score` | 90 |
+| "校对并给这章打五维质量分" | `review-proofread-score` | 90 |
 | "画一张疫区封锁的决策树" | `visual-spec` | 90 |
 | "按 gaps.md 把缺口逐条补证据" | `gap-retrieval` | 90 |
 
