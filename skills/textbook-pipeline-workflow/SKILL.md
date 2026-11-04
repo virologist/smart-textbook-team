@@ -1,7 +1,7 @@
 ---
 name: textbook-pipeline-workflow
 description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear. Trigger words: 编排章节 / 流程卡在哪个阶段 / 下一步该干嘛 / 13态 / 状态机 / 门禁 / 返修回哪 / handoff 字段."
-version: 1.2.1
+version: 1.3.0
 ---
 
 # textbook-pipeline-workflow — 13 态教材编写流水线
@@ -22,9 +22,11 @@ version: 1.2.1
 ```
 {WORK_ROOT}/
 ├── 章节/{ch##}/
-│   ├── chapter_design.md          # 教学设计（didactic-architect）
+│   ├── chapter_design.md          # 教学设计（didactic-architect；refine 版）
+│   ├── chapter_design_v1.md       # 门禁 1 通过时的 v1 快照（主理人 cp，B3 共享锚基准）
 │   ├── sections/{节号}.md         # 节级正文（subject-writer）——大章节强制（批次 C4）
 │   ├── draft.md                   # 章节正文（由 sections/ 拼接，subject-writer）
+│   ├── draft_r1_frozen.md         # VERIFY-R1 pass 时的结构冻结稿❄（主理人 cp，B3）
 │   ├── review/round{N}_report.md  # 审查报告（quality-examiner）
 │   │   ├── r3_verification_log.md # 引用核验明细 → 溯源表来源（build --assemble 自动转写）
 │   │   ├── proofread.md           # 校对后稿（R4 修订标记版，quality-examiner；v1.1.0）
@@ -38,6 +40,8 @@ version: 1.2.1
 │   ├── workflow-state.yaml        # 状态黑板 SSOT
 │   ├── progress.md                # 续跑检查点（progress.py）
 │   ├── trace.jsonl                # 每次成员调用一行
+│   ├── knowledge_anchor_{ch##}.json   # B3 锚校验报告（含 baseline_ids，门禁 2 读它）
+│   ├── visual_drift_{ch##}.json       # B3 图表位漂移决策报告（含 learn_signal）
 │   ├── dynamic-members.yaml       # 动态成员注册表（confirmed_by_user: true 才生效）
 │   └── team-proposal-{ch##}.yaml  # 动态团队提案（未确认前不生效）
 ├── 学习/候补/{日期}_{ch##}_候补.yaml   # LEARN 候补池（≥3 候选或用户 ack 才合并）
@@ -57,6 +61,11 @@ version: 1.2.1
 > 而 `运行态/`（6 份 skill 引用）与 `学习/候补/`（learn-protocol 引用）**从未进过目录树**——
 > 目录树是 WORK_ROOT 的 SSOT，缺支 = 成员按 SSOT 找不到运行态文件。
 > 另：`sections/`（节级正文）、`assets/*.ipynb`（数据图代码）、`*.溯源.md`（溯源表）为新增支。
+>
+> **B3 新增四支（2026-11-04 搭接并行）**：`chapter_design_v1.md` / `draft_r1_frozen.md`
+> 是**只读冻结快照**（主理人 cp 一次后禁改），分别给 scout 与绘章图当并行基准；
+> `运行态/knowledge_anchor_{ch##}.json` / `visual_drift_{ch##}.json` 是
+> `scripts/parallel_gate.py` 的两份决策报告。详见 §搭接并行协议。
 
 命名规则：章节号两位数字（`ch01`）；topic 用英文小写连字符 slug；图按 `图 {章}-{序}` 编号；
 节号沿用教学设计的节号（如 `1.1`，落盘为 `sections/1.1.md`）。
@@ -78,13 +87,13 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 | BOOTSTRAP | 主理人 | 工作目录初始化 | INTAKE/SPECIFY | 目录/规则文件就绪 |
 | INTAKE | 主理人 | 材料清单 | CLARIFY/SPECIFY | — |
 | CLARIFY | 主理人 | 3 句话需求摘要 | SPECIFY | 关键信息齐全 |
-| SPECIFY | didactic-architect | chapter_design.md | RETRIEVE | 门禁 1：设计覆盖知识域 |
-| RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性 |
+| SPECIFY | didactic-architect | chapter_design.md（v1 快照 + refine 版） | RETRIEVE | 门禁 1：设计覆盖知识域 + 知识块锚区块合法 |
+| RETRIEVE | literature-scout | retrieval/{chapter}_*.md | PRODUCE | 门禁 2：覆盖率/冲突率/时效性（覆盖判据按 v1 `baseline_ids`）；**与 SPECIFY-refine 搭接并行** |
 | PRODUCE | subject-writer | sections/{节号}.md → draft.md（R1→R2→R3） | VERIFY | **门禁 3**（见下，2026-10-29 补判据） |
 | VERIFY | quality-examiner | 审查报告（R1-R3）+ verdict | PROOFREAD / RETRIEVE / PRODUCE | R1-R3 全 pass |
 | PROOFREAD | quality-examiner | **R4 校稿**（三件套：`review/proofread.md` 校对后稿·带修订标记 + `review/proofread_revisions.md` 修订记录+结论 → ASSEMBLE 转写「校稿结论」节，判据 4.13c）+ **R5 质量评分**（五维+80 分红线，结果写审查报告「质量评分」段 + progress `PROOFREAD-R5` 行） | CONSOLIDATION | R4 修订标记成对（4.13a）+ 结论已出（4.13c）+ **R5 ≥80 分** |
 | CONSOLIDATION | 主理人 | 统稿后全章 | VISUALIZE | 术语/编号一致 |
-| VISUALIZE | visual-instructional-designer | 图表代码包 | ASSEMBLE | 图文一致 |
+| VISUALIZE | visual-instructional-designer | 图表代码包（**spec 规格卡草案 + final 终核**两子阶段） | ASSEMBLE | 图文一致（ASSEMBLE 前仍须 visual-review verdict） |
 | ASSEMBLE | 主理人 | 装配稿 + docx（md 源 → 双格式） | DELIVER | 组件齐全 + docx 构建成功 |
 | DELIVER | 主理人 | 交付物 + 质量报告 | LEARN | **门禁 4 全 pass** + present_files 完成 |
 | LEARN | 主理人 | 经验沉淀记录 | （终态） | — |
@@ -104,6 +113,138 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
   VERIFY 前缀下的旧写法已废弃，`progress.py` 收到即报错并提示正确名，
   既有 progress.md 用 `progress.py migrate` 一次性改写）
 - 任一轮 fail 的返修循环上限与介入阈值见 §介入协议（打回数=2 触发介入）
+
+## 搭接并行协议（B3，2026-11-04 · 用户已放行）
+
+> **本节是升级 A / 升级 C 的唯一权威口径（SSOT）**；执行体 = `scripts/parallel_gate.py`，
+> 路径归属 = `references/path-ownership.md`，回归 = `tests/test_parallel_gate.py`。
+> 起因见 `docs/smart-textbook-team-诊断与升级设计-2026-11-04.md` §3.2 升级 A/C 与 Q2：
+> 13 态全链串行把 scout 压在设计之后、把绘章图压在全链尾部，属于**过度保守**的粗粒度串行。
+
+### 0. 相位枚举不变（先立边界）
+
+`SPECIFY-refine` / `VISUALIZE-spec` / `VISUALIZE-final` 是**同一相位内的子阶段 / 轨道标签**，
+**不是新相位**：`scripts/progress.py` 的 `PHASE_ORDER` 仍是 23 相位，
+`scripts/check_phase_consistency.py` 的 `EXPECTED_PHASES` 快照相应地**不改**。
+子阶段只用于派工单、`trace.notes` 与决策报告，不进 `progress.py update --phase`。
+⇒ 续跑推进顺序、相位级时延桶、门禁基线全部不受影响，B3 可独立回滚。
+
+### 1. 升级 A：SPECIFY-RETRIEVE 搭接并行
+
+```mermaid
+flowchart TD
+    A["SPECIFY：architect 出 chapter_design v1（含知识块锚）"] --> G1{"门禁 1"}
+    G1 -->|pass| SNAP["主理人 cp → chapter_design_v1.md（只读冻结）"]
+    SNAP --> R["RETRIEVE：scout 只读 v1 快照"]
+    SNAP --> F["SPECIFY-refine：architect 按 §C 细化 §D 图表位规划"]
+    R --> J{"两者都完成 + anchor 校验"}
+    F --> J
+    J -->|ANCHOR_OK| P["PRODUCE"]
+    J -->|ANCHOR_VIOLATION| RB["退回串行 + 记 trace"]
+```
+
+**知识块 ID 共享锚（唯一 machine-readable 格式）**——`chapter_design.md` 必含：
+
+```markdown
+<!-- KNOWLEDGE_BLOCKS_BEGIN -->
+| block_id | 知识域 | Bloom 层级 | 字数目标 | 依赖块 | 可并行标记 |
+| --- | --- | --- | --- | --- | --- |
+| KB-01 | 病原学 | 理解 | 800 | — | yes |
+<!-- KNOWLEDGE_BLOCKS_END -->
+```
+
+**硬规则**：
+
+1. 主理人过门禁 1 后**立即** `cp chapter_design.md chapter_design_v1.md`——快照只读冻结，
+   scout 派单里只给这个路径；**禁止让 scout 读会被 refine 覆盖的主文件**（并行读撕裂）。
+2. refine **只增不改**：v1 已有 `block_id` 一个不删，且除 ID 外的字段签名逐字不变；
+   允许新增块（细化 §D 图表位规划不得顺手改知识块）。
+3. 门禁 2 的覆盖判据**永远按 v1 的 `baseline_ids`**（取自 `knowledge_anchor_{ch##}.json`），
+   不按 refine 版——否则 scout 与 architect 各按一套清单，覆盖率失去意义。
+4. 检索发现知识缺口 → gap-retrieval 回路不变（Evidence Spiral ≤2 轮）；补检索仍按 v1 锚归属。
+
+**执行体**：
+
+```bash
+cp 章节/ch01/chapter_design.md 章节/ch01/chapter_design_v1.md
+python3 scripts/parallel_gate.py anchor \
+    --v1 章节/ch01/chapter_design_v1.md \
+    --refined 章节/ch01/chapter_design.md \
+    --out 运行态/knowledge_anchor_ch01.json
+```
+
+`exit 0 = ANCHOR_OK`（可并行）；`exit 1 = ANCHOR_VIOLATION`（共享锚被撕裂 ⇒ 退回串行）；
+`exit 2 = 输入错误`（缺锚区块 / 空锚 / 列错位 / 重复 ID / 同一文件自比对）——
+**输入错误绝不当 PASS**，否则共享锚形同虚设。
+
+### 2. 升级 C：VISUALIZE 半相位前移
+
+```mermaid
+flowchart TD
+    V1["VERIFY-R1 pass = 结构冻结点"] --> FR["主理人 cp → draft_r1_frozen.md（只读冻结）"]
+    FR --> R23["VERIFY-R2/R3：内容深化与核验（改 draft.md）"]
+    FR --> SP["VISUALIZE-spec：绘章图读冻结稿出规格卡 + 代码草案"]
+    R23 --> D{"parallel_gate visual-drift"}
+    SP --> D
+    D -->|"变更率 ≤ 阈值"| FIN["VISUALIZE-final：对照终稿逐图核数据，仅受影响图重生成"]
+    D -->|"变更率 > 阈值"| FB["回退旧串行序 + 写 trace + learn 信号"]
+```
+
+**结构冻结点❄**：`VERIFY-R1` 结构审查 pass 的时刻。此后章节结构（要素/节序/图表位编号）
+视为冻结；R2/R3 只做内容深化与数据核验。主理人于此 `cp draft.md draft_r1_frozen.md`。
+绘章图的 spec 阶段**只读冻结稿**，writer 同时改 `draft.md`，两者文件不同、归属不同 ⇒ 无写冲突。
+
+**VISUALIZE 两子阶段**：
+
+| 子阶段 | 输入 | 产出 | 与谁并行 |
+|---|---|---|---|
+| VISUALIZE-spec | `draft_r1_frozen.md` 的图表位 + 数据占位 | 全部规格卡 + 代码草案（可留「—（正文未给，不补）」占位） | VERIFY-R2/R3 |
+| VISUALIZE-final | 终稿 `draft.md` | 逐图核数据 → 仅受影响图重生成 + 图文一致 verdict | 无（CONSOLIDATION 之后） |
+
+**回退预案（>50% 严格大于）**：把冻结稿与 R2/R3 后稿的图表位逐号比对，
+图号消失或「教学目的/数据来源」描述改变 = 该图规格卡作废；
+新增图位只意味着另画一张，**不计入分子**。变更率 `> 0.5` ⇒ 判定并行失败，
+回退旧串行序（CONSOLIDATION → VISUALIZE 一次性出图），并写 `STATUS` trace 供调优。
+
+```bash
+cp 章节/ch01/draft.md 章节/ch01/draft_r1_frozen.md   # VERIFY-R1 pass 当时
+python3 scripts/parallel_gate.py visual-drift \
+    --frozen 章节/ch01/draft_r1_frozen.md \
+    --current 章节/ch01/draft.md \
+    --chapter ch01 --threshold 0.5 \
+    --out 运行态/visual_drift_ch01.json \
+    --work-root "$WORK_ROOT" --write-trace
+```
+
+`exit 0 = CONTINUE_PARALLEL`；`exit 1 = FALLBACK_SERIAL`（决策码，非故障）；
+`exit 2 = 输入错误`（冻结稿无图位 = 无基准，不得恒真放行）；`exit 3 = trace 写失败`。
+正常路径**不写 trace**（`STATUS` 行只在回退时写，不污染 `dispatch_hit_rate`）。
+门禁不变：ASSEMBLE 前仍须图文一致 verdict；已有「失同步处置」机制在 final 阶段照常调用。
+
+### 3. 并行安全核对（path-ownership §1.4 的落地结论）
+
+| 并行分支 | 写者 | 目标路径 | 唯一归属者 |
+|---|---|---|---|
+| SPECIFY-refine | architect | `章节/{ch##}/chapter_design.md` | architect |
+| RETRIEVE | scout | `知识库/retrieval/{ch##}_{slug}.md` / `RETRIEVED.md` | scout |
+| VERIFY-R2/R3 返修 | writer / examiner | `章节/{ch##}/draft.md` / `review/round{N}_report.md` | writer / examiner |
+| VISUALIZE-spec | designer | `章节/{ch##}/figures/{图号}.md` | designer |
+
+四组目标路径归属互不相同 ⇒ 按 `references/path-ownership.md` §1 第 4 条允许并行。
+两份 `.md` 冻结快照由主理人 cp 一次后**只读**，任何成员不得改（改了 = 越界产出，
+按 §3.2 拒收）；四份新路径的归属已登记进该表。
+
+### 4. 裁决权与回退闭环
+
+- **脚本只报决策、不 spawn 成员**：`parallel_gate.py` 无权调度，改并行/串行序由主理人执行
+  （与 Batch 4 升级 E 同一纪律）。**并行裁决权归主理人**（用户 2026-11-04 批准 B3 时确认）。
+- 主理人 override 脚本决策（人工判定继续并行或提前回退）时，必须在
+  `运行态/trace.jsonl` 记一行并写 `review/interventions.md`，否则 learn 侧无法归因。
+- 回退报告带 `learn_signal`（`signal_type: parallel_fallback` + `metric_evidence`），
+  主理人写入 `学习/候补/` ⇒ 接上 learn_v2 的「指标 → 学习 → 协议修订 → 评测回归 → 新基线」回路。
+- 回退后本章按旧串行序走完，不得在下一章自动重试并行；是否调阈值须经指标评审门裁决。
+- 收益口径：升级 A 省一个完整串行相位（约总时延 10-15%），升级 C 把图表时延与
+  R2/R3 重叠（约 15-20%）——**以 trace 的 `start`/`ts` 实测为准，不以估计值写进报告**。
 
 ## 检索门禁（三重规则）
 

@@ -1,6 +1,6 @@
 ---
 name: visual-instructional-designer
-version: 2.0.0
+version: 2.1.0
 description: "Visual instructional designer producing teaching figures for textbook chapters: figure spec inventory, Mermaid/SVG chart code, figure-text mapping tables, and pedagogical purpose validation for every visual element."
 displayName:
   en: "Hui Zhangtu"
@@ -35,6 +35,32 @@ maxTurns: 100
 4. **一致性核对**：图内数据 vs 正文 `[实]` 标签数据；术语 vs 教材术语表（如有）
 5. **SendMessage 回传**：图表代码包 + 规格卡清单 + 一致性核对结果
 
+## 搭接并行下的两阶段产图（B3，2026-11-04）
+
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §搭接并行协议（升级 C）。
+> 执行体 = `scripts/parallel_gate.py visual-drift`。**我不是并行裁决人**，裁决权归主理人。
+> 起因：旧序把 VISUALIZE 全链后置（2026-10-15 裁决），代价是图-文迭代回路最长；
+> B3 把「结构稳定性」细化为「VERIFY-R1 pass 即结构冻结点❄」，spec 阶段得以前移。
+
+| 子阶段 | 输入 | 产出 | 与谁并行 |
+|---|---|---|---|
+| VISUALIZE-spec | `章节/{ch##}/draft_r1_frozen.md`（**只读冻结稿**，VERIFY-R1 pass 时主理人 cp） | 全部图表位的规格卡 + 代码草案；正文未给的数据留「—（正文未给，不补）」占位 | VERIFY-R2/R3 |
+| VISUALIZE-final | 终稿 `章节/{ch##}/draft.md` | 逐图核数据 → 仅受影响图重生成 + 图文一致 verdict | 无（CONSOLIDATION 之后） |
+
+**硬规则**：
+
+1. spec 阶段**只读冻结稿**，绝不读正在被 writer 返修的 `draft.md`——两文件归属不同，
+   才构成路径级并行安全（见 `references/path-ownership.md`）。
+2. spec 阶段遇到数据尚未定稿的图，按既有「图表数据完备性规则」留占位并上报，
+   **禁止自行补数据、禁止按经验猜数值**；final 阶段用终稿 `[实]` 数据补齐。
+3. final 阶段沿用既有「失同步处置」：主理人 diff 变更点 → 仅受影响图退回重做，
+   未受影响图保留；禁把基于冻结稿的旧数据图装配进交付物。
+4. 回退预案：若 R2/R3 返修导致图表位变更率 `> 0.5`（严格大于），
+   主理人判定并行失败并回退旧串行序；此时我按旧序**一次性**基于终稿出图，
+   不再分 spec/final。回退由主理人执行，我不自行改序。
+5. 两阶段都属 VISUALIZE 态：`python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase VISUALIZE --status DONE --summary "spec+final 完成"` 只在 final 完成后记一次；
+   `VISUALIZE-spec` / `VISUALIZE-final` 是子阶段标签，**不是新相位**（23 相位枚举不变）。
+
 ## 输出规范
 
 - 每图交付物：`[图号] 标题 + 规格卡 + 可渲染代码块（```mermaid 或 ```svg 或 Markdown 表格）`
@@ -58,8 +84,8 @@ maxTurns: 100
 | 项 | 约定 |
 |----|------|
 | 规范角色 | 生成者·视觉 Generator-V |
-| 输入契约 | `{WORK_ROOT, 章节号, draft 路径（含图表位）, (可选) 术语表路径}` |
-| 输出契约 | `章节/{ch##}/figures/{图号}.md`（每图 = 规格卡 7 字段 + 可渲染代码 + 一致性核对结果）；**数据图另产 `figures/assets/{图号}.ipynb`**（E4 同步；门禁 4.10 对接） |
+| 输入契约 | `{WORK_ROOT, 章节号, spec 阶段 draft_r1_frozen 路径（只读冻结稿）, final 阶段终稿 draft 路径, (可选) 术语表路径}`；无冻结稿 → 发 `NEED_INPUT`，**不得退而读返修中的 draft.md** |
+| 输出契约 | `章节/{ch##}/figures/{图号}.md`（每图 = 规格卡 7 字段 + 可渲染代码 + 一致性核对结果）；**数据图另产 `figures/assets/{图号}.ipynb`**（E4 同步；门禁 4.10 对接）。B3：spec 阶段落草案、final 阶段覆盖为终版，均为同一 `figures/` 路径（归属不变） |
 | 错误码 | E1 渲染语法失败→换图表类型；E2 数据不足→留「—（正文未给，不补）」并上报；E3 需真实照片→标 `[需实拍图：{规格}]` 上报 |
 | 幂等性 | **是**——同图表位同正文数据应产出等价图 |
 | 超时/预算 | 多图（>5）时每完成 3 图落盘 + `STATUS` |

@@ -1,7 +1,7 @@
 ---
 name: chapter-structure-standard
 discipline: universal
-version: 1.0.0
+version: 1.1.0
 displayName: 章节结构规范（默认档：audience-profiles 默认学段·金教材八要素）
 ---
 
@@ -87,6 +87,25 @@ R4 之后追加 **R5 质量评分轮**（见 `agents/quality-examiner.md`；轮�
 > 判据：examiner R1 应能核到 `sections/` 目录下的节级文件；
 > 大章节若只见整章 draft 无节级文件 → R1 advisory（记录「建议节级推进」）。
 
+### 3.1 结构冻结点❄（B3，2026-11-04）
+
+**定义**：examiner 的 **VERIFY-R1 结构审查 pass** 时刻，即为本章的「结构冻结点❄」。
+此后本章的结构要素（§1 的必备要素 / §C 节序 / 图表位编号）视为冻结；
+VERIFY-R2/R3 只做内容深化与数据核验，**不得再改结构**（确需改结构 ⇒ 回 R1 重审，
+冻结作废并记 trace）。
+
+**为什么需要它**：旧序把 VISUALIZE 全链后置，理由笼统写作「结构未稳定就出图会作废」。
+B3 把该风险细化为可判定的时点：R1 pass 后结构变更概率大幅下降，
+高变的只剩 R2/R3 的数据嵌入 ⇒ 允许绘章图在此刻基于**只读冻结稿**
+`章节/{ch##}/draft_r1_frozen.md` 开 `VISUALIZE-spec`，与 R2/R3 并行。
+
+**R1 判据不变**：本节 §1（四要素 / profile §5.2 / 学段裁剪）仍是 R1 的唯一判据，
+B3 不新增结构项、不降低必备性、不豁免五维评分与 80 分红线。
+主理人在 R1 pass 当轮 `cp draft.md draft_r1_frozen.md`（只读冻结，归属见
+`references/path-ownership.md`）；后续图表位变更率由
+`scripts/parallel_gate.py visual-drift` 机械裁决，`>50%` 自动回退旧串行序。
+口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §搭接并行协议。
+
 ---
 
 ## 4. 鉴别诊断类章节的附加要求
@@ -124,5 +143,7 @@ R4 之后追加 **R5 质量评分轮**（见 `agents/quality-examiner.md`；轮�
 ---
 
 ## 变更记录
+- v1.1.0 [2026-11-04] B3：新增 §3.1「结构冻结点❄」——把 VERIFY-R1 pass 定义为
+  结构稳定时点，支撑 VISUALIZE-spec 与 R2/R3 并行；R1 判据与 80 分红线**不变**。
 - v1.0.0 [2026-10-30] 初版（批次 C1）：补建章节结构 SSOT；八要素 + 五维评分 + 80 分红线
   + 节级颗粒度 + 鉴别诊断附加要求 + 学段裁剪说明

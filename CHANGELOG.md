@@ -3,6 +3,53 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 2026-11-04 诊断批次 B3：搭接并行（升级 A + 升级 C）
+
+> 用户 2026-11-04 批准「放行 B3」，并确认**并行裁决权归主理人**。
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §搭接并行协议；
+> 立项依据 = `tb-writer/docs/smart-textbook-team-诊断与升级设计-2026-11-04.md` §3.2 升级 A/C、Q2。
+
+### 新增执行体 `scripts/parallel_gate.py`（只报决策、不 spawn 成员）
+
+1. `anchor`：知识块共享锚「只增不改」——v1 的 `block_id` 一个不删、字段签名逐字不变，
+   允许新增块；报告落 `baseline_ids` 供**门禁 2 永远按 v1 判覆盖**。
+2. `visual-drift`：R1 结构冻结稿 vs R2/R3 返修稿逐号比对图表位，
+   变更率 **>0.5 严格大于** ⇒ `FALLBACK_SERIAL`；新增图位不计入分子。
+   回退时经 `record_trace.py` 写合规 `STATUS` 行（带 `phase`/`start`），
+   并产出 `learn_signal`（`parallel_fallback` + `metric_evidence`）接上 learn_v2 回路。
+3. 退出码统一：`0` 判定通过 / `1` 判定不通过（决策码，非故障）/ `2` 输入错误 / `3` trace 写失败。
+   **不得恒真放行**：无锚区块、空锚、列错位、同一文件自比对、冻结稿无图位一律 `exit 2`。
+4. 图表位正则直接 import `check_manuscript.RE_FIGURE_SLOT`（唯一 SSOT，不复制第二份）；
+   测试 T_B3_21 断言同源防漂移。
+
+### 流程结构变更（相位枚举不变）
+
+- `SPECIFY-refine` / `VISUALIZE-spec` / `VISUALIZE-final` 是**子阶段标签，不是新相位**：
+  `progress.py PHASE_ORDER` 仍 23 相位，`check_phase_consistency.py` 的
+  `EXPECTED_PHASES` 契约快照**不改** ⇒ 续跑顺序、相位时延桶、门禁基线全部不受影响，B3 可独立回滚。
+- 结构冻结点❄ = `VERIFY-R1 pass`：`chapter-structure.md` v1.1.0 §3.1 定义；
+  R1 判据与 80 分红线不变，只是把「结构稳定性」变成可判定时点。
+- 两份只读冻结快照 `chapter_design_v1.md` / `draft_r1_frozen.md` 由主理人 cp 一次后禁改；
+  `references/path-ownership.md` v1.5.0 新增 4 条路径（23→27），
+  并给出 §1.4 并行前置检查结论：refine↔RETRIEVE、spec↔R2/R3 两组归属不同 ⇒ 允许并行。
+- 文档同步：`textbook-pipeline-workflow/SKILL.md` v1.3.0（新增协议章节 + 2 张 Mermaid）、
+  `agent-harness-protocol/SKILL.md` §6.5.4、`didactic-architect.md` v2.1.0、
+  `visual-instructional-designer.md` v2.1.0、`smart-textbook-team-team-lead.md` v2.2.0、
+  `references/chapter-structure.md` v1.1.0、`references/path-ownership.md` v1.5.0、
+  `README.md`（主理人体积 19.4KB→25.4KB、router 45/45→47/47）。
+
+### 回归（B3 批次独立）
+
+- `tests/test_parallel_gate.py` **25 例全绿**，含 5 组反向例（删块补回翻绿 / 改块改回翻绿 /
+  调高阈值翻绿 / 新增图位不越界 / 正常路径不写 trace），证明断言非恒真。
+- 全量：`pytest 205 passed`｜静态契约 `280/280 = 1.000`｜router `47/47 = 1.000`｜
+  manifest `33/33`｜doc-consistency `6/6`｜相位一致 `23 相位 / 30 md / 375 字面量 / 0 不一致`。
+- 踩坑：新增文档写 `progress.py update --phase …` 漏 `--work-root` 触发 F34a
+  （静态契约一度 279/280）⇒ 三处补成完整可执行命令后恢复 280/280。
+  **纪律：文档里的命令必须能直接跑，判据会逐行查。**
+
+---
+
 ## [Unreleased] — 2026-11-04 系统性诊断批次：P0 观测补齐 + P0 执行体落地 + P2 文档一致性
 
 > 由 2026-11-04 对本包的四维度系统诊断产出。诊断主结论：**协议完备 + 仪表失灵**

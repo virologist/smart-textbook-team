@@ -675,6 +675,31 @@ python3 scripts/merge_sections.py --work-root "$WORK_ROOT" --chapter ch01 --chec
 > 反而把真阳性 `「禽病防治」(×2) vs「禽病防冶」(×1)` 一起淹掉。
 > 权威源存在就**必须用它**，不得绕过。
 
+#### 6.5.4 搭接并行裁决门（`scripts/parallel_gate.py`，B3）
+
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §搭接并行协议。
+> 本门把升级 A/C 的两条风险控制从散文变成机械判据；**只报决策、不 spawn 成员**，
+> 并行裁决权归编排者（主理人）。`PHASE_ORDER` 23 相位**不变**——
+> `SPECIFY-refine` / `VISUALIZE-spec` / `VISUALIZE-final` 是子阶段标签，不是新相位。
+
+| 子命令 | 判据 | 退出码 |
+|---|---|---|
+| `anchor` | 知识块共享锚「只增不改」（v1 ID 全留 + 字段签名不变；允许新增） | 0 ANCHOR_OK / 1 ANCHOR_VIOLATION / 2 输入错误 |
+| `visual-drift` | 冻结稿 vs 返修稿图表位变更率 >0.5（严格大于）⇒ 回退串行 | 0 CONTINUE_PARALLEL / 1 FALLBACK_SERIAL / 2 输入错误 / 3 trace 写失败 |
+
+- **§1.4 路径归属核对的具体结论**：refine↔RETRIEVE、spec↔R2/R3 两组目标路径归属不同
+  ⇒ 允许并行；两份只读冻结快照（归编排者）不构成第二写者，详见
+  `references/path-ownership.md` v1.5.0 变更记录。
+- **不得恒真放行**：无锚区块 / 空锚 / 列错位 / 同一文件自比对 / 冻结稿无图位 ⇒ `exit 2`；
+  回归用例含反向例（`tests/test_parallel_gate.py` 25 例）。
+- **trace 合规**：回退时经 `record_trace.py` 写 `STATUS` 行（带 `phase=VISUALIZE` +
+  显式 `start`，满足 §6.1 的 B2 强制契约）；正常路径不写，不污染 `dispatch_hit_rate`。
+- 回退报告带 `learn_signal`（`signal_type: parallel_fallback` + `metric_evidence`），
+  接上 learn_v2 的「指标 → 学习 → 协议修订 → 评测回归 → 新基线」回路。
+- 编排者 override 脚本决策须记 trace + `review/interventions.md`，否则 learn 侧无法归因。
+- **不改变 §预算降级 P3 策略**：预算不足时 VISUALIZE 仍可整段推迟转 W4 补图；
+  B3 的 spec 前移是「有余量时并行」，不是强制并行。
+
 ---
 
 ## 7. 交接检查表（dispatch 前逐项过）

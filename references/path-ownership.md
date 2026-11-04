@@ -1,7 +1,7 @@
 ---
 name: path-ownership
 description: "路径归属表（SSOT）——每个可写路径的唯一归属者、允许动作与冲突仲裁规则。harness SKILL.md §0「并行安全：路径表唯一归属」与「资源冲突」仲裁条款指向本表。spawn 前/并行派工前必读。"
-version: 1.4.0
+version: 1.5.0
 ---
 
 # 路径归属表（path-ownership）
@@ -34,6 +34,10 @@ version: 1.4.0
 | `章节/{ch##}/拼接清单.json` | smart-textbook-team-team-lead（由 `assemble_sections.py` 生成，E4 登记） | 写 | 只读 |
 | `章节/{ch##}/合并检查清单.json` | smart-textbook-team-team-lead（由 `merge_sections.py` 生成，2026-11-04 P1 登记；记录 C1-C6 合并后必检结论 + 下游相位 `downstream_phase`） | 写 | 只读 |
 | `章节/{ch##}/gaps.md` | didactic-architect | 写/改（缺口清单，批次 C9 新增） | 只读 |
+| `章节/{ch##}/chapter_design_v1.md` | **smart-textbook-team-team-lead**（B3：门禁 1 后 `cp` 一次） | 写一次后**只读冻结**（共享锚基准） | **禁写**（含 architect；改它 = 篡改基线） |
+| `章节/{ch##}/draft_r1_frozen.md` | **smart-textbook-team-team-lead**（B3：VERIFY-R1 pass 后 `cp` 一次） | 写一次后**只读冻结**（结构冻结点❄ 基准） | **禁写**（含 writer；改它 = 篡改基线） |
+| `运行态/knowledge_anchor_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py anchor` 生成，B3） | 写（含 `baseline_ids`，门禁 2 读它） | 只读 |
+| `运行态/visual_drift_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py visual-drift` 生成，B3） | 写（含变更率决策与 `learn_signal`） | 只读 |
 | `章节/{ch##}/draft.md` | subject-writer | 写/改（版本 R1→R2→R3 递增；由 sections/ 拼接） | 只读；**examiner/designer 均不得直接修改**（修正意见走回传清单，由编排者转 writer） |
 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner | 写/改 | 只读 |
 | `章节/{ch##}/review/r3_verification_log.md` | quality-examiner | append | 只读 |
@@ -103,3 +107,15 @@ version: 1.4.0
   - 归属理由：合并由编排者执行（Q3「拆分分别执行完成后再合并」），检查清单是
     合并动作的产物，故与 `拼接清单.json` 同归编排者；成员只读。
   - 覆盖路径数 22 → 23
+- v1.5.0 [2026-11-04 B3 批次：搭接并行]:
+  - 新增 4 条路径：`chapter_design_v1.md` / `draft_r1_frozen.md`（两份**只读冻结快照**）
+    + `运行态/knowledge_anchor_{ch##}.json` / `运行态/visual_drift_{ch##}.json`
+    （`scripts/parallel_gate.py` 的两份决策报告）。
+  - 归属理由：四者都是**主理人裁决动作**的产物，不是成员产出——快照由主理人在
+    门禁 1 / VERIFY-R1 pass 当轮 `cp` 一次后冻结，报告由主理人跑裁决门生成。
+    若归 architect/writer，会出现「并行中被写者覆盖基准」的撕裂（B3 升级 A/C 的核心风险）。
+  - **§1 第 4 条并行前置检查的 B3 落地结论**：`SPECIFY-refine`（写 `chapter_design.md`，归 architect）
+    与 RETRIEVE（写 `知识库/retrieval/*`，归 scout）目标归属不同；`VISUALIZE-spec`（写 `figures/`，
+    归 designer）与 VERIFY-R2/R3 返修（写 `draft.md`，归 writer）目标归属不同 ⇒ 两组均**允许并行**。
+    并行双方读的是只读冻结快照，不构成第二写者。
+  - 覆盖路径数 23 → 27
