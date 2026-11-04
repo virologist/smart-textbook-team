@@ -38,6 +38,58 @@ ENVELOPE_FIELDS = (
 ENVELOPE_STATUS_MAP = {
     'success': 'OK', 'partial': 'PARTIAL', 'failed': 'ERROR', 'blocked': 'BLOCKED',
 }
+
+# ── outcome 归一化（2026-11-04 诊断 P0-1）───────────────────────────────
+# 病史（真实运行样本实证）：主理人按直觉写 `--outcome SUCCESS`，而
+# compute_metrics.py 严格比较 `outcome == 'OK'` → 真实运行的 4 个任务
+# 全部被判为「未成功」，分派命中率算成 0/4 = 0.000，而实际全部成功。
+# 根因：outcome 是自由文本（argparse 无 choices），但下游按枚举硬比较。
+# 修法：写入端做归一化（SUCCESS→OK 等价映射），并对未知值告警。
+# SSOT = scripts/trace_schema.py（写端与读端共同引用，避免双写漂移）。
+from trace_schema import (  # noqa: E402
+    OUTCOME_ALIASES as _ALIASES,
+    OUTCOME_VALUES as _KNOWN_OUTCOMES,
+    normalize_outcome as _normalize,
+)
+
+OUTCOME_ALIASES = _ALIASES
+KNOWN_OUTCOMES = set(_KNOWN_OUTCOMES)
+
+
+def normalize_outcome(raw: str) -> tuple[str, str | None]:
+    """归一 outcome 取值。返回 (归一后值, 告警信息或 None)。
+
+    大小写不敏感；未知值原样保留（不丢信息），但返回告警文本。
+    """
+    if not raw:
+        return '', None
+    norm = _normalize(raw)
+    key = str(raw).strip().upper()
+    if key in OUTCOME_ALIASES:
+        if norm != raw:
+            return norm, f"outcome 归一化: {raw!r} → {norm!r}"
+        return norm, None
+    return raw, (f"未知 outcome 取值 {raw!r}（已知: "
+                 f"{'/'.join(sorted(KNOWN_OUTCOMES))}）——已原样保留，"
+                 f"但下游按枚举比较，可能不被计入")
+
+
+def _is_known_phase(phase: str) -> bool:
+    """校验相位名是否落在 progress.py 的 PHASE_ORDER（含粗粒度别名）。
+
+    相位 SSOT 唯一权威源 = scripts/progress.py 的 PHASE_ORDER；
+    此处动态读取，避免在 record_trace.py 里复述一份（防双写漂移）。
+    读取失败时保守返回 True（不误伤正常写入）。
+    """
+    try:
+        import progress as _progress  # 同目录
+        known = set(_progress.PHASE_ORDER)
+        known |= set(getattr(_progress, 'PHASE_ALIAS', {}) or {})
+        known |= set(getattr(_progress, 'LEGACY_PHASE', {}) or {})
+        known |= set(getattr(_progress, 'LEGACY_PHASE', {}) or {})
+        return phase in known
+    except Exception:
+        return True
 # 介入协议触发阈值（ADR-05 §5.2：同问题打回 ≥2 次；SSOT = pipeline §介入协议）
 REJECT_INTERVENTION_THRESHOLD = 2
 
@@ -57,8 +109,16 @@ def main() -> int:
     ap.add_argument('--to', dest='dst', required=False, help='to 成员/编排 ID')
     ap.add_argument('--type', required=False, choices=['RESULT', 'BLOCK', 'ERROR', 'STATUS', 'NEED_INPUT'])
     ap.add_argument('--msg-id', default='', help='缺省自动生成')
-    ap.add_argument('--outcome', default='', help='OK / ERROR / BLOCKED / TIMEOUT')
+    ap.add_argument('--outcome', default='',
+                    help='OK / ERROR / BLOCKED / TIMEOUT / PARTIAL（写入端自动归一：'
+                         'SUCCESS→OK 等；未知值保留但告警）')
     ap.add_argument('--duration-ms', type=int, default=0)
+    ap.add_argument('--phase', default='',
+                    help='相位名（13 态业务态或 23 相位物理名，如 PRODUCE-R2）——'
+                         '写入顶层字段，使相位级时延可计算（2026-11-04 诊断 C2）')
+    ap.add_argument('--start', default='',
+                    help='任务开始时刻 ISO8601（带时区）——与 ts 配对算单任务时延；'
+                         '缺省时回落到 ts（C2）')
     ap.add_argument('--tokens-in', type=int, default=0)
     ap.add_argument('--tokens-out', type=int, default=0)
     ap.add_argument('--turns', type=int, default=0)
@@ -179,6 +239,26 @@ def main() -> int:
             print(f"[ERROR] --gate-verdict 不是合法 JSON: {e}", file=sys.stderr)
             return 2
 
+    # ── outcome 归一化（2026-11-04 诊断 P0-1）────────────────────────────
+    outcome, outcome_warn = normalize_outcome(args.outcome)
+    if outcome_warn:
+        print(f'[WARN] {outcome_warn}', file=sys.stderr)
+    if outcome:
+        args.outcome = outcome
+
+    # ── 相位名归一（2026-11-04 诊断 C2）─────────────────────────────────
+    # 相位名必须落在 progress.py 的 PHASE_ORDER 里，否则时延分桶会漏。
+    # 这里做宽松校验：未知相位告警但不阻断（允许子轮次后缀/别名）。
+    phase = (args.phase or '').strip()
+    if phase and not _is_known_phase(phase):
+        print(f'[WARN] 未知相位 {phase!r}——时延指标将按原始值分桶，'
+              f'不会进入任何已知相位桶（见 scripts/progress.py PHASE_ORDER）',
+              file=sys.stderr)
+
+    # ── start / ts：毫秒精度 + 显式 start（2026-11-04 诊断 C2）──────────
+    ts_now = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+    start_ts = (args.start or '').strip() or ts_now
+
     rec = {
         'msg_id': msg_id,
         'task_id': args.task_id,
@@ -197,10 +277,13 @@ def main() -> int:
         'routing_confidence': args.routing_conf,
         'confidence': args.confidence,
         'gate_verdict': gate_verdict,
-        'issues': [s.strip() for s in args.issues.split(',') if s.strip()],
+        'issues': [i.strip() for i in args.issues.split(',') if i.strip()],
         'root_cause': args.root_cause or None,
         'notes': args.notes,
-        'ts': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+        'ts': ts_now,
+        # ── C2 新增三字段（相位级时延可计算的前提）────────────────────
+        'phase': phase or None,
+        'start': start_ts,
     }
     if args.estimated:
         rec['estimated'] = True

@@ -98,7 +98,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 3. 升级规则（confidence < 0.7）
+## 3. 升级规则（confidence < 70，即旧 0-1 量纲的 0.7）
 
 > **命名消歧 v2（批次 G-G2，2026-10-31）**：本 skill 的升级原因改用 **ESC- 前缀**
 > （ESC1–ESC4）——原 R1–R4 与审查轮次（examiner R1-R5）、writer 版本（R1-R3）

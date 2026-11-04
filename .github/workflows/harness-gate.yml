@@ -35,6 +35,30 @@ jobs:
       - name: 相位一致性门禁（PHASE_ORDER 唯一权威）
         run: python3 scripts/check_phase_consistency.py --root . --verbose
 
+      # 文档一致性门禁（2026-11-04 P2 批次）：守「引用计数与量纲」这一类漂移。
+      # 病史：check_phase_consistency 只守枚举**值**，守不住枚举**个数**与阈值**量纲**——
+      #   team-lead 写「12 类 task_type」而 router §1 实为 15 类（审计者按旧数字决策）；
+      #   置信度阈值一半写 <0.7 一半写 <70（0-1 与 0-100 两套量纲并存）；
+      #   path-ownership 表把 `{图号}.svg` 同时归 designer 与 team-lead
+      #   （同一文件两个写者 = 并行安全条款「路径表唯一归属」直接失效）；
+      #   `.pdf` 被误判「虚构职责」删掉归属 → 该路径无主，谁写都算越界。
+      # 这些漂移都不让流水线报错，也永远无人报警——现做成机械判据。
+      - name: 文档一致性门禁（计数/量纲/编号/归属）
+        run: python3 scripts/check_doc_consistency.py --root . --verbose
+
+      # P1 批次门禁（2026-11-04）：并行调度 / 成员契约 / 拆分-合并链路 / 并发度指标
+      # 病史：P1 落地三件执行体（scheduler.py / contract_check.py / merge_sections.py）
+      # 与一份契约 SSOT（references/member-contracts.json），此前**零测试覆盖**——
+      # 与 P0 批次同样的病灶：口径错了也没人拦，等下一次真实运行才发现。
+      # 负例注入的是**修复前真实存在的病灶形态**（如依赖章部分完成被误判为已满足、
+      # 他人合法产物被误判越界、术语滑窗噪声），不是编造的假想问题。
+      - name: P1 批次门禁（调度/契约/合并链 正负双向）
+        run: |
+          set -e
+          python3 -m pip install --quiet pytest
+          python3 -m pytest tests/test_scheduler.py -v
+          echo "[OK] P1 批次门禁通过（29 用例：scheduler 8 + contract 8 + merge 9 + 并发度 4）"
+
       # 学科中立性门禁（ADR-02 判据层学科化，2026-11-01 批次 B3）：
       # 五项判据执行体（术语表/八要素/审查基准/数值触发词/跨章正则）已下沉 profile，
       # 通用层只许「引用 profile」。本门禁禁止学科常量词回潮进通用层

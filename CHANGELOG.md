@@ -3,6 +3,215 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 2026-11-04 系统性诊断批次：P0 观测补齐 + P0 执行体落地 + P2 文档一致性
+
+> 由 2026-11-04 对本包的四维度系统诊断产出。诊断主结论：**协议完备 + 仪表失灵**
+> ——设计层（13 态流水线 / 契约 / 门禁）远超实现层（观测指标失真 / 规范无执行体）。
+> 本批次按「先补观测 → 再落执行体 → 最后修文档」三步走，每步都有正负双向验证。
+
+### P0-1 观测补齐：trace 口径撕裂修复（真实样本驱动）
+
+- **最严重缺陷（真实运行样本暴露）**：写端 `record_trace.py` 实际写 `--outcome SUCCESS`，
+  读端 `compute_metrics.py` 硬比较 `== 'OK'` → 真实 4 个**全部成功**的任务被算成
+  **分派命中率 0.000**。修复后实测 **4/4 = 1.000**。
+- **新建 `scripts/trace_schema.py`（字段与取值 SSOT）**：`TRACE_FIELDS`（25 字段）+
+  `OUTCOME_VALUES` + `OUTCOME_ALIASES`（SUCCESS/PASS/DONE → OK 等）+ `normalize_outcome()` +
+  `is_success()`。写端与读端**共同 import** → 字段名/取值枚举不再双写。
+- **双向防御**：写端 `normalize_outcome()` 归一 + 未知值告警保留；读端 `is_success()`
+  归一后比较 → 历史脏数据也能被正确计入（不只修新数据）。
+- **相位级时延从「数学上不可计算」变为可计算**：trace 新增 `phase` / `start` 三字段，
+  `ts` 改毫秒精度；`compute_metrics.py` 新增 `latency_by_phase` / `latency_tasks`
+  指标组（优先 `duration_ms`，缺失时用 `start→ts` 兜底；无 phase 的历史行不计入）。
+- **坏行计数**：`load_traces()` 不再静默丢弃坏行，返回坏行数并进指标 → 分母偏小不再不可观测。
+- **blocking 口径统一**：改按**任务**口径（原按 trace 行口径，文档口径是总任务），
+  行口径保留为参考列（`blocking_row_total` / `blocking_row_pct`）。
+- **返工率不可计算时必告警**：保留 `review-` 判据，但数据不足时输出
+  「⚠ 不可计算（不是「无返工」，是数据不足）」+ 缺 `task_type` 标注的行数。
+- **新建 `tests/test_core_scripts.py`**（38 项）固化上述全部口径，任何回归 CI 立刻红。
+
+### P0-2 执行体落地：把 harness 文档条款下沉为可执行脚本
+
+> 此前 harness §1/§2/§3/§4 的关键条款**只有散文，没有可执行体**——「E2 超时」
+> 「连续 E3 熔断」「信封必填校验」「预算削减优先级」全靠人读文档自觉执行。
+> 本批次把四条款各落一个脚本 + 退出码判据。
+
+- **新建 `scripts/watchdog.py`**（E2 超时执行体）：三独立通道——心跳文件 / 产物 mtime（零侵入兜底）/
+  进程存活。退出码 0 ALIVE / 1 DEAD / 2 UNKNOWN / 3 参数错误。
+  **三通道全盲时返回 UNKNOWN 而非误判 DEAD**（UNKNOWN 优先于误杀原则）；
+  **不自动 kill**（破坏性操作须显式调用）。
+- **新建 `scripts/validate_envelope.py`**（M3/M4 执行体）：6 必填缺失 → **exit 2 拒收**；
+  8 扩展缺失仅 WARN；取值域校验（`type` / `status` / `confidence ∈ [0,100]`）非法判 ERROR。
+- **新建 `scripts/e3_window.py`**（M5 熔断执行体）：窗口 3 / E3 阈值 2，
+  不同 `correlation_id` 章节隔离计数。退出码 0 CLOSED / 1 OPEN / 3 参数错误。
+- **新建 `scripts/budget_guard.py`**（H4 预算执行体）：phase 软上限 + 章节硬上限 150K；
+  达 80% 触发降级；P0-P4 削减优先级（**RETRIEVE 明确标注禁止削减**）；
+  无 phase 归属的 token 计入 `unknown_phase_tokens` 并告警，不静默吞掉。
+- **新建 `tests/test_exec_agents.py`**（32 项）：四个执行体的正负双向回归。
+- **harness SKILL.md 同步 7 处**：§1.1 信封校验执行体 / §2 相位级 token 守护 /
+  §3.0 E2 超时执行体 / §4 窗口计数执行体 / §6 trace 示例补三字段 + 字段 SSOT /
+  §6.1 写入协议 / §6.2 指标表补「相位级时延」「坏行计数」+ 新增「口径裁决记录」表。
+
+### P2 文档一致性：6 处漂移修复 + 新建防漂移门禁
+
+> 这一类漂移**不让流水线报错，也永远无人报警**——CI 里没有任何一条断言守着它们。
+
+- **`.svg` 双归属冲突**（`references/path-ownership.md`）：修复前 `{图号}.mmd/.svg` 归 designer
+  而 `{图号}.png/.svg` 归 team-lead → **同一个 `{图号}.svg` 两个写者**，
+  并行安全条款「路径表唯一归属」直接失效。
+  依据 `build_manuscript.py` 真实写入行为裁定：`write_source_assets()` 把 md 的 ```svg
+  代码块落盘为 `{图号}.svg`（`ext = "mmd" if kind == "mermaid" else "svg"`），写者是**编排者**；
+  且 `rasterize()` 对 `kind == "svg"` 直接 `a["png"] = a["src"]`（矢量直嵌 docx，不经 mmdc）
+  → `.svg` 不是栅格化产物。故拆为 `.mmd` 归 designer / `.svg` 归 team-lead。
+- **恢复 `.pdf` 归属**：修复前以「PDF 产出属虚构职责（B-12）」删掉 `.pdf` 归属，
+  但 `skills/scientific-figure` §①cell4 明确要求导出 `{图号}.pdf`，CI「数据图执行级门禁」
+  也断言 `fig.savefig('1-1.pdf')` 真实产出 → `.pdf` **确有实现**，删除归属导致该路径无主
+  （谁写都算越界）。现归 designer（与 `.ipynb` 同源，由 notebook 导出）。
+- **`.png` 显式标注为双写者**并新增 §1.5 仲裁规则：数据图归 notebook 产物
+  （`rasterize()` 轨道B 先于 mmdc，不二次栅格化）；概念图归 mmdc 栅格化产物；
+  两侧不得同时写同一 `{图号}.png`。
+- **task_type 计数漂移**：`team-lead.md` 写「12 类」而 `task-router` §1 实为 **15 类** → 改 15。
+- **置信度量纲撕裂**：`team-lead.md` 写「<0.7」而量纲已是 **0-100** → 改「<70」；
+  同源残留 `task-router/SKILL.md` §3 标题、`harness/SKILL.md` §6 checklist 一并对齐。
+- **编号与格式**：`subject-writer.md` 两个「6.」→「6./7.」；`quality-examiner.md` `.- R1` → `- R1`。
+- **两份 `plugin.json` description** 写「13-type routing」→ 改 15-type；
+  **README** 写「13 类 task_type / R1-R4 升级规则 / 40 用例」→ 改「15 类 / ESC1-ESC4 / 45 用例」
+  （实测 `test_router_eval.py` → 45/45 = 1.000）。
+- **新建 `scripts/check_doc_consistency.py`**（6 条判据）：D1 计数一致（从 router §1 **实解析**，
+  不硬编码）/ D2 量纲一致 / D3 编号连续 / D4 列表标记 / D5 归属唯一 / D6 无无主路径。
+  **正负双向已验证**：真实包 6/6 绿；注入 6 个**修复前的真实病灶形态**后逐条拦下。
+- **新建 `tests/test_doc_consistency.py`**（11 项）固化门禁本身——
+  防「判据写坏了 → 永远绿灯」这种比没有门禁更糟的失效。
+- **接入 CI**（`.github/workflows/harness-gate.yml`）：新增「文档一致性门禁」步。
+
+### 本批次验证结果
+
+| 门禁 | 结果 |
+|---|---|
+| `pytest tests/` | **81 passed**（原 70 + 新增 11） |
+| `check_phase_consistency.py` | PASS 23 相位 / 30 个 .md / 284 处字面量 / 0 不一致 |
+| `check_doc_consistency.py` | 6/6 通过（负向 6/6 拦下） |
+| `check_domain_neutral.py` | FAIL 0 / WARN 0 |
+| `test_smart_textbook_team.py` | score **1.000**（280 项 / 0 失败） |
+| `test_manifest_sync.py` | 31 项 / 0 失败 |
+| `test_router_eval.py` | 45/45 = 1.000 |
+| 真实样本 `compute_metrics.py` | 分派命中率 **4/4 = 1.000**（修复前 0.000） |
+
+## [Unreleased] — 2026-11-04 系统性诊断批次：P1 执行体落地（并行调度 / 成员契约 / 拆分-合并 / 并发度观测）
+
+> P0 批次解决「仪表失灵」，P1 批次解决「**规范无执行体**」。
+> 诊断中确认的三处空转条款：**并行度怎么定**（Q2 动态授权）、
+> **成员只写了一半怎么判**（M2 部分落盘）、**单章超上下文怎么拆怎么合**（Q3）。
+> 本批次按「一条款一执行体 + 退出码即判定」落地，与 P0 同构。
+
+### P1-1 并行调度执行体（`scripts/scheduler.py`，Q2）
+
+- **新建 `scripts/scheduler.py`**：读 `运行态/book-spec.md` + `章节/_book/chapter-map.md` +
+  `运行态/progress.md`，输出本批可并行章节与并发上限。
+- **并发度动态决定，不写死（Q2 授权落地）**：优先级
+  `--max-concurrency` > `STB_MAX_CONCURRENCY` > `STB_RATE_LIMIT` >
+  **都没有 → 退化为 1（保守串行）+ 明确告警**。最终并发数另受
+  可并行章节数与协议分支硬上限 `BRANCH_CAP` 约束。
+  **写死并发数等于把动态策略固化成静态假设**，故禁止。
+- **依赖判定看「最远相位」而非「有无该章」**：依赖章只走到 `PRODUCE` 时下游**不得**释放
+  （负例固化：`test_scheduler_partial_dependency_not_released`）。
+- **退出码与文档对齐**：修正 `book-spec` 缺失原返回 1、文档规定 2 的漂移 → 改为 2。
+
+### P1-2 成员契约执行体 + 三级写者证据分级（`scripts/contract_check.py`）
+
+- **新建 `scripts/contract_check.py`** + **契约 SSOT `references/member-contracts.json`**
+  （6 成员 `must_produce` / `must_not_write`）。
+- **越界检测三级证据分级**（M2 病灶：此前只防「越界写」，不管「该写的没写」→ 缺项被判合格）：
+  - **L1 静态**：契约 `must_not_write` × `references/path-ownership.md`。
+    自有 `must_produce` 落在禁写族内 = **硬矛盾**（`CONTRACT_CONFLICT`，阻断）；
+    族内只拥有部分路径（如 team-lead 拥有 `review/interventions.md` 但整族禁写）= **软重叠**（仅提示，非矛盾）。
+  - **L2 自报**：trace.jsonl 里该成员自报的**路径型** artifacts。
+  - **L3 内嵌**：产物文件头部自述写者（如 `> 撰写：subject-writer`）。
+  - 三级均无证据 → 只记 `suspected`（**提示，不阻断**）——**UNKNOWN 优先于误杀**。
+- **三个实现要点（真实运行样本踩坑，非推断）**：
+  - **实例 ID 归一**：trace 的 `from` 是实例 ID（`subject-writer-1`/`-2`/`didactic-architect-3`），
+    必须剥离尾部 `-N` 才可比对规范角色（首版按规范角色比对 → 全员漏检）。
+  - **路径型 artifact 筛选**：artifacts 混有中文描述文本（「情境策略」「DESIGN-SPEC」，
+    15 条中 7 条为空数组），必须按扩展名/斜杠过滤，否则路径匹配假阳性。
+  - **绝对/相对路径归一**：真实 trace 同时存在绝对路径与 `.textbook-review/...` 相对路径；
+    用 `re.sub(r'^\./', '', a)` 而非 `lstrip('./')`（后者会砍掉 `.textbook-review` 的点）。
+- **越界优先于产物齐备**：判定顺序「越界 → 齐备」；越界产物从 `present` 移除并计入 `missing`
+  ——越界产出视同未产出（契约三原则②）。
+- **退出码**：0 PASS / 1 PARTIAL / 2 MISSING / 3 OUT_OF_SCOPE_WRITE / 4 输入缺失或 CONTRACT_CONFLICT。
+
+### P1-3 拆分-合并链路（`scripts/merge_sections.py`，Q3）
+
+- **新建 `scripts/merge_sections.py`**：兑现 Q3 授权原文
+  「单章 token 不受限；如果超过单次 AI 的上下文限度，则拆分分别执行完成后再合并
+  检查和校队/润色修改，确保上下文连贯和衔接」——拆为三动作，**③ 是硬性的**。
+- **与既有 `assemble_sections.py` 分工**：前者 = 节级自查 + 拼接 + 拼接清单（**节内视角**）；
+  本脚本 = 合并后衔接检查 + 整章必检清单（**章间视角**）。
+  节与节之间的衔接问题（术语漂移 / 图位冲突 / 数据口径打架 / 拼接感）**只有整章视角才看得出来**。
+- **合并后必检清单 C1-C6**（落盘 `章节/{ch##}/合并检查清单.json`，含 `downstream_phase=VERIFY-R3`）：
+  C1 节序连续性 / C2 节号唯一性 / C3 术语一致性 / C4 图表位连续性 /
+  C5 数据标签完整性 / C6 章节过渡（前五项阻断，C6 提示）。
+  清单记录 `downstream_phase` → **不通过不得直接进 ASSEMBLE**，必须先走检查/校对/润色。
+- **C3 的两级判据（关键教训）**：
+  **L1 权威源优先**（术语表三级查找，命中即阻断）；**L2 启发式仅在术语表完全缺失时启用**，
+  明确标注「非权威」+ 提示级。
+  早期版本在**权威源存在时另造启发式** → 19 个候选里 19 个是噪声（误报率 95%），
+  反而把真阳性 `「禽病防治」(×2) vs「禽病防冶」(×1)` 一起淹掉。
+  改用权威源后噪声 20 → 1（仅 C6 过渡提示），真阳性保留。
+- **n-gram 滑窗抽取 + 最小独立单元降噪**：贪婪 `[一-龥]{2,6}` 会把「禽病防冶」整段切掉 →
+  必须滑窗 n-gram；中文无词边界，「前后不接汉字」判独立会滤掉真阳性 →
+  改用**最小独立单元**；「配项也须跨节」门槛会把真阳性一起滤掉（漂移错写本就在少数节）→
+  改用**覆盖度门槛**（主项覆盖节数 > 配项覆盖节数）。
+
+### P1-4 并发度观测指标（`compute_metrics.py`）
+
+- **新增 `avg_concurrency`（时间加权平均并发度）**：任务视为区间 `[start, start+duration_ms]`，
+  扫描线求「同时在跑任务数」的时间加权平均。**用时间加权而非峰值**——峰值会高估真实并行水平。
+- **退化区间排除**：真实运行实测 `start == ts` 且 `duration_ms=0`（**未记录任务起始时刻**，
+  是真实运行侧的既有缺陷）→ 此时不构成任何时间区间，**排除而非兜底造 1ms 伪区间**
+  （否则会虚构出 ≈0.0 的并发）。无任何可判定区间时输出
+  `⚠ 不可计算（不是「并发为 0」，是数据不足）`。
+- **不设门槛（Q1/Q2）**：Q1 明确无时长限制、Q2 明确并行度动态决定 →
+  **固定阈值等于把动态策略写死**。本项仅作瓶颈定位用。
+
+### P1 批次测试与 CI
+
+- **新建 `tests/test_scheduler.py`**（**29 用例**：scheduler 8 + contract 8 + merge 9 + 并发度 4）：
+  正负双向验证，负例注入的是**修复前真实存在的病灶形态**（依赖章部分完成被误判为已满足、
+  他人合法产物被误判越界、术语滑窗噪声、图位重复、节号跳号、数据标签缺失），
+  不是编造的假想问题。
+  fixture 用 `tempfile.mkdtemp` 自定义实现——**pytest `tmp_path` 在 OneDrive 沙箱失效**。
+- **接入 CI**（`.github/workflows/harness-gate.yml`）：新增「P1 批次门禁」步。
+
+### P1 批次文档同步
+
+- `references/path-ownership.md` → v1.4.0：登记 `章节/{ch##}/合并检查清单.json`
+  （归编排者，与 `拼接清单.json` 同责）；覆盖路径数 22 → 23。
+- `skills/agent-harness-protocol/SKILL.md` → v1.6.0：新增 **§6.5 P1 三件执行体**
+  （并行调度 / 成员契约 + 三级写者证据分级 / 拆分-合并链路 + C1-C6）、
+  §6.2 指标表增「平均并发度」行及口径说明、§7 交接检查表增 3 条 P1 项。
+- 修复 `scripts/merge_sections.py` 文档字符串中的字符损坏（`拼<?>清单` → `拼接清单`）；
+  全包 U+FFFD 扫描确认无残留。
+- 修正 harness SKILL.md §6.2 标题漂移：「5 项关键指标」→ **「关键指标计算」**
+  （P0 批次补入相位级时延/坏行计数后实际已达 7 项，本批再补并发度 → 8 项；
+  标题写死数字必然随批次漂移，故改为不带数字）。
+
+### P1 批次验证结果
+
+| 项 | 结果 |
+|---|---|
+| `pytest tests/test_scheduler.py` | **29 passed** |
+| `check_doc_consistency.py` | **6/6 通过**（D1-D6） |
+| `check_phase_consistency.py` | PASS 23 相位 / 30 个 .md / 288 处字面量 / 0 不一致 |
+| `contract_check.py` 越界（trace 自报，实例 ID `subject-writer-1`） | EXIT=3 |
+| `contract_check.py` 越界（L3 内嵌声明） | EXIT=3 |
+| `contract_check.py` 他人合法产物存在 | EXIT=0（无误杀） |
+| `contract_check.py` 注入契约矛盾 | EXIT=4（只报硬矛盾，软重叠仅提示） |
+| `merge_sections.py` 三节合规 | EXIT=0（清单落盘，`downstream=VERIFY-R3`） |
+| `merge_sections.py` 图位重复 / 节号跳号 / 缺标签 / 术语表禁用写法 | EXIT=1 |
+| `merge_sections.py` 无 `sections/` | EXIT=2 |
+| `compute_metrics.py` 并行 / 串行 / 退化区间 | avg=2.5 peak=3 / avg=1.0 peak=1 / avg=None + note |
+| CI YAML 解析 | OK（`harness-gate` 单 job，P1 步已插入） |
+
+
 ## [Unreleased] — 批次 B1/B2/B3/B4/B5/B6：状态机归一（ADR-04）+ 反幻觉加固（ADR-03）+ 判据学科化（ADR-02）+ 硬门槛落盘（ADR-05）+ 全书层（ADR-01）+ 横切验收口径（GATE2 §6）
 
 > GATE2 变更单 B1–B6 全部闭合。单章流程行为语义除判据口径加固（更严）外不变；

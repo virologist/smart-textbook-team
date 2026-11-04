@@ -1,0 +1,106 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-11-04",
+  "note": "成员产物契约 SSOT（M2 部分落盘判据 + §3.3.2 数据传递协议的具体化）。编排者 spawn 前注入本契约，收件时用 scripts/contract_check.py 比对 must_produce —— 缺项判 PARTIAL，不静默当合格。",
+  "placeholders": {
+    "{ch}": "章节号，如 ch03",
+    "{图号}": "图号，如 3-1",
+    "{节号}": "节号，如 3.2",
+    "{slug}": "英文 slug"
+  },
+  "members": {
+    "didactic-architect": {
+      "role": "教学设计",
+      "must_produce": [
+        "章节/{ch}/chapter_design.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/sections/{节号}.md",
+        "章节/{ch}/review/**"
+      ],
+      "timeout_budget_s": 900,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT"
+    },
+    "literature-scout": {
+      "role": "文献检索",
+      "must_produce": [
+        "知识库/retrieval/{ch}_{slug}.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/chapter_design.md"
+      ],
+      "timeout_budget_s": 900,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT"
+    },
+    "subject-writer": {
+      "role": "章节撰写",
+      "must_produce": [
+        "章节/{ch}/draft.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/chapter_design.md",
+        "章节/{ch}/review/**",
+        "章节/{ch}/figures/**"
+      ],
+      "timeout_budget_s": 1800,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT",
+      "note": "节级推进模式（>8000 字）下 must_produce 改为 章节/{ch}/sections/{节号}.md —— 由 contract_check.py --mode sections 切换"
+    },
+    "quality-examiner": {
+      "role": "质量审查",
+      "must_produce": [
+        "章节/{ch}/review/round1_report.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/sections/{节号}.md",
+        "章节/{ch}/chapter_design.md"
+      ],
+      "timeout_budget_s": 1200,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT"
+    },
+    "visual-instructional-designer": {
+      "role": "图表设计",
+      "must_produce": [
+        "章节/{ch}/figures/{图号}.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/sections/{节号}.md",
+        "章节/{ch}/review/**"
+      ],
+      "timeout_budget_s": 900,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT"
+    },
+    "smart-textbook-team-team-lead": {
+      "role": "编排",
+      "must_produce": [
+        "运行态/progress.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/sections/{节号}.md",
+        "章节/{ch}/chapter_design.md",
+        "章节/{ch}/review/**",
+        "章节/{ch}/figures/**"
+      ],
+      "timeout_budget_s": 3600,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT",
+      "note": "编排者代写成员产出文件 = 越界（契约三原则②）"
+    }
+  }
+}

@@ -20,7 +20,7 @@ maxTurns: 100
 ## 核心能力
 
 1. **五轮递进审查（两阶段归属见 pipeline §轮次归属 SSOT：R1-R3 属 VERIFY，R4+R5 属 PROOFREAD）**：
-   .- R1 结构审查：章节结构 vs **双基准**——① chapter_design §A/§C（覆盖度/顺序/均衡度）；② **`references/chapter-structure.md` §1 章节结构**（学科要素由 profile §5.2 承载、通用兜底四要素；逐要素核对「标题存在+最小内容要求」，学段裁剪按该文件 §5），P1 违规当场 FAIL。**audience 枚举校验（判据 Q2，#71 批次 2）**：chapter_design frontmatter `audience:` ∈ `references/audience-profiles.md` §0 四档枚举——值不在枚举内 → blocking；未声明按 SSOT §0 默认档审并核 issues 已声明回落
+   - R1 结构审查：章节结构 vs **双基准**——① chapter_design §A/§C（覆盖度/顺序/均衡度）；② **`references/chapter-structure.md` §1 章节结构**（学科要素由 profile §5.2 承载、通用兜底四要素；逐要素核对「标题存在+最小内容要求」，学段裁剪按该文件 §5），P1 违规当场 FAIL。**audience 枚举校验（判据 Q2，#71 批次 2）**：chapter_design frontmatter `audience:` ∈ `references/audience-profiles.md` §0 四档枚举——值不在枚举内 → blocking；未声明按 SSOT §0 默认档审并核 issues 已声明回落
    - R2 内容深度审查：按知识块逐一检查深度是否达 Bloom 目标层级；以写作时声明的角色视角复核（**机械化 4 维度**，消除「以什么角色审」的口语化歧义）
      **R2 角色视角复核 4 维度矩阵**（每角色按其 `examines` 字段逐维过；**SSOT = `references/role-assembly.md` §3**，本表为执行副本——两处不一致以 §3 为准，改基准先改 §3 再同步此处）：
      | 维度 | 看什么 | 判定方法 | 等级阈值 |

@@ -15,10 +15,15 @@
   (2026-10-29 修复:此前 CLI choices 未收录该值 → 该分支是死代码,阻塞登记后无法标解除)
 
 用法:
-  # 写入/更新一个 phase 完成状态
+  # 写入/更新一个 phase 完成状态（单章工作区可省略 --chapter）
   python3 scripts/progress.py --work-root /path/to/work update \\
       --phase SPECIFY --status DONE \\
       --summary "design-bloom 已完成,Bloom 分层 + 块级 DAG 已写入 chapter_design.md"
+
+  # 多章工作区（章节级并行调度）：必须显式指定目标章
+  python3 scripts/progress.py --work-root /path/to/work update \\
+      --chapter ch03 --phase PRODUCE-R1 --status DONE \\
+      --summary "ch03 骨架完成"
 
   # 读取当前状态
   python3 scripts/progress.py --work-root /path/to/work show
@@ -28,8 +33,10 @@
 """
 from __future__ import annotations
 import argparse
+import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -114,6 +121,82 @@ class LegacyPhaseError(ValueError):
             f'已废弃的相位名 {phase} → 正确名是 {correct}'
             f'（R4/R5 属 PROOFREAD 态，不属 VERIFY）。'
             f'既有 progress.md 请先执行 `progress.py --work-root <WORK_ROOT> migrate` 改写旧行')
+
+
+# ── 并发写基础设施（2026-11-04 P1-0）────────────────────────────────────
+# 病史：章节级并行调度要求「多章同时写 progress.md」。此前 progress.py
+# 的读-改-写既无锁、也非原子，多个章节并行 update 时会互相覆盖
+# （实测 ch01/ch02 的 PRODUCE-R1 行被 ch03 覆盖，ch02/ch03 段丢行）。
+# 现补：① 跨进程文件锁（fcntl.flock，退化时用原子建锁文件）② 原子替换写
+# ③ 章段清单提取。
+#
+# 与 record_trace.py 的 flock 同源（harness §「flock 原子 append」条款）。
+
+def _file_lock(path: Path):
+    """跨进程排他锁（上下文管理器）。fcntl 不可用时退化为 O_EXCL 锁文件。"""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _cm():
+        lock_path = path.with_name(path.name + '.lock')
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = None
+        try:
+            import fcntl  # type: ignore
+            fh = open(lock_path, 'w')
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            yield
+        except ImportError:
+            # 无 fcntl（Windows）：用 O_EXCL 锁文件做互斥 + 陈旧锁回收
+            deadline = time.time() + 10.0
+            while True:
+                try:
+                    fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.close(fd)
+                    break
+                except FileExistsError:
+                    if time.time() > deadline:
+                        # 陈旧锁（持有者已崩溃）→ 强制回收，避免死锁
+                        try:
+                            lock_path.unlink()
+                        except OSError:
+                            pass
+                        continue
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                try:
+                    lock_path.unlink()
+                except OSError:
+                    pass
+        finally:
+            if fh is not None:
+                try:
+                    import fcntl  # type: ignore
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    pass
+                fh.close()
+
+    return _cm()
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """原子替换写（同目录临时文件 + os.replace）。避免写到一半被读到半行。"""
+    tmp = path.with_name(path.name + f'.tmp{os.getpid()}')
+    tmp.write_text(text, encoding='utf-8')
+    os.replace(str(tmp), str(path))
+
+
+def _all_chapter_spans(text: str) -> list[str]:
+    """列出 progress.md 中全部「# Progress · {ch}」章段（不含「全书」段）。"""
+    out = []
+    for m in re.finditer(r'^# Progress · (\S+)\s*$', text, re.M):
+        name = m.group(1)
+        if name != '全书':
+            out.append(name)
+    return out
 
 
 def progress_file(work_root: Path) -> Path:
@@ -286,7 +369,57 @@ def _upsert_book_phase(text: str, phase: str, status: str, summary: str, ts: str
     return head + body
 
 
-def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path:
+def _chapter_section_span(text: str, chapter: str) -> tuple[int, int]:
+    """定位「# Progress · {chapter}」段的字符区间 [start, end)。
+
+    2026-11-04 P1-0（实测病灶）：此前 update_phase 的章域正则**全局匹配**，
+    三章并行写同一 phase 时后写者把自己的行写进了**第一章**的段里，
+    并把前两章的行覆盖掉（实测：ch01/ch02 的 PRODUCE-R1 记录被 ch03 覆盖，
+    ch02/ch03 段根本没有该行）。并行调度的前提就是「按章定位」，
+    故此处改为按段边界切片。
+
+    返回 (start, end)：end 为下一段「# Progress · 」标题的起始位置（末段取 len(text)）。
+    找不到该章段 → 抛 ValueError（调用方转 exit 2）。
+    """
+    pat = re.compile(rf'^# Progress · {re.escape(chapter)}\s*$', re.M)
+    m = pat.search(text)
+    if not m:
+        raise ValueError(
+            f'progress.md 无「# Progress · {chapter}」段——请先 '
+            f'`progress.py --work-root <WORK_ROOT> init --chapter {chapter} ...`'
+            f'（多章工作区需逐章 init；init 幂等，可重复执行）')
+    nxt = re.search(r'^# Progress · ', text[m.end():], re.M)
+    end = m.end() + nxt.start() if nxt else len(text)
+    return m.start(), end
+
+
+def _upsert_chapter_phase(text: str, chapter: str, phase: str,
+                          status: str, summary: str, ts: str) -> str:
+    """在「# Progress · {chapter}」段内 upsert 该 phase 行（段内定位，不越段）。"""
+    start, end = _chapter_section_span(text, chapter)
+    seg = text[start:end]
+    pattern = re.compile(
+        rf'^\| {re.escape(phase)} \| .*? \|.*? \|.*? \|$',
+        re.MULTILINE,
+    )
+    new_row = f'| {phase} | {status} | {summary} | {ts} |'
+    if pattern.search(seg):
+        seg = pattern.sub(new_row, seg)
+    else:
+        # 插入到本段「阶段进度」表的最后一行之后
+        # （不能沿用全局的「## 阻塞清单」锚点——那会插到别的章段里）
+        rows = list(re.finditer(r'^\| [A-Z][A-Z0-9-]* \| .*? \|.*? \|.*? \|$',
+                                seg, re.MULTILINE))
+        if rows:
+            pos = rows[-1].end()
+            seg = seg[:pos] + '\n' + new_row + seg[pos:]
+        else:
+            seg = seg.rstrip('\n') + f'\n{new_row}\n'
+    return text[:start] + seg + text[end:]
+
+
+def update_phase(work_root: Path, phase: str, status: str, summary: str,
+                 chapter: str = '') -> Path:
     # ADR-04：旧名先拦（不静默映射），再解析粗粒度别名
     if phase in LEGACY_PHASE:
         raise LegacyPhaseError(phase, LEGACY_PHASE[phase])
@@ -299,31 +432,37 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path
     if not p.exists():
         raise FileNotFoundError(f'progress.md 不存在: {p}; 请先 init')
 
-    text = p.read_text(encoding='utf-8')
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
 
     if phase.startswith('BOOK_'):
         # 全书域：写到「Progress · 全书」段
-        new_text = _upsert_book_phase(text, phase, status, summary, ts)
-        if new_text is None:
-            raise FileNotFoundError(f'progress.md 无「Progress · 全书」段: {p}; 请先 book init')
-        text = new_text
+        with _file_lock(p):
+            text = p.read_text(encoding='utf-8')
+            new_text = _upsert_book_phase(text, phase, status, summary, ts)
+            if new_text is None:
+                raise FileNotFoundError(f'progress.md 无「Progress · 全书」段: {p}; 请先 book init')
+            _atomic_write(p, new_text)
     else:
-        # 章域：替换或追加该 phase 行（原有逻辑）
-        pattern = re.compile(
-            rf'^\| {re.escape(phase)} \| .*? \|.*? \|.*? \|$',
-            re.MULTILINE,
-        )
-        new_row = f'| {phase} | {status} | {summary} | {ts} |'
-        if pattern.search(text):
-            text = pattern.sub(new_row, text)
-        else:
-            # 找到阶段表最后一行后插入
-            m = re.search(r'(\n## 阻塞清单)', text)
-            if m:
-                text = text[:m.start()] + '\n' + new_row + text[m.start():]
+        # 章域：按章定位段内 upsert（2026-11-04 P1-0；此前全局匹配 → 并行写互相覆盖）
+        with _file_lock(p):
+            text = p.read_text(encoding='utf-8')
+            if chapter:
+                new_text = _upsert_chapter_phase(text, chapter, phase, status, summary, ts)
             else:
-                text += '\n' + new_row + '\n'
+                # 未指定 --chapter：向后兼容单章模式，但**必须唯一命中一个章段**，
+                # 否则会静默写错章（旧实现正是这样造成三章互相覆盖）。
+                spans = _all_chapter_spans(text)
+                if len(spans) == 1:
+                    new_text = _upsert_chapter_phase(text, spans[0], phase, status, summary, ts)
+                elif not spans:
+                    raise ValueError(
+                        'progress.md 无任何「# Progress · {chapter}」段——请先 init')
+                else:
+                    raise ValueError(
+                        f'progress.md 含 {len(spans)} 个章段（{", ".join(spans)}）；'
+                        f'多章工作区必须显式指定 --chapter <章>，否则无法定位写入目标'
+                        f'（此前无参调用会写进第一章段 → 覆盖其他章记录）')
+            _atomic_write(p, new_text)
 
     # 阻塞清单:由调用方用 `block` 子命令 / 手工维护"## 阻塞清单"段,此处不自动增删。
     # BLOCKED_RESOLVED(2026-10-29 可达性修复)= 该 phase 曾阻塞、现已解除:
@@ -331,7 +470,10 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str) -> Path
     if status in ('BLOCKED', 'BLOCKED_RESOLVED'):
         pass
 
-    p.write_text(text, encoding='utf-8')
+    # 注意：写入已在上面的 _atomic_write(p, new_text) 完成——
+    # 旧实现末尾还有一句 p.write_text(text, ...)，它用**未修改的旧 text**
+    # 覆盖了 new_text 的结果（2026-11-04 P1-0 实测：新写的 phase 行凭空消失）。
+    # 故此处**不再重复写文件**，只回报结果。
     print(f'OK  progress[{phase} → {status}]')
     return p
 
@@ -499,6 +641,10 @@ def main() -> int:
     p_up.add_argument('--status', required=True, choices=[
         'DONE', 'IN_PROGRESS', 'BLOCKED', 'BLOCKED_RESOLVED', 'SKIPPED'])
     p_up.add_argument('--summary', required=True)
+    p_up.add_argument('--chapter', default='',
+                      help='目标章（如 ch03）。多章工作区**必须**显式指定——'
+                           '否则无法定位写入章段（此前无参调用会写进第一章段，'
+                           '并行时互相覆盖）。单章工作区可省略。')
 
     p_blk = sub.add_parser('block', help='登记 H15 缺口')
     p_blk.add_argument('--item', required=True)
@@ -549,7 +695,8 @@ def main() -> int:
     elif args.cmd == 'update':
         # 结构化失败出口：旧名/未知名一律 stderr + 退出码 2，不抛裸 traceback
         try:
-            update_phase(wr, args.phase, args.status, args.summary)
+            update_phase(wr, args.phase, args.status, args.summary,
+                         chapter=args.chapter)
         except (FileNotFoundError, ValueError) as e:  # LegacyPhaseError 是 ValueError 子类
             print(f'ERROR  {e}', file=sys.stderr)
             return 2

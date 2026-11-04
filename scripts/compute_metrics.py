@@ -29,16 +29,25 @@ import re
 import statistics
 import sys
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from _profile_loader import read_discipline, load_section7
+# ── 2026-11-04 诊断 P0-1/C2/H1/H2/H3：口径统一到 trace_schema SSOT ──
+from trace_schema import normalize_outcome, is_success, REVIEW_TASK_TYPES
 
 
-def load_traces(work_root: Path) -> list[dict]:
+def load_traces(work_root: Path) -> tuple[list[dict], int]:
+    """读取 trace.jsonl。返回 (有效记录列表, 坏行数)。
+
+    2026-11-04 H3：坏行原先被静默 `continue` 丢弃——指标分母被动变小，
+    且无法区分「任务少」与「日志坏了」。现返回坏行计数供报告标注。
+    """
     trace_file = work_root / '运行态' / 'trace.jsonl'
     if not trace_file.exists():
-        return []
+        return [], 0
     out = []
+    bad = 0
     with open(trace_file, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
@@ -47,33 +56,42 @@ def load_traces(work_root: Path) -> list[dict]:
             try:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
+                bad += 1
                 continue
-    return out
+    return out, bad
 
 
-def compute(traces: list[dict], work_root: Path | None = None) -> dict:
+def compute(traces: list[dict], work_root: Path | None = None,
+            bad_lines: int = 0) -> dict:
+    base = {
+        'total_traces': 0,
+        'total_tasks': 0,
+        'has_estimated_tokens': False,
+        'spawn_total': 0,
+        'spawn_ok': 0,
+        'dispatch_hit_rate': None,
+        'retry_tasks': 0,
+        'retry_rate': None,
+        'review_total': 0,
+        'review_rework': 0,
+        'rework_rate': None,
+        'rework_warn': None,
+        'blocking_total': 0,
+        'blocking_pct': None,
+        'blocking_row_total': 0,
+        'blocking_row_pct': None,
+        'avg_turns': None,
+        'self_reported_turns_median': None,
+        'tokens_per_task': {},
+        'by_task_type': {},
+        'bad_lines': bad_lines,
+        'latency_by_phase': {},
+        'latency_tasks': {},
+        'product_quality': _product_quality(work_root) if work_root else None,
+    }
     if not traces:
         # 无 trace 不代表无产物：产物质量（[6]）仍应计算（C9）
-        return {
-            'total_traces': 0,
-            'total_tasks': 0,
-            'has_estimated_tokens': False,
-            'spawn_total': 0,
-            'spawn_ok': 0,
-            'dispatch_hit_rate': None,
-            'retry_tasks': 0,
-            'retry_rate': None,
-            'review_total': 0,
-            'review_rework': 0,
-            'rework_rate': None,
-            'blocking_total': 0,
-            'blocking_pct': None,
-            'avg_turns': None,
-            'self_reported_turns_median': None,
-            'tokens_per_task': {},
-            'by_task_type': {},
-            'product_quality': _product_quality(work_root) if work_root else None,
-        }
+        return base
 
     # ── P2-6 口径修复(2026-10-15) ──────────────────────────────────
     # 按 task_id 去重取【末态】: E1 重试(ERROR→RESULT OK)不双扣分派命中率;
@@ -91,9 +109,11 @@ def compute(traces: list[dict], work_root: Path | None = None) -> dict:
     dispatched = {tid: rows for tid, rows in by_task.items()
                   if any(r.get('type') in ('RESULT', 'BLOCK', 'ERROR') for r in rows)}
     spawn_total = len(dispatched)
+    # ── P0-1（2026-11-04）：成功判据走 SSOT 归一，不再硬比较 'OK' ──
+    # 病史：真实运行写 outcome=SUCCESS → 硬比较判负 → 分派命中率 0/4。
     spawn_ok = sum(1 for rows in dispatched.values()
                    if _terminal(rows).get('type') == 'RESULT'
-                   and _terminal(rows).get('outcome') == 'OK')
+                   and is_success(_terminal(rows).get('outcome')))
     dispatch_hit_rate = spawn_ok / spawn_total if spawn_total else None
 
     retry_tasks = {tid for tid, rows in by_task.items()
@@ -105,13 +125,38 @@ def compute(traces: list[dict], work_root: Path | None = None) -> dict:
                        if any((r.get('task_type') or '').startswith('review-') for r in rows)}
     rework_task_ids = {tid for tid, rows in by_task.items()
                        if sum(1 for r in rows
-                              if r.get('type') == 'RESULT' and r.get('outcome') == 'OK') >= 2}
+                              if r.get('type') == 'RESULT'
+                              and is_success(r.get('outcome'))) >= 2}
     review_total = len(review_task_ids)
     review_rework = len(review_task_ids & rework_task_ids)
     rework_rate = review_rework / review_total if review_total else None
 
-    blocking_total = sum(1 for t in traces if t.get('blocking_open'))
-    blocking_pct = blocking_total / len(traces) if traces else None
+    # ── H1（2026-11-04）：返工率不可计算时必须告警，禁止静默消失 ──
+    # 病史：task_type 漏标 → review_total=0 → rework_rate=None →
+    # 报告里该行整行消失、进程 exit 0，无任何告警 → 指标长期「没有数据」而不被发现。
+    rework_warn = None
+    if rework_rate is None:
+        # 统计有多少任务缺 task_type 标注（漏标是返工率失效的根因）
+        _unlabeled = sum(1 for rows in by_task.values()
+                         for r in rows
+                         if r.get('type') == 'RESULT' and not (r.get('task_type') or '').strip())
+        rework_warn = (
+            f"返工率不可计算：未识别到任何 review-* 类任务"
+            f"（共 {spawn_total} 个任务，其中 {_unlabeled} 条 RESULT 行缺 task_type 标注）。"
+            f"请在派工时补 --task-type review-*；否则该指标长期缺失且不报错。"
+        )
+
+    # ── H2（2026-11-04）：blocking 占比口径统一为「任务」 ──
+    # 病史：实现用 trace 行数作分母，harness §6.2 文档写「总任务」→ 同数据两个数。
+    # 裁决（用户 Q4 确认按建议）：以文档口径「任务」为准，
+    # 同时保留行口径作为参考列，避免历史基线不可比。
+    blocking_task_ids = {tid for tid, rows in by_task.items()
+                         if any(r.get('blocking_open') for r in rows)}
+    blocking_total = len(blocking_task_ids)
+    blocking_pct = blocking_total / spawn_total if spawn_total else None
+    blocking_row_total = sum(1 for t in traces if t.get('blocking_open'))
+    blocking_row_pct = blocking_row_total / len(traces) if traces else None
+    # 注：blocking_row_total 计的是「行」数（同一任务的 STATUS/RESULT 两行都算）
 
     # 平均轮次（evo-16 口径修复）: 按文档语义 = 同 task_id 的 trace 行数中位数（接力轮次,可审计）;
     # 成员自报 turns 取中位数仅作参考列（自报值不可审计,与 §2 预算对账"防谎报"原则一致）
@@ -136,6 +181,39 @@ def compute(traces: list[dict], work_root: Path | None = None) -> dict:
         by_task_type[tt]['count'] += 1
         by_task_type[tt]['tokens'] += (t.get('tokens_in', 0) + t.get('tokens_out', 0))
 
+    # ── C2（2026-11-04）：相位级时延 —— 依赖 trace 新增的 phase/start 字段 ──
+    # 优先用 duration_ms（成员自报，但可审计）；缺失时用 ts - start 兜底。
+    # 无 phase 字段的历史 trace 不计入（避免把「无数据'误算成 0ms）。
+    latency_by_phase: dict[str, list[int]] = defaultdict(list)
+    latency_tasks: dict[str, int] = {}
+    for t in traces:
+        dur = int(t.get('duration_ms') or 0)
+        if dur <= 0:
+            dur = _delta_ms(t.get('start'), t.get('ts'))
+        if dur <= 0:
+            continue
+        ph = (t.get('phase') or '').strip()
+        if ph:
+            latency_by_phase[ph].append(dur)
+        tid = t.get('task_id') or ''
+        if tid:
+            latency_tasks[tid] = max(latency_tasks.get(tid, 0), dur)
+
+    # ── [7] 平均并发度（P1-4，2026-11-04）────────────────────────────
+    # Q2 授权：「受限于 API 速率还是 token 预算」→ 并行度**动态决定**，
+    # 因此本指标**不设门槛**（设门槛等于把动态策略写死），
+    # 只做观测：算出来看实际并发落在什么区间，用于定位瓶颈。
+    #
+    # 口径：**时间加权平均并发度**
+    #   把每个任务视为区间 [start, start+duration]，
+    #   对所有时间点求「同时在跑的任务数」的时间平均值。
+    #   这是并发度的标准定义（area-under-concurrency-curve / 总时长）。
+    #   若改用「峰值并发」会高估（只看最忙那一瞬）。
+    #
+    # 数据源：trace 的 start/ts/duration_ms（C2 已落地）。
+    # 缺失 start 的记录**不计入**（不猜、不用 ts 硬凑，避免虚构区间）。
+    concurrency = _compute_concurrency(traces)
+
     # ── [6] 整章产物质量（C9，2026-10-30 批次 5）─────────────────────────
     # 过程指标（[1]-[5]）只回答「流程跑得顺不顺」，不回答「产物好不好」。
     # 本指标从工作区产物直接计算三个结构化维度；数据源缺失时整体 N/A（不阻塞）。
@@ -155,10 +233,21 @@ def compute(traces: list[dict], work_root: Path | None = None) -> dict:
         'rework_rate': rework_rate,
         'blocking_total': blocking_total,
         'blocking_pct': blocking_pct,
+        'blocking_row_total': blocking_row_total,
+        'blocking_row_pct': blocking_row_pct,
         'avg_turns': avg_turns,
         'self_reported_turns_median': self_reported_turns,
         'tokens_per_task': dict(tokens_per_task),
         'by_task_type': dict(by_task_type),
+        'bad_lines': bad_lines,
+        'rework_warn': rework_warn,
+        'latency_by_phase': {k: list(v) for k, v in latency_by_phase.items()},
+        'latency_tasks': dict(latency_tasks),
+        'avg_concurrency': concurrency.get('avg_concurrency'),
+        'peak_concurrency': concurrency.get('peak_concurrency'),
+        'concurrency_span_ms': concurrency.get('span_ms'),
+        'concurrency_tasks': concurrency.get('task_count'),
+        'concurrency_note': concurrency.get('note'),
         'product_quality': product,
     }
 
@@ -276,13 +365,18 @@ def render(m: dict) -> str:
         lines.append(f'    {m["review_rework"]}/{m["review_total"]} = {m["rework_rate"]:.3f}')
         lines.append(f'    门槛 ≤ 0.30  {"✓ PASS" if m["rework_rate"] <= 0.30 else "✗ FAIL"}')
     else:
-        lines.append('    暂无 review 数据')
+        lines.append('    ⚠ 不可计算（不是「无返工」，是数据不足）')
+        if m.get('rework_warn'):
+            lines.append(f'      原因: {m["rework_warn"]}')
 
     lines.append('')
-    lines.append('[3] blocking 占比 (blocking_open 非空 / 总 trace)')
+    lines.append('[3] blocking 占比 (blocking_open 非空【任务】/ 总任务)')
     if m['blocking_pct'] is not None:
-        lines.append(f'    {m["blocking_total"]}/{m["total_traces"]} = {m["blocking_pct"]:.3f}')
+        lines.append(f'    {m["blocking_total"]}/{m["spawn_total"]} = {m["blocking_pct"]:.3f}')
         lines.append(f'    门槛 ≤ 0.10  {"✓ PASS" if m["blocking_pct"] <= 0.10 else "✗ FAIL"}')
+        row_pct = m.get('blocking_row_pct')
+        if row_pct is not None:
+            lines.append(f'    (参考) 行口径 = {m.get("blocking_row_total")}/{m["total_traces"]} = {row_pct:.3f}')
     else:
         lines.append('    暂无数据')
 
@@ -308,8 +402,22 @@ def render(m: dict) -> str:
         lines.append('    暂无数据')
 
     lines.append('')
+    lines.append('[6] 相位级时延 (C2: 需 trace 携带 phase/start 字段)')
+    lat = m.get('latency_by_phase') or {}
+    if lat:
+        for ph in sorted(lat, key=lambda k: -max(lat[k])):
+            vals = sorted(lat[ph])
+            p50 = vals[len(vals) // 2]
+            lines.append(f'    {ph:18s} n={len(vals):2d}  P50={p50/1000:.1f}s  max={max(vals)/1000:.1f}s')
+        lt = m.get('latency_tasks') or {}
+        if lt:
+            lines.append(f'    任务级: n={len(lt)}  最慢={max(lt.values())/1000:.1f}s')
+    else:
+        lines.append('    ⚠ 无相位时延数据（trace 缺 phase/start 字段——新写入的记录才有）')
+
+    lines.append('')
     pq = m.get('product_quality')
-    lines.append('[6] 整章产物质量 (C9: 结构完整率 / 数据标签完整率 / 引用核验通过率)')
+    lines.append('[7] 整章产物质量 (C9: 结构完整率 / 数据标签完整率 / 引用核验通过率)')
     if pq:
         sr, lr, cr = pq['structure_rate'], pq['label_rate'], pq['citation_pass_rate']
         th = pq['thresholds']
@@ -327,6 +435,22 @@ def render(m: dict) -> str:
     else:
         lines.append('    N/A（工作区无 章节/ 产物，不阻塞）')
 
+    lines.append('')
+    lines.append('[8] 平均并发度 (P1-4 · 时间加权 · 观测项·不设门槛)')
+    ac = m.get('avg_concurrency')
+    if ac is not None:
+        lines.append(f'    平均并发 = {ac}   峰值并发 = {m.get("peak_concurrency")}   '
+                     f'时间跨度 = {(m.get("concurrency_span_ms") or 0) / 1000:.1f}s   '
+                     f'可判定任务 = {m.get("concurrency_tasks")}')
+        lines.append('    无门槛（Q2：并行度由 API 速率 / token 预算动态决定，'
+                     '固定阈值等于把动态策略写死）——本项仅作瓶颈定位')
+        if m.get('concurrency_note'):
+            lines.append(f'    ({m["concurrency_note"]})')
+    else:
+        lines.append('    ⚠ 不可计算（不是「并发为 0」，是数据不足）')
+        if m.get('concurrency_note'):
+            lines.append(f'      原因: {m["concurrency_note"]}')
+
     lines.append('=' * 60)
     return '\n'.join(lines)
 
@@ -339,8 +463,12 @@ def main() -> int:
                     help='只出报告不因指标 fail 而非零退出（默认：产物质量三维度的 FAIL 会影响退出码）')
     args = ap.parse_args()
 
-    traces = load_traces(Path(args.work_root))
-    m = compute(traces, work_root=Path(args.work_root))
+    traces, bad_lines = load_traces(Path(args.work_root))
+    m = compute(traces, work_root=Path(args.work_root), bad_lines=bad_lines)
+    if bad_lines:
+        # H3：坏行不可静默——必须在报告里显式标注「数据不完整」
+        print(f'[WARN] trace.jsonl 有 {bad_lines} 条坏行已被跳过——'
+              f'指标分母偏小，数据不完整（2026-11-04 H3）', file=sys.stderr)
     print(render(m))
 
     if args.json:
@@ -377,6 +505,127 @@ def main() -> int:
                 bad.append(f'{label}({v:.3f}<{limit:.2f})')
 
     return 1 if bad else 0
+
+
+
+def _compute_concurrency(traces: list[dict]) -> dict:
+    """时间加权平均并发度（P1-4）。
+
+    口径：把每个可判定区间的任务视为 [t0, t1]，
+    全部区间的「同时在跑任务数」对时间求加权平均。
+
+    算法（扫描线）：
+      1. 收集所有区间端点，排序去重
+      2. 对每个相邻端点区间 [e_i, e_{i+1})，数一下有多少任务区间覆盖它
+      3. 加权平均 = Σ(并发数 × 区间长度) / 总时间跨度
+
+    **不设门槛**（Q2）：并行度由 API 速率 / token 预算动态决定，
+    设一个固定阈值等于把动态策略写死。本指标只作观测与瓶颈定位。
+
+    数据不足（无任何可判定区间）→ 返回 None + 说明，**不静默当 0**。
+    """
+    intervals: list[tuple[int, int]] = []
+    missing = 0
+    degenerate = 0
+    for t in traces:
+        start = _parse_ts(t.get('start'))
+        if start is None:
+            missing += 1
+            continue
+        dur = int(t.get('duration_ms') or 0)
+        if dur <= 0:
+            dur = _delta_ms(t.get('start'), t.get('ts'))
+        if dur <= 0:
+            # **退化区间**（2026-11-04 真实样本）：真实运行写 trace 时
+            # start 与 ts 是**同一时刻**（记录于任务结束），且 duration_ms=0
+            # → 该记录不构成任何时间区间，**不可判定**。
+            # 若给它一个「极小窗口」（dur=1），会凭空造出 9 个 1ms 的
+            # 伪区间，把平均并发算成 ≈0.0 —— 那是虚构，不是观测。
+            # 正确处置：排除，并在 note 里说明。
+            degenerate += 1
+            continue
+        intervals.append((start, start + dur))
+
+    if not intervals:
+        parts = []
+        if missing:
+            parts.append(f'{missing} 条缺 start')
+        if degenerate:
+            parts.append(f'{degenerate} 条 start==ts 且 duration_ms=0（退化区间）')
+        return {'avg_concurrency': None, 'peak_concurrency': None,
+                'span_ms': 0, 'task_count': 0,
+                'note': ('不可计算：' + '、'.join(parts) if parts else '无 trace 记录')
+                        + '——不是「并发为 0」，是数据不足'
+                        + ('；真实运行需在任务**开始时**记录 start、在**结束时**'
+                           '记录 duration_ms' if degenerate else '')}
+
+    events: list[tuple[int, int]] = []
+    for s, e in intervals:
+        events.append((s, 1))
+        events.append((e, -1))
+    events.sort()
+
+    # 扫描线：逐端点推进，累计「并发数 × 时长」
+    total_weighted = 0
+    span_start = intervals[0][0]
+    span_end = max(e for _, e in intervals)
+    cur = 0
+    prev = events[0][0]
+    peak = 0
+    for point, delta in events:
+        if point > prev:
+            total_weighted += cur * (point - prev)
+        cur += delta
+        peak = max(peak, cur)
+        prev = point
+
+    span = span_end - span_start
+    avg = (total_weighted / span) if span > 0 else None
+    return {
+        'avg_concurrency': round(avg, 3) if avg is not None else None,
+        'peak_concurrency': peak,
+        'span_ms': span,
+        'task_count': len(intervals),
+        'note': (f'{missing} 条缺 start 已排除' if missing else ''),
+    }
+
+
+def _parse_ts(raw) -> int | None:
+    """ISO8601 → epoch 毫秒。解析失败返回 None（不猜）。"""
+    if not raw:
+        return None
+    s = str(raw).strip().replace('Z', '+00:00')
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+
+
+def _delta_ms(start: str | None, end: str | None) -> int:
+    """计算两个 ISO8601 时刻的毫秒差；无法解析返回 0。
+
+    兼容带/不带时区的 ISO8601（naive 视为 UTC），解析失败一律返回 0
+    （不抛异常——指标计算绝不能因单条脏数据中断）。
+    """
+    if not start or not end:
+        return 0
+    try:
+        from datetime import datetime as _dt
+        f = '%Y-%m-%dT%H:%M:%S'
+        s_txt, e_txt = str(start), str(end)
+        # 截掉小数秒与时区后缀，按秒精度解析
+        def _parse(t: str):
+            t = t.split('+')[0].split('Z')[0]
+            if '.' in t:
+                t = t.split('.')[0]
+            return _dt.strptime(t, f)
+        delta = (_parse(e_txt) - _parse(s_txt)).total_seconds()
+        return int(delta * 1000)
+    except Exception:
+        return 0
 
 
 if __name__ == '__main__':
