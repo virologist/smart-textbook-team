@@ -283,9 +283,14 @@ def main():
     # ── M14：安装态完整性门禁（2026-10-30 批次 A）──────────────────────
     # 背景：此前 M11/M12 只查「复制清单含 references/scripts」，
     # 但**清单里该有的项是否真被复制**无人看守——实测 install.sh 清单缺
-    # avatars/ 与 settings.json → 安装态静态契约从 1.000 掉到 0.988
+    # avatars/ → 安装态静态契约从 1.000 掉到 0.988
     # （A2b/A2d/A5a/F32a 四项 FAIL），而 CI 在纯 clone 态跑，**永远测不到**。
     # 现把「安装清单须覆盖包内所有需分发资源」变成可拦截项。
+    #
+    # v2.5.1：settings.json **移出** must_ship —— 宿主 ExpertPluginService 会把
+    # 「恰有 1 个键且为非空 agent」的 settings.json 当作自己的 agent override 缓存
+    # 并 unlink（激活专家时 + 宿主启动时各一次）→ 包内放它必然被删。
+    # agent 名解析走 plugin.json 的 agentName/agents[] + markdown frontmatter，不读该文件。
     def _install_items(txt: str) -> set:
         # install.sh: for item in a b c \n  d e; do   /  install.ps1: @('a','b')
         items = set()
@@ -301,16 +306,45 @@ def main():
     ps_items = _install_items(ps1_txt)
     # 包内需要随安装分发的资源（凡被 plugin.json 引用 或 是运行期必需）
     must_ship = {"agents", "skills", "scripts", "tests", "vendor", "references",
-                 "avatars", ".codebuddy-plugin", ".claude-plugin", "settings.json"}
+                 "avatars", ".codebuddy-plugin", ".claude-plugin"}
     miss_sh = sorted(must_ship - sh_items)
     miss_ps = sorted(must_ship - ps_items)
-    r.add("M14a", "install.sh 复制清单覆盖全部需分发资源（含 avatars/settings.json）",
+    r.add("M14a", "install.sh 复制清单覆盖全部需分发资源（含 avatars）",
           not miss_sh, f"缺: {miss_sh}")
-    r.add("M14b", "install.ps1 复制清单覆盖全部需分发资源（含 avatars/settings.json）",
+    r.add("M14b", "install.ps1 复制清单覆盖全部需分发资源（含 avatars）",
           not miss_ps, f"缺: {miss_ps}")
     r.add("M14c", "两个安装器复制清单集合一致（防长期分叉）",
           sh_items == ps_items,
           f"仅 sh 有: {sorted(sh_items - ps_items)}；仅 ps1 有: {sorted(ps_items - sh_items)}")
+
+    # ── M15（v2.5.1）：防「单键 agent 型 settings.json」复发 ──────────────
+    # 宿主 ExpertPluginService.readGeneratedAgentOverride() 的判据：
+    #   JSON 恰有 1 个键 且 该键为非空字符串 agent → 判定为宿主私有缓存 → unlink。
+    # 包内一旦存在这种文件，宿主会在激活专家时与启动时各删一次（实测已丢 4 次），
+    # 且 git 永远显示 D → 有被误提交成「删除」的风险。
+    # 判据改为反向断言：包内**不得**存在会命中宿主删除模式的 settings.json。
+    def _hits_host_pattern(p: str) -> str:
+        if not os.path.isfile(p):
+            return ""
+        try:
+            with open(p, encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return "无法解析为 JSON"
+        if not isinstance(data, dict):
+            return "顶层不是对象"
+        if len(data) == 1 and isinstance(data.get("agent"), str) and data["agent"].strip():
+            return f"单键 agent={data['agent']!r} —— 命中宿主 ExpertPluginService 删除模式"
+        return ""
+
+    hit_s = _hits_host_pattern(os.path.join(d, "settings.json"))
+    r.add("M15a", "包内不得存在「单键 agent 型 settings.json」（会被宿主 ExpertPluginService 删除）",
+          not hit_s, hit_s or "未发现命中宿主删除模式的 settings.json")
+    sh_ship = "settings.json" in sh_items
+    ps_ship = "settings.json" in ps_items
+    r.add("M15b", "两个安装器复制清单均不含 settings.json（不得把宿主私有文件带进安装态）",
+          not sh_ship and not ps_ship,
+          f"install.sh 含={sh_ship}；install.ps1 含={ps_ship}")
 
     # D-1 自毁保护：源==目标时不得先删后拷
     r.add("M14d", "install.sh 存在「源=目标不删」保护（防自毁）",

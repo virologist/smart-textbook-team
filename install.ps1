@@ -61,8 +61,10 @@ function Install-WorkBuddy {
     #                    长期落后，安装态连 assemble_spawn_prompt.py / progress.py 都缺失）
     #   - role-assembly.md —— 已迁走，Test-Path 判假会静默跳过，属死条目，移除
     # v2.2.3 同步（2026-10-30 D-2）：+ avatars/（plugin.json 引用的专家卡片图标）
-    #   + settings.json（默认 agent）—— 两者漏复制 = 安装态头像全空 + agent 行为退化
-    $items = @('agents','skills','scripts','tests','vendor','references','avatars','.codebuddy-plugin','.claude-plugin','settings.json','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','.gitignore')
+    # v2.5.1：移除 settings.json —— 宿主 ExpertPluginService 会把「恰有 1 个键且为非空
+    #   agent」的 settings.json 当作自己的 agent override 缓存并 unlink（激活 + 启动各一次）。
+    #   agent 名解析走 plugin.json 的 agentName/agents[] + markdown frontmatter，不读该文件。
+    $items = @('agents','skills','scripts','tests','vendor','references','avatars','.codebuddy-plugin','.claude-plugin','README.md','LICENSE','CHANGELOG.md','CONTRIBUTING.md','.gitignore')
     foreach ($item in $items) {
         $src = Join-Path $REPO_DIR $item
         if (Test-Path $src) {

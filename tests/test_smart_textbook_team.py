@@ -216,14 +216,20 @@ def check_structure(ck, expert_dir):
             ck.check(f"A4c-{aid}-{field}", "A", f"{aid} 含 {field}",
                      bool(re.search(rf"^{field}\s*:", text, re.M)))
 
-    # A5 settings.json 一致
-    try:
-        settings = json.loads(read(os.path.join(expert_dir, "settings.json")))
-    except json.JSONDecodeError:
-        settings = {}
-    ck.check("A5a", "A", "settings.json.agent == agentName",
-             settings.get("agent") == plugin.get("agentName"),
-             f"{settings.get('agent')} vs {plugin.get('agentName')}")
+    # A5 settings.json（v2.5.1 反向断言）
+    # 背景：宿主 ExpertPluginService.readGeneratedAgentOverride() 的判据是
+    #   「JSON 恰有 1 个键 且 该键为非空字符串 agent」→ 判定为宿主自己的
+    #   agent override 缓存 → 在激活专家时（removeGeneratedAgentOverrideFile）
+    #   与宿主启动时（removePersistedGeneratedAgentOverrides）各 unlink 一次。
+    #   包内放这种文件 = 与宿主抢同一个文件，必然被删（实测已丢 4 次），
+    #   且 git 持续显示 D → 有被误提交成「删除」的风险。
+    # agent 名解析走 plugin.json 的 agentName / agents[] + markdown frontmatter，
+    # 宿主**从不读** settings.json → 该文件对本包功能上冗余，移除无功能损失。
+    # ⇒ 断言反向：包内**不得**存在 settings.json（存在即红）。
+    _settings_path = os.path.join(expert_dir, "settings.json")
+    ck.check("A5a", "A", "包内不得存在 settings.json（会被宿主 ExpertPluginService 删除）",
+             not os.path.exists(_settings_path),
+             f"存在宿主会删除的 settings.json: {_settings_path}")
 
     # A6 team 结构字段
     ck.check("A6a", "A", "expertType == team", plugin.get("expertType") == "team")

@@ -77,7 +77,6 @@ must_have = [
     ("function Install-ClaudeCode", "Claude Code 安装函数"),
     ("$REPO_DIR -eq $DEST", "自毁保护"),
     ("avatars", "avatars 清单项"),
-    ("settings.json", "settings.json 清单项"),
     ("marketplace.json", "marketplace 注册"),
 ]
 for needle, label in must_have:
@@ -159,10 +158,17 @@ install_workbuddy() {
     # （路径归属表）均迁移至此，由装配器 resolve_shared_refs() 自动注入成员 spawn 文案。
     # 漏掉本目录 = 安装态下资源清单全是死链（源仓态一切正常，安装态静默失效，最难排查）。
     # 同时移除已迁走的包根 role-assembly.md 条目（[[ -e ]] 判假会静默跳过，属死条目）。
-    # v2.2.3: 补 avatars/ 与 settings.json —— plugin.json 引用 avatars/*.png（专家卡片图标），
-    # settings.json 指定默认 agent；两者漏复制 = 安装态头像全空 + agent 行为退化。
+    # v2.2.3: 补 avatars/ —— plugin.json 引用 avatars/*.png（专家卡片图标），
+    # 漏复制 = 安装态头像全空。
+    # v2.5.1: **移除 settings.json** —— 宿主 ExpertPluginService 会把「恰有 1 个键且为
+    #   非空 agent」的 settings.json 判定为「宿主自己生成的 agent override 缓存」，
+    #   在激活专家时与宿主启动时各 unlink 一次（removeGeneratedAgentOverrideFile /
+    #   removePersistedGeneratedAgentOverrides）。包内放该文件 = 与宿主抢同一个文件，
+    #   必然被删（实测已丢失 4 次）。
+    #   agent 名解析走 plugin.json 的 agentName / agents[] + markdown frontmatter，
+    #   **从不读 settings.json** → 该文件对本包功能上冗余，移除无功能损失。
     for item in agents skills scripts tests vendor references avatars .codebuddy-plugin .claude-plugin \
-                settings.json README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
+                README.md LICENSE CHANGELOG.md CONTRIBUTING.md .gitignore; do
         if [[ -e "$REPO_DIR/$item" ]]; then
             # ── D-1 自毁保护（2026-10-30 修复）─────────────────────────────
             # 旧实现先 `rm -rf $DEST/$item` 再 `cp -R $REPO_DIR/$item`——当源目录
