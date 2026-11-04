@@ -79,8 +79,13 @@ import os
 import sys
 from pathlib import Path
 
-# 排除的目录名（元数据，不是包内容）
-EXCLUDE_DIRS = {'.git', '.in_use', '.pytest_cache', '__pycache__', '.DS_Store'}
+# 排除的目录名（元数据或运行态，不是包内容）
+# ⚠ v3.28.7（2026-11-04 修正）：`.workbuddy/` 与 `.versionctl/` 是**运行态目录**，
+#   在源码侧被 .gitignore 排除（vet-med 包实证：git ls-files 命中 0 项），
+#   却存在于本地工作副本 ⇒ 原先被算成「安装态缺失 294 项」= **假漂移**。
+#   运行态**不应**进安装态（分发包泄漏本机操作痕迹 + 与版本层口径漂移）。
+EXCLUDE_DIRS = {'.git', '.in_use', '.pytest_cache', '__pycache__', '.DS_Store',
+                '.workbuddy', '.versionctl'}
 
 # 排除的文件名（元数据，不是包内容）
 # .downloaded_at —— 宿主写入的「本次下载时间戳」。它**只存在于安装态**，

@@ -156,6 +156,23 @@ class TestCollectFiles:
         assert 'a.py' in files
         assert not any(k.startswith(dirname + '/') for k in files)
 
+    @pytest.mark.parametrize('dirname', ['.workbuddy', '.versionctl'])
+    def test_excludes_runtime_dirs(self, work_root, dirname):
+        """运行态目录不是包内容（防复发守卫 · 2026-11-04 v3.28.7）
+
+        背景：`.workbuddy/`（宿主运行态：记忆体/任务台账）与 `.versionctl/`
+        （版本控制运行态）存在于本机源码工作副本，但被 `.gitignore` 排除
+        （实测 `git ls-files` 命中 0 项）⇒ 它们**永远进不了分发包**。
+        若不排除：vet-med 包恒定报「安装态缺失 294 项」= 纯假漂移。
+        """
+        pkg = work_root / 'pkg'
+        _write(pkg / 'a.py', 'x')
+        _write(pkg / dirname / 'nested' / 'state.json', '{"run":1}')
+        files = isc.collect_files(pkg)
+        assert 'a.py' in files
+        assert not any(k.startswith(dirname + '/') for k in files)
+        assert not any('.workbuddy' in k or '.versionctl' in k for k in files)
+
     def test_excludes_ds_store_file(self, work_root):
         pkg = work_root / 'pkg'
         _write(pkg / '.DS_Store', 'junk')
@@ -463,6 +480,23 @@ class TestCliExitCodes:
         _write(cache_dir / '.in_use' / '94544', '{"pid":123}')
         r = run_cli('--plugins-root', str(work_root))
         assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+
+    def test_runtime_dirs_only_in_source_are_not_drift(self, work_root):
+        """负向核心：源码侧多出运行态目录 ⇒ **不得**报「安装态缺失」。
+
+        实战真坑（vet-med 包）：`.workbuddy/` + `.versionctl/` 只存在于
+        本机源码工作副本（被 .gitignore 排除），安装态没有 ⇒ 首版把
+        294 个运行态文件算成「包内容缺失」，假漂移淹没真漂移。
+        本用例锁死该行为，防止有人「好心」把运行态加回包内容。
+        """
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        _write(src_dir / '.workbuddy' / 'memory' / 'log.md', 'runtime')
+        _write(src_dir / '.versionctl' / 'state.json', '{"v":1}')
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+        assert 'SRC_ONLY' not in r.stdout, r.stdout + r.stderr
 
 
 # ══════════════════════════════════════════════════════════════════════
