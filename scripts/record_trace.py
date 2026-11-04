@@ -25,6 +25,12 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+# ── B2（2026-11-04）：时延字段契约的 SSOT ─────────────────────────────────
+# 只借用 trace_schema 的 REQUIRED_TIMING_FIELDS / validate_timing /
+# TIMING_DEGRADED_FLAG；outcome 归一化仍走本文件既有实现（不重复搬移）。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import trace_schema as tsc  # noqa: E402
+
 # ── ADR-05（批次 B4）：信封全字段解析 ─────────────────────────────────────
 # harness §1 消息信封模板的完整 19 字段（唯一 SSOT）。--from-envelope 此前只
 # 解析 from/to/task_id/type/correlation_id 5 字段，其余字段「trace 与信封两张皮」
@@ -118,7 +124,11 @@ def main() -> int:
                          '写入顶层字段，使相位级时延可计算（2026-11-04 诊断 C2）')
     ap.add_argument('--start', default='',
                     help='任务开始时刻 ISO8601（带时区）——与 ts 配对算单任务时延；'
-                         '缺省时回落到 ts（C2）')
+                         'B2 起为必填（缺省回落 ts 会让 duration=0、真实并发度恒 1），'
+                         '仅 --allow-degraded 时才允许回落')
+    ap.add_argument('--allow-degraded', action='store_true',
+                    help='显式允许「缺 phase/start」的退化记录（写入 timing_degraded=true 标记）。'
+                         '默认严格拒绝；仅用于兼容历史调用方/排障，禁止常态使用')
     ap.add_argument('--tokens-in', type=int, default=0)
     ap.add_argument('--tokens-out', type=int, default=0)
     ap.add_argument('--turns', type=int, default=0)
@@ -255,9 +265,16 @@ def main() -> int:
               f'不会进入任何已知相位桶（见 scripts/progress.py PHASE_ORDER）',
               file=sys.stderr)
 
-    # ── start / ts：毫秒精度 + 显式 start（2026-11-04 诊断 C2）──────────
+    # ── start / ts：毫秒精度 + 显式 start（C2）；B2 起默认强制 ───────────
     ts_now = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
-    start_ts = (args.start or '').strip() or ts_now
+    explicit_start = (args.start or '').strip()
+    start_ts = explicit_start or ts_now
+
+    # 信封若带 phase，可作 CLI --phase 的合法来源（避免 --from-envelope
+    # 调用方在严格模式下被误拒）；CLI 显式值优先。
+    env_phase = str((env_parsed or {}).get('phase') or '').strip()
+    if not phase and env_phase:
+        phase = env_phase
 
     rec = {
         'msg_id': msg_id,
@@ -290,6 +307,27 @@ def main() -> int:
     if env_parsed:
         # 19 字段解析结果全量保留（含未平铺字段），trace 与信封单一事实源
         rec['envelope'] = env_parsed
+
+    # ── B2（2026-11-04）：时延字段强制 ──────────────────────────────────
+    # 默认严格：缺 phase / 未显式给 start ⇒ exit 2，不写任何文件。
+    # 放宽（--allow-degraded）：仍写入，但打 timing_degraded 标记，
+    # 让读端与后续审计能一眼区分「合规新记录」与「显式降级记录」。
+    # ⚠ 不改读端 compute_metrics.py 的「退化区间排除」纪律。
+    timing_problems = tsc.validate_timing(rec)
+    if not explicit_start:
+        timing_problems.append('未显式给 --start（静默回落 ts 会让 duration=0，'
+                               '真实并发度恒 1——诊断 §3.4 效率维度根因）')
+    if timing_problems:
+        if not args.allow_degraded:
+            print('[ERROR] 时延字段不合规，拒绝写入：' + '；'.join(timing_problems),
+                  file=sys.stderr)
+            print('        修法：补 --phase <相位> --start <ISO8601带时区>；'
+                  '确需兼容旧调用方才加 --allow-degraded（会打退化标记）',
+                  file=sys.stderr)
+            return 2
+        rec[tsc.TIMING_DEGRADED_FLAG] = True
+        print('[WARN] 退化记录已写入（timing_degraded=true）：'
+              + '；'.join(timing_problems), file=sys.stderr)
 
     # 路径
     trace_dir = Path(args.work_root) / '运行态'

@@ -55,7 +55,24 @@ def work_root():
 
 
 def _run_trace_cli(work_root: Path, *extra: str) -> subprocess.CompletedProcess:
-    """裸跑 record_trace.py（不经 shell，便于断言退出码）"""
+    """裸跑 record_trace.py（不经 shell，便于断言退出码）。
+
+    B2（2026-11-04）起 phase/start 默认强制。本 helper 给**未显式提供**的
+    用例补一组合规默认值，使既有「验证其它功能」的用例语义不变；
+    专门测试强制契约的用例请用 `_run_trace_cli_raw`（不补默认值）。
+    """
+    cmd = [sys.executable, str(SCRIPTS / 'record_trace.py'),
+           '--work-root', str(work_root)]
+    extras = list(extra)
+    if '--phase' not in extras:
+        cmd += ['--phase', 'PRODUCE-R2']
+    if '--start' not in extras:
+        cmd += ['--start', '2026-11-04T07:00:00.000+00:00']
+    return subprocess.run(cmd + extras, capture_output=True, text=True)
+
+
+def _run_trace_cli_raw(work_root: Path, *extra: str) -> subprocess.CompletedProcess:
+    """不补默认 timing 字段——专供 B2 强制契约测试使用。"""
     cmd = [sys.executable, str(SCRIPTS / 'record_trace.py'),
            '--work-root', str(work_root)]
     return subprocess.run(cmd + list(extra), capture_output=True, text=True)
@@ -166,6 +183,70 @@ class TestTraceSchema:
         """SSOT 必须包含 C2 三字段"""
         for f in ('phase', 'start', 'ts'):
             assert f in trace_schema.TRACE_FIELDS
+
+
+class TestTimingFieldsEnforcement:
+    """B2（2026-11-04）：phase/start 默认强制，修「真实并发度不可算」。
+
+    病因：start 缺省静默回落 ts ⇒ duration=0 ⇒ avg/peak_concurrency 恒 1，
+    指标形同虚设。契约：默认拒绝；--allow-degraded 才放行且必须打标记。
+    """
+
+    _BASE = ('--task-id', 'ch01-T1', '--from', 'a', '--to', 'b',
+             '--type', 'RESULT', '--outcome', 'OK')
+
+    def test_T_B2_01_missing_both_is_rejected(self, work_root):
+        r = _run_trace_cli_raw(work_root, *self._BASE)
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert '拒绝写入' in r.stderr
+        assert _read_trace(work_root) == [], '被拒时不得写文件'
+
+    def test_T_B2_02_missing_start_is_rejected_even_with_phase(self, work_root):
+        r = _run_trace_cli_raw(work_root, *self._BASE, '--phase', 'PRODUCE-R2')
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert '--start' in r.stderr
+
+    def test_T_B2_03_missing_phase_is_rejected_even_with_start(self, work_root):
+        r = _run_trace_cli_raw(work_root, *self._BASE,
+                               '--start', '2026-11-04T07:00:00.000+00:00')
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert 'phase' in r.stderr
+
+    def test_T_B2_04_complete_fields_pass_without_degraded_flag(self, work_root):
+        r = _run_trace_cli_raw(work_root, *self._BASE, '--phase', 'PRODUCE-R2',
+                               '--start', '2026-11-04T07:00:00.000+00:00')
+        assert r.returncode == 0, r.stdout + r.stderr
+        rec = _read_trace(work_root)[0]
+        assert rec['phase'] == 'PRODUCE-R2'
+        assert rec['start'] == '2026-11-04T07:00:00.000+00:00'
+        assert not rec.get(trace_schema.TIMING_DEGRADED_FLAG)
+
+    def test_T_B2_05_reverse_adding_start_flips_to_green(self, work_root):
+        """反向例：同一调用补 --start 后必须翻绿 ⇒ 拒绝不是恒真断言"""
+        r1 = _run_trace_cli_raw(work_root, *self._BASE, '--phase', 'PRODUCE-R2')
+        assert r1.returncode == 2
+        r2 = _run_trace_cli_raw(work_root, *self._BASE, '--phase', 'PRODUCE-R2',
+                                '--start', '2026-11-04T07:00:00.000+00:00')
+        assert r2.returncode == 0, r2.stdout + r2.stderr
+
+    def test_T_B2_06_allow_degraded_writes_flag(self, work_root):
+        r = _run_trace_cli_raw(work_root, *self._BASE, '--allow-degraded')
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert '退化记录' in r.stderr
+        rec = _read_trace(work_root)[0]
+        assert rec[trace_schema.TIMING_DEGRADED_FLAG] is True
+        assert rec['start'], '放宽模式仍须回落 ts，不能留空'
+
+    def test_T_B2_07_validate_timing_pure_function(self):
+        assert trace_schema.validate_timing({'phase': 'P', 'start': 's', 'ts': 't'}) == []
+        problems = trace_schema.validate_timing({'phase': None, 'start': '', 'ts': 't'})
+        assert any('phase' in p for p in problems)
+        assert any('start' in p for p in problems)
+        assert any('ts' in p for p in trace_schema.validate_timing(
+            {'phase': 'P', 'start': 's', 'ts': ''}))
+
+    def test_T_B2_08_ssot_exposes_required_fields(self):
+        assert trace_schema.REQUIRED_TIMING_FIELDS == ('phase', 'start')
 
 
 # ══════════════════════════════════════════════════════════════════════

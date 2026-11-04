@@ -23,6 +23,36 @@ TRACE_FIELDS = (
     'phase', 'start', 'ts',
 )
 
+# ── 时延字段契约（2026-11-04 B2：start/phase 强制）───────────────────────
+# 根因：avg/peak_concurrency 与 latency_by_phase 都依赖 (start, ts, phase)
+# 三元组；此前 start 缺省时静默回落到 ts ⇒ 所有任务「时长为 0」，真实并发度
+# 恒为 1，指标形同虚设（诊断 §3.4 效率维度）。
+# ⇒ 写端默认强制：缺任一字段即拒绝写入；只有显式 --allow-degraded 才放行，
+#   且必须打 timing_degraded 标记，让读端能区分「真退化」与「合规新记录」。
+# ⚠ 读端 compute_metrics.py 的「退化区间排除」纪律**不变**：历史遗留的
+#   无 start 记录仍按原逻辑排除，本契约只约束新写入的记录。
+REQUIRED_TIMING_FIELDS = ('phase', 'start')
+TIMING_DEGRADED_FLAG = 'timing_degraded'
+
+
+def validate_timing(rec: dict) -> list[str]:
+    """校验新 trace 记录的时延三元组，返回问题列表（空 = 合规）。
+
+    只做「存在性 + 类型」检查，不校验相位名合法性（那是 record_trace 的
+    _is_known_phase 职责，未知相位按既有契约告警但不阻断）。
+    """
+    problems = []
+    for f in REQUIRED_TIMING_FIELDS:
+        v = rec.get(f)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            problems.append(f'缺 {f}')
+    if not problems:
+        v = rec.get('ts')
+        if v is None or (isinstance(v, str) and not v.strip()):
+            problems.append('缺 ts')
+    return problems
+
+
 # ── outcome 枚举（唯一权威）──────────────────────────────────────────────
 # 归一化后的合法值。写入端强制归一，读端按归一后值比较。
 OUTCOME_VALUES = ('OK', 'PARTIAL', 'ERROR', 'BLOCKED', 'TIMEOUT',

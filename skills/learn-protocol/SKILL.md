@@ -1,12 +1,17 @@
 ---
 name: learn-protocol
-description: "LEARN phase protocol for the textbook team: harvest signals from interventions.md / r3_verification_log / round reports, convert to minimal rule drafts, file into the candidate pool (学习/候补/), and merge into evolution rounds only after ≥3 candidates or user ack. Trigger words: 经验沉淀 / LEARN 阶段 / 候补池 / 提取教训 / 本章学到了什么 / learn phase / post-mortem."
-version: 1.0.0
+description: "LEARN phase protocol v2 (learn_v2) for the textbook team: harvest signals from interventions.md / r3_verification_log / round reports AND from mechanical metric-baseline breaches, convert to minimal rule drafts, file into the candidate pool (学习/候补/), and merge into evolution rounds only after the metric review gate + protocol-eval regression. Trigger words: 经验沉淀 / LEARN 阶段 / 候补池 / 提取教训 / 本章学到了什么 / 指标越界 / 基线偏离 / metric breach / learn phase / post-mortem."
+version: 2.0.0
 ---
 
-# learn-protocol — LEARN 阶段协议
+# learn-protocol — LEARN 阶段协议（learn_v2）
 
-> 主理人在 Phase H（DELIVER 后自动触发）按本协议执行。**原则：LEARN 只产候选规则，不改 agent MD——合并需 ≥3 候选或用户 ack。**
+> 主理人在 Phase H（DELIVER 后自动触发）按本协议执行。**原则：LEARN 只产候选规则，不改 agent MD。**
+>
+> **v2 变化（2026-11-04 B2，补诊断 Q3「指标-改进闭环缺失」）**：新增**机械触发**
+> （指标偏离基线 >20% 或破红线 → 自动生成候补）、**指标评审门**、**protocol-eval 回归**
+> 与**基线重置**。原「≥3 候选或用户 ack」保留为**补充触发**，不再是唯一入口。
+> 完整回路：`指标 → 学习 → 协议修订 → 评测回归 → 新基线`。
 
 ## 何时使用
 
@@ -24,6 +29,7 @@ version: 1.0.0
 | `章节/{ch##}/review/r3_verification_log.md` | 核验失败模式（哪类 [实] 最易判错：标识符假/主题错配/数据点不可定位的占比） |
 | `章节/{ch##}/review/round*_report.md` | 被拒绝的边界调用（GOF/隐私/政治敏感拒绝次数）→ 红线命中频度 |
 | `运行态/trace.jsonl` | 各 Phase 实际耗时 vs 延迟预算（超预算 ≥50% 的阶段） |
+| **`运行态/metrics_baseline.jsonl`** + **`运行态/metrics_delta.json`**（v2 新增） | 指标相对 running mean 的偏离与破红线项；这是**机械触发**的唯一权威信号源，不依赖主观复盘 |
 
 ### 2. 规则草案生成
 
@@ -44,15 +50,82 @@ version: 1.0.0
   status: OPEN         # 解决后就地改 RESOLVED + 补 resolution 字段
 ```
 
-## 合并条件与流程
+## learn_v2：机械触发（指标 → 候补）
 
-1. **阈值**：候补池累计 ≥3 条 OPEN 且同 target，或用户明确 ack
-2. **合并 = 一次 evo 轮**：按 priority 排序落地到 target 文件 → 运行包内门禁验证（2026-10-15 更新：`tests/` 已建立，四份门禁必跑——test_router_eval / test_smart_textbook_team / test_vendor_core / test_manifest_sync，全 exit 0 才可 commit + tag）→ 验证通过才 commit + tag evo-N
-3. **关闭**：落地后将对应条目就地标 `RESOLVED` + `resolution: evo-N 已落地（具体条款位置）`
-4. **铁律**：报告文字 ≠ 机制运转——「已记入候补池」必须等于实体 yaml 存在
+> 这一节是 v2 的核心。**不再依赖主理人「想起来要总结」**——指标越界是机械信号。
+
+### 触发条件（满足任一即必须执行）
+
+1. `metrics_baseline.py compare` 返回 **exit 1**（任一指标偏离 running mean >20%，或破红线）
+2. `compute_metrics.py` 自身返回 exit 1（单次门禁 FAIL）
+3. 每章 DELIVER 后固定跑一次 `metrics_baseline.py record`（append-only 追加基线）
+
+### 与基线工具的接口契约（SSOT：`scripts/metrics_baseline.py`）
+
+| 命令 | 用途 | 退出码 |
+|---|---|---|
+| `python3 scripts/metrics_baseline.py record --work-root "$WORK_ROOT" --chapter ch## --protocol-version <ver>` | DELIVER 后追加一行快照 | 0 成功 / 2 输入错 / 3 基线损坏 |
+| `python3 scripts/metrics_baseline.py compare --work-root "$WORK_ROOT" --chapter ch## --json 运行态/metrics_delta.json` | 输出 delta 表 + 越界告警 | **0 无越界 / 1 越界（触发本节的机械流程）/ 2 / 3** |
+| `python3 scripts/metrics_baseline.py list --work-root "$WORK_ROOT"` | 查看分段历史 | 0 / 3 |
+| `python3 scripts/metrics_baseline.py reset --work-root "$WORK_ROOT" --reason "..." --confirm` | 协议合入后开新分段 | 0 / 2 / 3 |
+
+基线文件 `运行态/metrics_baseline.jsonl` **append-only、永不覆写**。`reset` 只追加一行
+`type=reset` 分段标记，旧行全部保留可审计；`compare` 只取最后一个 reset 之后的记录。
+
+### 自动生成的候补条目（必须带指标证据）
+
+compare 返回 1 时，对**每一条告警**生成一条 `signal_type: metric_breach` 候补：
+
+```yaml
+- date: YYYY-MM-DD
+  chapter: ch##
+  signal_type: metric_breach
+  observed_pattern: "{指标名} 基线 {b} → 当前 {c}（delta {±x%}），来源 运行态/metrics_delta.json；关联 trace 摘要 {相位/任务ID}"
+  proposed_rule: "{一句可执行规则，须指向具体相位或成员}"
+  target: {agent ID 或 skill 名}
+  priority: P0 | P1 | P2     # 破红线 = P0；纯偏离 >20% = P1
+  status: OPEN
+  metric_evidence:            # learn_v2 新增：缺此字段的 metric_breach 候补无效
+    metric: {指标名}
+    baseline: {b}
+    current: {c}
+    delta: {±x}
+    red_line: true | false
+    delta_report: 运行态/metrics_delta.json
+```
+
+**铁律**：`metric_evidence` 必须由 `metrics_baseline.py --json` 的机器输出填，
+禁止手写或估算；「参考了指标」这种无文件支撑的表述按编造候补处理。
+
+## 合并条件与流程（v2：两道触发 + 两道门）
+
+**触发（二选一）**
+- **机械触发**（v2 主路径）：出现 1 条及以上 `metric_breach` 候补 → 直接进入指标评审门
+- **补充触发**（v1 保留）：候补池累计 ≥3 条 OPEN 且同 target，或用户明确 ack
+
+**流程**
+1. **阈值 / 触发**：见上
+2. **指标评审门（v2 新增，管家节点裁决）**：逐条核对 `metric_evidence` 与
+   `metrics_delta.json` 是否一致、拟议改动是否真能影响该指标、是否有更简单的解释
+   （样本量不足 / trace 坏行 / 一次性外部抖动）。裁决 **合入** 或 **驳回**；
+   驳回须在候补条目写 `resolution: 驳回理由`，不得直接删除。
+3. **合并 = 一次 evo 轮**：按 priority 排序落地到 target 文件 → 跑包内四份门禁
+   （`test_router_eval` / `test_smart_textbook_team` / `test_vendor_core` / `test_manifest_sync`，
+   全 exit 0 才可 commit + tag evo-N）
+4. **protocol-eval 回归（v2 新增）**：协议改动后必须复跑路由 eval 与相位一致性检查，
+   确认「改动没有让别的指标退化」；回归不通过 = 回滚该条改动，候补保持 OPEN
+5. **基线重置（v2 新增）**：合入且回归通过后，用 `metrics_baseline.py reset --reason "evo-N ..." --confirm`
+   开新分段，**`--reason` 必须含 evo 编号与 protocol_version**，实现「协议版本号联动」。
+   重置前旧基线必须已在 `list` 中可查（审计留痕）
+6. **关闭**：落地后将对应条目就地标 `RESOLVED` + `resolution: evo-N 已落地（具体条款位置）`
+7. **铁律**：报告文字 ≠ 机制运转——「已记入候补池」必须等于实体 yaml 存在
 
 ## 反模式
 
 - 编造候补（无证据文件支撑的 observed_pattern）
 - LEARN 顺手直接改 agent MD（绕过合并门禁）
 - 候补池只进不出（OPEN 条目超过 10 条未清理 = 提议一次合并评审）
+- **`metric_breach` 候补缺 `metric_evidence` 或数值靠手写**（必须用 `--json` 机器输出）
+- **静默重置基线**（直接改/删 `metrics_baseline.jsonl`、或 reset 不带 `--reason`/`--confirm`）——这会抹掉漂移证据，等同虚报完成
+- **协议合入后跳过 protocol-eval 回归**（改了 A 指标却没检查 B 是否退化）
+- **把 compare 的 exit 1 当成「本次任务失败」**：它是学习触发信号，不是交付门禁；交付门禁仍以 `compute_metrics.py` 与四份测试为准

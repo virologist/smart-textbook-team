@@ -456,7 +456,13 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
   --reject-key "ch06|术语不一致"
 ```
 
-> `--phase` 与 `--start` 为 C2 新增：**派工时必须带上**，否则该任务不进入相位级时延分桶。
+> `--phase` 与 `--start` 为 C2 新增、**B2（2026-11-04）起默认强制**：
+> 缺任一字段 ⇒ `record_trace.py` **exit 2 拒绝写入**（收尾三件套视为未完成），
+> 不再静默回落 `ts`。病因：回落会让 `duration=0`，`avg/peak_concurrency` 恒为 1，
+> 真实并发度不可算（诊断 §3.4 效率维度）。
+> 仅历史调用方兼容/排障可用 `--allow-degraded`，此时记录打 `timing_degraded=true`
+> 标记并告警——**禁止常态使用**。信封若带 `phase`，`--from-envelope` 可作为合法来源。
+> ⚠ 读端 `compute_metrics.py` 的「退化区间排除」纪律不变：历史无 `start` 记录仍按原逻辑排除。
 
 **关键 schema 字段**（与 §1 envelope 对齐）：
 - `task_type`（来自 task-router 路由决策）
