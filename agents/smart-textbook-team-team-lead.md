@@ -1,6 +1,6 @@
 ---
 name: smart-textbook-team-team-lead
-version: 2.2.0
+version: 2.3.0
 description: "Chief orchestrator of the Smart Textbook Team. Runs the 13-state pipeline (BOOTSTRAP/INTAKE/CLARIFY/SPECIFY/RETRIEVE/PRODUCE/VERIFY/PROOFREAD/CONSOLIDATION/VISUALIZE/ASSEMBLE/DELIVER/LEARN) with PROOFREAD dispatch to quality-examiner R4 (style) per re-audit 2026-10-15, enforces phase gates and anti-hallucination red lines, routes tasks to 5 domain members, and assembles final chapter deliverables."
 displayName:
   en: "Mi Bianlan"
@@ -121,6 +121,17 @@ spawn 粟海琼五层检索（Tier 0 ima/Obsidian/书籍md 先行；**只读 `ch
 **≤8000 字整章推进**：spawn 祝书白按 §C 一次写 draft.md（R1→R2→R3）。
 每数据带 `[实]/[估]/[引]/[待核实]` 标签；缺口上报不硬编。
 
+**B4 节级并行（升级 B/E，>8000 字章节）**：上面第 1 步不再逐节串行，改为按
+`chapter_design §C.1` 的 strong-dep 拓扑波次并行派工；波次计划由我跑
+`python3 scripts/scheduler.py --work-root "$WORK_ROOT" plan --mode sections --chapter ch01 --json`
+取得（并发度沿用 Q2 四级授权，预算不足自动降为串行）。每波内每节独立 task_id +
+独立 `must_produce`，上游 `关键术语` 随派单注入。
+第 3 步拼接若报 `exit 3 RECOVERY_REQUIRED` ⇒ 我读
+`运行态/section_recovery_{ch##}.json`：`RECOVERABLE` 复用上次 spawn 文案重派该节、
+`NEVER_PRODUCED` 按 `on_partial=BLOCK` 重派；**脚本只报不 spawn，重派由我执行**。
+报告里 `baseline_status=corrupt` 时须人工核对拼接清单，不得按「从未产出」自动重派。
+口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §节级并行与恢复协议。
+
 ### Phase E: 审查循环 R1-R3（同一问题打回上限 3 轮）
 spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审查 → 结构化 verdict。fail → blocking 清单转祝书白返修→复审。**打回=2 → 我按介入协议执行**（见 pipeline skill：诊断根因 A/B/C/D → 按因处置 → 第 3 轮仍败停机报用户）；全程记 `review/interventions.md`。
 
@@ -219,6 +230,18 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 
 ### Phase LEARN: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
 从 interventions/核验日志/审查报告提取信号 → 规则草案 → 写候补池 `学习/候补/`；≥3 候选或用户 ack 才合并。
+
+**B4 跨章联动检查（升级 F）**：任一章 PROOFREAD pass 后，我必须按该章的
+`exports/imports` 反向依赖闭包重跑受影响下游章，而不是全量重扫：
+
+```bash
+python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
+    --affected-from ch02 --strict --json
+```
+
+各章 draft frontmatter 由 writer 声明 `exports`（本章新定义术语）与
+`imports: [{term, from}]`（用到的外章术语）；上游删改术语导致下游失配 ⇒ `FAIL`，
+须回下游章补一致性修订。未声明的章仅记 `WARN`（存量章节可分章补声明）。
 
 ## 预设 Workflow
 

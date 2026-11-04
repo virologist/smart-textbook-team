@@ -1,6 +1,6 @@
 ---
 name: book-orchestration
-description: "Whole-book orchestration spec (ADR-01, dual-layer state machine): book domain (BOOK_* phases) vs chapter domain (18 phases), book-spec.md as the chapter manifest, three-phase assembly (per-chapter pipeline → cross-chapter six checks → book build), plus whole-book gates 5.1-5.5 (chapter list + word budget ≤5%, domain/deps DAG, per-chapter strict, cross-chapter six, merged docx verifiable). Load when the user asks for a multi-chapter textbook ('整本教材'/'多章成书'/'全书'), or whenever book-spec, chapter schedule, merged deliverable, whole-book figure renumbering, or merged references are in question. Trigger words: 全书 / 整本 / 多章 / book init / book-spec / 合稿 / 成书."
+description: "Whole-book orchestration spec (ADR-01, dual-layer state machine): book domain (BOOK_* phases) vs chapter domain (18 phases), book-spec.md as the chapter manifest, three-phase assembly (per-chapter pipeline → cross-chapter seven checks → book build), plus whole-book gates 5.1-5.5 (chapter list + word budget ≤5%, domain/deps DAG, per-chapter strict, cross-chapter seven, merged docx verifiable). Load when the user asks for a multi-chapter textbook ('整本教材'/'多章成书'/'全书'), or whenever book-spec, chapter schedule, merged deliverable, whole-book figure renumbering, or merged references are in question. Trigger words: 全书 / 整本 / 多章 / book init / book-spec / 合稿 / 成书."
 ---
 
 # book-orchestration — 全书编排规格（ADR-01 · B5）
@@ -24,7 +24,7 @@ description: "Whole-book orchestration spec (ADR-01, dual-layer state machine): 
 | BOOK_BOOTSTRAP | `运行态/book-spec.md`（章清单/每章字数/难度梯度/目标学段） | 5.1 章清单完整、字数总和与用户目标偏差 ≤5% |
 | BOOK_SPEC | `章节/_book/chapter-map.md`（章→知识域→成员→依赖序） | 5.2 每章有知识域、依赖序无环 |
 | CHAPTER_SCHEDULE | 逐章调用单章流水线；`progress.py update --chapter` 回写 | 5.3 每章 `check_manuscript --strict` 通过才可进下一章 |
-| BOOK_CONSOLIDATION | `交付/{教材名}_合稿.md`（build_book.py） | 5.4 跨章六项（check_cross_chapter） |
+| BOOK_CONSOLIDATION | `交付/{教材名}_合稿.md`（build_book.py） | 5.4 跨章七项（check_cross_chapter） |
 | BOOK_DELIVER | `交付/{教材名}.docx`（TOC 域/连续页码/参考文献合并/图号全书序） | 5.5 合稿可开、图数一致、字数达标 |
 
 ## 2. 命令链（SSOT）
@@ -75,18 +75,82 @@ python3 scripts/build_book.py --work-root "$WORK_ROOT" [--reference-doc tpl.docx
 | 5.1 | 章清单完整 + 全书字数 | 声明章 == 磁盘章（双向）；各章净字数和 vs `total_word_budget` ≤5% |
 | 5.2 | 知识域 + 依赖序 | 每章 domain 非空；chapter-map 依赖序无环（DFS 三色判环）；BOOK_SPEC 未执行 → N/A |
 | 5.3 | 单章门禁共源 | 每章 `check_manuscript --strict` exit 0（复用门禁 4，不另立判据） |
-| 5.4 | 跨章六项 | 复用 check_cross_chapter（术语/数据矛盾/重复/难度/字数分配/图号连续） |
+| 5.4 | 跨章七项 | 复用 check_cross_chapter（术语/数据矛盾/重复/难度/字数分配/图号连续/**术语依赖图**） |
 | 5.5 | 合稿可交付 | docx 可开（非 BadZipFile）；docx media 数 == 各章唯一图位对之和；各章净字数和 vs 总预算 ≤5% |
 
 > 5.5 字数口径（装机实证）：合稿 md 直数 ≠ 各章净字数和（合稿删各章参考文献节、
 > 追加全书节）。字数守恒锚定在**各章交付 md 净字数和**，合稿只验可开 + 图数。
 
-## 6. 与单章流程的接缝
+## 6. 章内节级并行与全书联动（B4，2026-11-04）
+
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §节级并行与恢复协议。
+> 本节只讲**全书层**怎么用：节级调度在 CHAPTER_SCHEDULE 内部生效，
+> 第 7 项跨章术语依赖图把「改一章 → 重跑下游」从全量扫描降为定向闭包。
+
+### 6.1 章内节级调度（CHAPTER_SCHEDULE 内部）
+
+单章 >8000 字 ⇒ 该章内部走节级拓扑波次（不是章级并行，是章**内**节并行）：
+
+```bash
+python3 scripts/scheduler.py --work-root "$WORK_ROOT" plan \
+    --mode sections --chapter ch01 --json
+```
+
+- 依赖表来自该章 `chapter_design.md` §C.1（由 didactic-architect 产出）；
+  **全书编排者不代写依赖表**。
+- 章节之间仍是串行（每章过 5.3 才进下一章）；**节级并行不改变全书相位与门禁**，
+  `BOOK_*` 5 相位与 `progress.py PHASE_ORDER` 23 相位均不变。
+
+### 6.2 缺节恢复（章内）
+
+拼接时缺节由 `assemble_sections.py` 出恢复报告，**全书层只消费不执行**：
+
+```bash
+python3 scripts/assemble_sections.py --work-root "$WORK_ROOT" --chapter ch01
+# exit 3 = RECOVERY_REQUIRED（已出运行态/section_recovery_ch01.json）
+```
+
+| 分类 | 全书层动作 |
+|---|---|
+| `RECOVERABLE` | 该节曾成功落盘后丢失 → 复用原派单文案重派该节，**不改本章其他节** |
+| `NEVER_PRODUCED` | 从未产出 → 按 `on_partial=BLOCK` 重派该节 |
+
+`baseline_status=corrupt`（拼接清单损坏）⇒ **人工核对**，不得自动判定为「从未产出」，
+否则会误重派已交付内容、造成跨章版本漂移。
+
+### 6.3 跨章术语依赖图与定向重跑（第 7 项）
+
+每章 draft frontmatter 声明本章**定义**（`exports`）与**引用**（`imports` + `from`）：
+
+```yaml
+---
+exports: [T3, T4]
+imports:
+  - term: T1
+    from: ch02
+---
+```
+
+- 任一章 PROOFREAD pass / 术语修订后，**只重跑该章的下游闭包**，不全量重扫：
+
+```bash
+python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
+    --affected-from ch02 --strict --json
+```
+
+- 上游删改术语导致下游 `imports` 失配 ⇒ `FAIL`，须回下游章补一致性修订；
+  未声明 `exports/imports` 的章记 `WARN`（渐进接入，不阻塞全书）。
+- 全书门禁 5.4 仍是**全量七项**跑（`--affected-from` 只用于**修订后的定向复检**，
+  不替代全书终检）——这是两条不同的命令，用途不可混用。
+
+## 7. 与单章流程的接缝
 
 | 单章概念 | 全书层对应 |
 |---|---|
 | `progress.md`（单章段） | 「Progress · 全书」段 + 各章段并存 |
 | 门禁 4（check_manuscript） | 5.3 逐章调用；5.1/5.2/5.4/5.5 为全书增量 |
-| `check_cross_chapter.py` | 5.4 直接复用（B5b 扩到 6 项） |
+| `check_cross_chapter.py` | 5.4 直接复用（B5b 扩到 6 项 → B4 扩到 7 项） |
+| `scheduler.py --mode sections` | 章**内**节级波次（B4）；章级批次（默认 `--mode chapters`）不变 |
+| `assemble_sections.py` | 章**内**拼接与缺节恢复报告（B4）；exit 3 = 需重派 |
 | `build_manuscript.py`（章 docx） | `build_book.py`（书 docx），版式常量同源 TYPESET |
 | W1（单章全流程） | **W5 全书工作流**：book init → BOOK_SPEC → 逐章 W1 → check_book → build_book → BOOK_DELIVER |

@@ -25,8 +25,19 @@ pipeline §3.6 规定「>8000 字章节强制按节推进：sections/{节号}.md
 退出码
 ------------------------------------------------------------------------------
   0 成功（draft.md + 拼接清单落盘）
-  1 节级自检未过（缺节/标签缺失/编号断裂——禁止把带缺陷的节拼成整章）
-  2 输入缺失
+  1 节级自检未过（标签缺失/编号断裂——禁止把带缺陷的节拼成整章）
+  2 输入缺失（sections/ 为空、设计节序不可解析等）
+  3 RECOVERY_REQUIRED（Batch 4 升级 E：节文件缺失，已产出恢复报告，主理人据它重派）
+
+升级 E：缺失节恢复协议（2026-11-04）
+------------------------------------------------------------------------------
+旧行为：设计节序里有节号而 sections/ 无文件 ⇒ 直接 exit 1 终止，信息量为 0。
+新行为：查 `拼接清单.json`（上次成功落盘记录）判定该节**曾否成功产出**：
+  · 曾在清单里（文件后来丢失）→ `RECOVERABLE`：可复用上次 spawn 文案重派
+  · 从未在清单里（writer 任务从未完成）→ `NEVER_PRODUCED`：按契约 on_partial=BLOCK 重派
+两种路径都写合规 `BLOCK` trace（纳入 retry_rate），产出
+`运行态/section_recovery_{ch##}.json`。**脚本只报不 spawn**——重派是主理人的编排权
+（与 Batch 4 升级 B/F、Batch 3 parallel_gate 同一纪律）。
 ==============================================================================
 """
 from __future__ import annotations
@@ -34,11 +45,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from _profile_loader import read_discipline, load_section7
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+TRACE_TIMEOUT_S = 30
 
 RE_SECTION_FILE = re.compile(r"^(\d+(?:\.\d+)?)\.md$")
 RE_DATA_TAG = re.compile(r"\[(?:实|估|引|待核实)")
@@ -88,6 +103,147 @@ def self_check_section(path: Path, sec_no: str, triggers: list[str] | None = Non
     return problems
 
 
+# ── 升级 E：缺失节恢复协议（脚本只报不 spawn）────────────────────────────
+
+def load_previous_manifest(ch_dir: Path) -> tuple[dict[str, str], str]:
+    """读上次成功拼接清单 → {节号: 来源文件}，以及基线状态。
+
+    基线状态：ok / missing / corrupt。corrupt 必须显式上报，
+    不得静默当成「从未产出」——那会掩盖审计数据损坏。
+    """
+    p = ch_dir / "拼接清单.json"
+    if not p.is_file():
+        return {}, 'missing'
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}, 'corrupt'
+    secs = data.get('sections') if isinstance(data, dict) else None
+    if not isinstance(secs, list):
+        return {}, 'corrupt'
+    out: dict[str, str] = {}
+    for s in secs:
+        if isinstance(s, dict) and s.get('节号'):
+            out[str(s['节号'])] = str(s.get('文件') or '')
+    return out, 'ok'
+
+
+def classify_missing(missing: list[str], baseline: dict[str, str],
+                     baseline_status: str, chapter: str) -> list[dict]:
+    """逐节判 RECOVERABLE / NEVER_PRODUCED，并给出可复用的派工提示。"""
+    items: list[dict] = []
+    for sec in missing:
+        task_id = f"{chapter}-PRODUCE-R1-节{sec}"
+        must_produce = f"章节/{chapter}/sections/{sec}.md"
+        hint = {
+            'task_id': task_id,
+            'must_produce': must_produce,
+            'reuse': '复用上次 spawn 文案（任务包可重建）',
+        }
+        if sec in baseline:
+            items.append({
+                '节号': sec,
+                'classification': 'RECOVERABLE',
+                'evidence': (f"上次成功拼接清单含该节（来源 {baseline[sec] or '未记文件'}）"
+                             f"，但本次文件丢失 ⇒ 曾成功落盘"),
+                'suggested_action': 'E2 升级：主理人按 spawn_hint 重派该节（任务包可复用）',
+                'spawn_hint': hint,
+            })
+        else:
+            reason = ('上次成功清单无该节 ⇒ writer 任务从未完成'
+                      if baseline_status == 'ok' else
+                      f'拼接清单基线状态={baseline_status}，无法证明曾成功落盘 ⇒ 保守按从未产出')
+            items.append({
+                '节号': sec,
+                'classification': 'NEVER_PRODUCED',
+                'evidence': reason,
+                'suggested_action': '按成员契约 on_partial=BLOCK，主理人重派该节',
+                'spawn_hint': hint,
+            })
+    return items
+
+
+def write_recovery_trace(work_root: Path, chapter: str, report: dict,
+                         started_at: str) -> tuple[bool, str]:
+    """写合规 BLOCK 行（纳入 compute_metrics.retry_rate），不绕过 record_trace.py。"""
+    counts: dict[str, int] = {}
+    for it in report['missing']:
+        counts[it['classification']] = counts.get(it['classification'], 0) + 1
+    notes = ('SECTION_RECOVERY; chapter=' + chapter
+             + '; ' + '; '.join(f'{k}={v}' for k, v in sorted(counts.items()))
+             + '; sections=' + ','.join(it['节号'] for it in report['missing']))
+    cmd = [
+        sys.executable, str(SCRIPT_DIR / 'record_trace.py'),
+        '--work-root', str(work_root),
+        '--task-id', f'{chapter}-PRODUCE-R1-SECTION-RECOVERY',
+        '--from', 'smart-textbook-team-team-lead',
+        '--to', 'smart-textbook-team-team-lead',
+        '--type', 'BLOCK',
+        '--outcome', 'BLOCKED',
+        '--phase', 'PRODUCE-R1',
+        '--start', started_at,
+        '--notes', notes,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=TRACE_TIMEOUT_S)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f'调用 record_trace.py 失败: {e}'
+    if r.returncode != 0:
+        return False, (f'record_trace.py exit {r.returncode}: '
+                       f'{r.stderr.strip() or r.stdout.strip()}')
+    return True, r.stdout.strip()
+
+
+def handle_recovery(work_root: Path, ch_dir: Path, chapter: str,
+                    order: list[str], present: list[str],
+                    missing: list[str], write_trace: bool) -> int:
+    """缺节 ⇒ 出恢复报告（不拼接、不 spawn），退出码 3。"""
+    baseline, baseline_status = load_previous_manifest(ch_dir)
+    started_at = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+    items = classify_missing(missing, baseline, baseline_status, chapter)
+    report = {
+        'chapter': chapter,
+        'detected_at': started_at,
+        'status': 'RECOVERY_REQUIRED',
+        'order': order,
+        'present': present,
+        'missing': items,
+        'baseline_status': baseline_status,
+        'baseline_sections': sorted(baseline),
+        'script_only_reports': True,
+        'note': '脚本只报决策，重派由主理人执行；两种 classification 均已写 BLOCK trace 以纳入 retry_rate',
+        'trace_written': False,
+    }
+    trace_error = None
+    if write_trace:
+        ok, detail = write_recovery_trace(work_root, chapter, report, started_at)
+        report['trace_written'] = ok
+        if not ok:
+            trace_error = detail
+    if trace_error:
+        report['trace_error'] = trace_error
+
+    out = work_root / '运行态' / f'section_recovery_{chapter}.json'
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                       encoding='utf-8')
+    except OSError as e:
+        log(f'恢复报告写入失败: {out}（{e}）', 'ERROR')
+        return 2
+
+    log(f'缺 {len(missing)} 节 ⇒ 不拼接；恢复报告: {out}', 'ERROR')
+    for it in items:
+        log(f"  · {it['节号']}: {it['classification']} — {it['evidence']}", 'ERROR')
+    if baseline_status != 'ok':
+        log(f'拼接清单基线状态={baseline_status}（不得静默当「从未产出」）', 'WARN')
+    if trace_error:
+        log(f'BLOCK trace 写入失败（不静默）: {trace_error}', 'ERROR')
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 3
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="节级正文拼接器（pipeline §3.6 步骤③）")
     ap.add_argument("--work-root", required=True)
@@ -96,6 +252,8 @@ def main() -> int:
                     help="逗号分隔节序（缺省从 chapter_design §C 解析）")
     ap.add_argument("--skip-check", action="store_true",
                     help="跳过节级自查（仅限主理人显式豁免并记录 interventions）")
+    ap.add_argument("--no-trace", action="store_true",
+                    help="缺节时不写 BLOCK trace（仅供 CI/离线排查；常态必须写以纳入 retry_rate）")
     args = ap.parse_args()
 
     work_root = Path(args.work_root).expanduser()
@@ -124,7 +282,9 @@ def main() -> int:
         missing_on_disk = [s for s in order if s not in file_map]
         if missing_on_disk:
             log(f"节序中有 {len(missing_on_disk)} 节缺文件: {missing_on_disk}", "ERROR")
-            return 1
+            return handle_recovery(work_root, ch_dir, args.chapter, order,
+                                   sorted(file_map), missing_on_disk,
+                                   write_trace=not args.no_trace)
         extra = [s for s in file_map if s not in order]
         if extra:
             log(f"磁盘上有节不在设计节序中（将被忽略，请确认）: {extra}", "WARN")

@@ -13,10 +13,25 @@ check_cross_chapter.py — 跨章一致性校验器（C10，批次 5）
 用法
 ------------------------------------------------------------------------------
   python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" [--strict] [--json]
+  python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
+      --affected-from ch02 --json     # 只重跑 ch02 修订的下游受影响章
 
-  六项跨章检查（B5，ADR-01 从 3 项扩到 6 项）：
+  七项跨章检查（B5 六项 + Batch 4 升级 F 第 7 项）：
     ① 术语一致性（改读 profile §5.1 五列表）  ② 数据矛盾（profile §7）
     ③ 内容重复  ④ 难度递进（Bloom 单调不减）  ⑤ 字数分配（±10%）  ⑥ 图号/表号连续
+    ⑦ 术语依赖图（exports/imports：下游 imports 必须仍在上游 exports 里）
+
+第 7 项 frontmatter 契约（每章 draft.md）：
+  ---
+  exports: [T3, T4]                 # 本章新定义、可供下游使用的术语
+  imports:
+    - term: T1                     # 本章用到、由外章定义的术语
+      from: ch02                   # 来源章号（必填）
+  ---
+  未声明 exports/imports 的章记 WARN（渐进接入，不阻塞）；声明了但缺 from、
+  来源章不存在、或上游当前版本已不含该术语 ⇒ FAIL。
+  `--affected-from ch##` 按静态 imports 反向边做 BFS 闭包，只校验受影响下游章：
+  任何章 PROOFREAD pass 后的联动重跑可直接用这个开关，无需全量重扫。
 
 退出码：0 一致 | 1 存在 FAIL（--strict 时）| 2 输入缺失
 ==============================================================================
@@ -27,8 +42,13 @@ import argparse
 import json
 import re
 import sys
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except ImportError:  # pragma: no cover - 缺依赖时第 7 项报 FAIL，不静默跳过
+    yaml = None
 
 from _profile_loader import read_discipline, load_section7, load_term_table
 
@@ -248,10 +268,148 @@ def check_figure_continuity(chapters: dict[str, str]) -> list[dict]:
     return issues
 
 
+# ── ⑦ 术语依赖图（Batch 4 升级 F / Q6）────────────────────────────────────
+RE_FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
+
+
+def parse_dependency_frontmatter(text: str) -> dict:
+    """解析单章 draft frontmatter 的 exports / imports。
+
+    不静默：YAML 不可用或结构非法都写进 parse_error，由检查函数升级为 FAIL。
+    """
+    m = RE_FRONTMATTER.match(text)
+    if not m:
+        return {'declared': False, 'exports': [], 'imports': [],
+                'parse_error': None, 'reason': '无 frontmatter'}
+    if yaml is None:
+        return {'declared': False, 'exports': [], 'imports': [],
+                'parse_error': 'PyYAML 不可用，无法解析 exports/imports（不静默跳过）',
+                'reason': ''}
+    try:
+        data = yaml.safe_load(m.group(1)) or {}
+    except Exception as e:  # yaml.YAMLError 及其子类
+        return {'declared': False, 'exports': [], 'imports': [],
+                'parse_error': f'frontmatter YAML 非法: {e}', 'reason': ''}
+    if not isinstance(data, dict):
+        return {'declared': False, 'exports': [], 'imports': [],
+                'parse_error': 'frontmatter 不是映射结构', 'reason': ''}
+    exports = [str(x).strip() for x in (data.get('exports') or [])
+               if str(x).strip()]
+    imports: list[dict] = []
+    for it in (data.get('imports') or []):
+        if isinstance(it, dict):
+            imports.append({'term': str(it.get('term') or '').strip(),
+                            'from': str(it.get('from') or '').strip()})
+        else:
+            # 简写（只有术语名、无来源章）不允许：来源章是依赖图的边，缺失即无法算闭包
+            imports.append({'term': str(it).strip(), 'from': ''})
+    return {
+        'declared': ('exports' in data) or ('imports' in data),
+        'exports': exports, 'imports': imports,
+        'parse_error': None, 'reason': '',
+    }
+
+
+def dependency_closure(deps: dict[str, dict], source: str) -> list[str]:
+    """由 imports 反向边做 BFS：返回 source 修订后受影响的下游章（不含 source）。"""
+    reverse: dict[str, list[str]] = defaultdict(list)
+    for ch, d in deps.items():
+        for item in d['imports']:
+            if item['from']:
+                reverse[item['from']].append(ch)
+    affected: list[str] = []
+    seen = {source}
+    q = deque([source])
+    while q:
+        cur = q.popleft()
+        for nxt in reverse.get(cur, []):
+            if nxt not in seen:
+                seen.add(nxt)
+                affected.append(nxt)
+                q.append(nxt)
+    return sorted(affected)
+
+
+def check_term_dependency_graph(chapters: dict[str, str],
+                                affected_from: str | None = None
+                                ) -> tuple[list[dict], dict]:
+    """第 7 项：imports ⊆ 上游 exports；可只校验指定章修订的下游闭包。
+
+    返回 (issues, meta)；meta 供 JSON 输出披露受影响章与依赖图摘要。
+    """
+    issues: list[dict] = []
+    deps = {ch: parse_dependency_frontmatter(t) for ch, t in chapters.items()}
+
+    for ch, d in deps.items():
+        if d['parse_error']:
+            issues.append({
+                'type': '术语依赖图', 'term': ch,
+                'detail': f'{ch}: {d["parse_error"]}', 'severity': 'FAIL',
+            })
+        elif not d['declared']:
+            issues.append({
+                'type': '术语依赖图', 'term': ch,
+                'detail': (f'{ch} 未声明 exports/imports——渐进接入期记 WARN；'
+                           f'声明后即可获得上游修订联动校验'),
+                'severity': 'WARN',
+            })
+
+    affected = None
+    if affected_from:
+        affected = dependency_closure(deps, affected_from)
+        if affected_from not in chapters and not affected:
+            issues.append({
+                'type': '术语依赖图', 'term': affected_from,
+                'detail': f'--affected-from {affected_from} 既非现存章、也无下游依赖'
+                          f'（无可校验目标，不得报「全通过」）',
+                'severity': 'FAIL',
+            })
+
+    for ch, d in deps.items():
+        if affected is not None and ch not in affected:
+            continue
+        for item in d['imports']:
+            term, src = item['term'], item['from']
+            if not term or not src:
+                issues.append({
+                    'type': '术语依赖图', 'term': ch,
+                    'detail': f'{ch} imports 项缺 term/from: {item}'
+                              f'（来源章号是依赖图的边，必填）',
+                    'severity': 'FAIL',
+                })
+            elif src not in deps:
+                issues.append({
+                    'type': '术语依赖图', 'term': ch,
+                    'detail': f'{ch} imports 的 {term} 标注来源 {src}，'
+                              f'但 {src} 无 draft.md（来源章不存在或尚未产出）',
+                    'severity': 'FAIL',
+                })
+            elif term not in deps[src]['exports']:
+                issues.append({
+                    'type': '术语依赖图', 'term': ch,
+                    'detail': f'{ch} imports 的 {term} 已不在 {src} 的 exports 里'
+                              f'（上游删除/改名 ⇒ 下游术语失配）',
+                    'severity': 'FAIL',
+                })
+
+    meta = {
+        'check': 7,
+        'affected_from': affected_from,
+        'affected_chapters': affected,
+        'declared_chapters': sorted(ch for ch, d in deps.items() if d['declared']),
+        'undeclared_chapters': sorted(ch for ch, d in deps.items() if not d['declared']),
+        'exports': {ch: d['exports'] for ch, d in deps.items()},
+        'imports': {ch: d['imports'] for ch, d in deps.items()},
+    }
+    return issues, meta
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="跨章一致性校验器（术语/数据/重复/难度/字数/图号）")
+    ap = argparse.ArgumentParser(description="跨章一致性校验器（术语/数据/重复/难度/字数/图号/术语依赖图）")
     ap.add_argument("--work-root", required=True)
     ap.add_argument("--strict", action="store_true", help="存在 FAIL 即 exit 1")
+    ap.add_argument("--affected-from", default='',
+                    help="只重跑该章修订的下游受影响章（第 7 项静态依赖闭包，如 ch02）")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -266,15 +424,19 @@ def main() -> int:
     _metrics = load_section7(work_root, _discipline, "conflict_metrics")
     _terms = load_term_table(work_root, _discipline)
     _spec = load_book_spec(work_root)
+    dep_issues, dep_meta = check_term_dependency_graph(
+        chapters, args.affected_from or None)
     issues = (check_terms(chapters, _terms)
               + check_data_conflicts(chapters, _metrics)
               + check_duplication(chapters)
               + check_difficulty_progression(_spec)
               + check_word_budget(work_root, _spec, chapters)
-              + check_figure_continuity(chapters))
+              + check_figure_continuity(chapters)
+              + dep_issues)
 
     if args.json:
-        print(json.dumps({"chapters": sorted(chapters), "issues": issues},
+        print(json.dumps({"chapters": sorted(chapters), "issues": issues,
+                          "term_dependency": dep_meta},
                          ensure_ascii=False, indent=2))
     else:
         print("=" * 62)

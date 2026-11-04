@@ -1,7 +1,7 @@
 ---
 name: path-ownership
 description: "路径归属表（SSOT）——每个可写路径的唯一归属者、允许动作与冲突仲裁规则。harness SKILL.md §0「并行安全：路径表唯一归属」与「资源冲突」仲裁条款指向本表。spawn 前/并行派工前必读。"
-version: 1.5.0
+version: 1.6.0
 ---
 
 # 路径归属表（path-ownership）
@@ -38,6 +38,7 @@ version: 1.5.0
 | `章节/{ch##}/draft_r1_frozen.md` | **smart-textbook-team-team-lead**（B3：VERIFY-R1 pass 后 `cp` 一次） | 写一次后**只读冻结**（结构冻结点❄ 基准） | **禁写**（含 writer；改它 = 篡改基线） |
 | `运行态/knowledge_anchor_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py anchor` 生成，B3） | 写（含 `baseline_ids`，门禁 2 读它） | 只读 |
 | `运行态/visual_drift_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py visual-drift` 生成，B3） | 写（含变更率决策与 `learn_signal`） | 只读 |
+| `运行态/section_recovery_{ch##}.json` | smart-textbook-team-team-lead（由 `assemble_sections.py` 生成，B4） | 写（含 `RECOVERABLE`/`NEVER_PRODUCED` 分类与 `baseline_status`） | 只读 |
 | `章节/{ch##}/draft.md` | subject-writer | 写/改（版本 R1→R2→R3 递增；由 sections/ 拼接） | 只读；**examiner/designer 均不得直接修改**（修正意见走回传清单，由编排者转 writer） |
 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner | 写/改 | 只读 |
 | `章节/{ch##}/review/r3_verification_log.md` | quality-examiner | append | 只读 |
@@ -119,3 +120,18 @@ version: 1.5.0
     归 designer）与 VERIFY-R2/R3 返修（写 `draft.md`，归 writer）目标归属不同 ⇒ 两组均**允许并行**。
     并行双方读的是只读冻结快照，不构成第二写者。
   - 覆盖路径数 23 → 27
+- v1.6.0 [2026-11-04 B4 批次：节级并行与恢复]:
+  - 新增 1 条路径：`运行态/section_recovery_{ch##}.json`（由 `scripts/assemble_sections.py`
+    在缺节时生成的恢复报告）。
+  - 归属理由：恢复报告是**编排权动作**的产物——脚本只分类
+    （`RECOVERABLE` = 曾成功落盘后丢失 / `NEVER_PRODUCED` = 从未产出），
+    **不 spawn**；真正的重派由主理人执行，故报告归主理人、成员只读。
+    若归 writer，则会与「脚本只报不 spawn」的纪律冲突（成员可能自行重做并掩盖基线状态）。
+  - **§1 第 4 条并行前置检查的 B4 落地结论**：节级并行下，同一波次内各节
+    写入 `章节/{ch##}/sections/{节号}.md`（归 subject-writer）——**路径互不相同**，
+    故同波次各节可并行；因依赖表 `strong-dep` 已保证同波次无强依赖，
+    并行不产生跨节术语打架（术语由上游 `required_terms` 注入）。
+    `章节/{ch##}/draft.md` 仍归 subject-writer 但**仅在整章模式写**；
+    节级模式下 draft 由 `assemble_sections.py` 拼接产出（写入方仍为编排者执行的脚本），
+    禁止并行 writer 各写各的整章稿 ⇒ 防止第二写者覆盖。
+  - 覆盖路径数 27 → 28

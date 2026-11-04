@@ -53,6 +53,18 @@
   # 从环境变量取预算（推荐：跟随真实速率/预算）
   STB_MAX_CONCURRENCY=3 STB_TOKEN_BUDGET=400000 \\
       python3 scripts/scheduler.py --work-root "$WORK_ROOT" plan
+
+  # 节级拓扑波次（Batch 4 升级 B；口径 SSOT = pipeline §搭接并行协议之升级 B）
+  python3 scripts/scheduler.py --work-root "$WORK_ROOT" plan --mode sections \
+      --chapter ch01 --json
+
+节级模式（--mode sections）
+==========================
+读 `章节/{ch##}/chapter_design.md` 的 §C.1 机器可读依赖表，按 strong-dep 做
+Kahn 拓扑分波，波内节并行、波间串行；并发度**复用章级 Q2 四级授权**
+（`resolve_concurrency`），不另立一套默认值。token 预算不足时该波次
+自动降为串行（优雅退化，不是失败），并在 `concurrency_notes` 留痕。
+§C.1 格式与判据见 `skills/textbook-pipeline-workflow/SKILL.md` §节级并行调度。
 """
 from __future__ import annotations
 
@@ -95,6 +107,17 @@ PROGRESS_REL = ('运行态', 'progress.md')
 # 章节域相位（与 progress.py PHASE_ORDER 的章域部分一致）
 # 注：这里只列**章内可并行/可判定**的相位，用于把章的进度映射到调度决策。
 DONE_STATUSES = ('DONE', 'SKIPPED')
+
+# ── 升级 B：节级依赖表（chapter_design §C.1）─────────────────────────────
+# 与 B3 的知识块锚同一风格：HTML 注释包裹的机器可读表格，避免与 §C 正文表格混淆。
+SECTION_DEPS_BEGIN = '<!-- SECTION_DEPS_BEGIN -->'
+SECTION_DEPS_END = '<!-- SECTION_DEPS_END -->'
+SECTION_DEPS_RE = re.compile(
+    re.escape(SECTION_DEPS_BEGIN) + r'(.*?)' + re.escape(SECTION_DEPS_END), re.S)
+SECTION_DEPS_HEADER = ('节号', 'strong-dep', 'no-dep', '关键术语', '字数目标')
+NO_DEP_TOKENS = {'', '—', '-', '－', '无', 'none', 'n/a', 'N/A'}
+SECTION_NO_RE = re.compile(r'^\d+(?:\.\d+)+$')
+CHAPTER_RE = re.compile(r'^ch\d{2}$')
 
 
 def _log(msg: str, level: str = 'INFO') -> None:
@@ -420,6 +443,215 @@ def compute_plan(work_root: Path, max_concurrency: int | None = None,
     }
 
 
+# ── 升级 B：节级拓扑波次调度（诊断 §3.2 升级 B / Q2）─────────────────────
+
+def _split_cells(line: str) -> list[str]:
+    """拆 Markdown 表格行（与 parallel_gate 的锚表同一口径）。"""
+    return [c.strip() for c in line.strip().strip('|').split('|')]
+
+
+def _parse_bool_dep(raw: str) -> bool | None:
+    """no-dep 列归一；无法判定的值返回 None（由调用方报输入错误，不猜）。"""
+    v = raw.strip().lower()
+    if v in ('yes', 'true', '1', 'y', '可并行', '无依赖'):
+        return True
+    if v in ('no', 'false', '0', 'n', '不可并行'):
+        return False
+    return None
+
+
+def load_section_deps(work_root: Path, chapter: str) -> tuple[list[dict], str | None]:
+    """读 chapter_design §C.1 依赖表。返回 (行列表, 错误原因)。
+
+    行 = {节号, strong_dep, no_dep, terms, word_budget, estimated_tokens}。
+    **任何解析歧义都返回错误**，绝不静默当「无依赖」放行——那会把有强依赖的节
+    误排进同一波次，直接违反升级 B 的术语一致性保障。
+    """
+    design = work_root / '章节' / chapter / 'chapter_design.md'
+    if not design.is_file():
+        return [], f'教学设计不存在: {design}'
+    try:
+        text = design.read_text(encoding='utf-8')
+    except (OSError, UnicodeError) as e:
+        return [], f'教学设计无法读取: {design}（{e}）'
+    m = SECTION_DEPS_RE.search(text)
+    if not m:
+        return [], (f'未找到 §C.1 节依赖表（须含 {SECTION_DEPS_BEGIN} … '
+                    f'{SECTION_DEPS_END}）——不得按「全无依赖」默认放行')
+    lines = [ln.strip() for ln in m.group(1).splitlines()
+             if ln.strip().startswith('|')]
+    if len(lines) < 2:
+        return [], '§C.1 表不足 2 行（表头 + 至少 1 个节）'
+    header = _split_cells(lines[0])
+    if tuple(header) != SECTION_DEPS_HEADER:
+        return [], (f'§C.1 表头不符：期望 {list(SECTION_DEPS_HEADER)}，'
+                    f'实为 {header}（列顺序固定，不猜列义）')
+    body = lines[1:]
+    if body and all(re.fullmatch(r':?-{3,}:?', c or '') for c in _split_cells(body[0])):
+        body = body[1:]
+    if not body:
+        return [], '§C.1 表无数据行（空表不得判 PASS）'
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for lineno, line in enumerate(body, 1):
+        cells = _split_cells(line)
+        if len(cells) != len(SECTION_DEPS_HEADER):
+            return [], (f'§C.1 第 {lineno} 行有 {len(cells)} 列，'
+                        f'表头 {len(SECTION_DEPS_HEADER)} 列——列错位禁止放行')
+        sec, strong_raw, nodep_raw, terms_raw, words_raw = cells
+        if not SECTION_NO_RE.fullmatch(sec):
+            return [], f'§C.1 第 {lineno} 行节号非法: {sec!r}（须如 1.1 / 3.2.1）'
+        if sec in seen:
+            return [], f'§C.1 节号重复: {sec}（同一节两行无法定波次）'
+        seen.add(sec)
+        nodep = _parse_bool_dep(nodep_raw)
+        if nodep is None:
+            return [], (f'§C.1 第 {lineno} 行 no-dep 值无法判定: '
+                        f'{nodep_raw!r}（合法：yes/no/true/false/可并行/不可并行）')
+        deps = [d.strip() for d in re.split(r'[、，,;；]', strong_raw)
+                if d.strip() and d.strip() not in NO_DEP_TOKENS]
+        for d in deps:
+            if not SECTION_NO_RE.fullmatch(d):
+                return [], f'§C.1 第 {lineno} 行 strong-dep 节号非法: {d!r}'
+        if deps and nodep:
+            return [], (f'§C.1 第 {lineno} 行矛盾：{sec} 有 strong-dep '
+                        f'{deps} 却标 no-dep=yes（可并行）')
+        terms = [t.strip() for t in re.split(r'[、，,;；]', terms_raw)
+                 if t.strip() and t.strip() not in NO_DEP_TOKENS]
+        try:
+            words = int(words_raw)
+        except ValueError:
+            return [], f'§C.1 第 {lineno} 行字数目标非整数: {words_raw!r}'
+        if words <= 0:
+            return [], f'§C.1 第 {lineno} 行字数目标须 >0，实为 {words}'
+        rows.append({
+            '节号': sec, 'strong_dep': deps, 'no_dep': nodep,
+            'terms': terms, 'word_budget': words,
+            'estimated_tokens': estimate_chapter_tokens(words),
+        })
+    return rows, None
+
+
+def section_waves(rows: list[dict]) -> tuple[list[list[dict]] | None, list[str]]:
+    """Kahn 拓扑分波：波内无强依赖（可并行），波间满足依赖先后。
+
+    返回 (波次列表, 成环节号列表)；无环时后者为空。
+    """
+    remaining = {r['节号'] for r in rows}
+    waves: list[list[dict]] = []
+    while remaining:
+        wave = [r for r in rows
+                if r['节号'] in remaining
+                and all(d not in remaining for d in r['strong_dep'])]
+        if not wave:
+            return None, sorted(remaining)
+        waves.append(wave)
+        remaining -= {r['节号'] for r in wave}
+    return waves, []
+
+
+def compute_section_plan(work_root: Path, chapter: str,
+                         max_concurrency: int | None = None,
+                         token_budget: int | None = None,
+                         rate_limit: int | None = None) -> dict:
+    """节级调度计划：拓扑波次 + Q2 四级并发度 + 预算降级串行。"""
+    rows, err = load_section_deps(work_root, chapter)
+    if err:
+        return {'ok': False, 'mode': 'sections', 'reason': 'SECTION_DEPS_INVALID',
+                'detail': err, 'waves': []}
+
+    ids = {r['节号'] for r in rows}
+    for r in rows:
+        unknown = [d for d in r['strong_dep'] if d not in ids]
+        if unknown:
+            return {'ok': False, 'mode': 'sections',
+                    'reason': 'SECTION_DEPS_INVALID',
+                    'detail': f"{r['节号']} 的 strong-dep 引用了不在 §C.1 表内的节: {unknown}",
+                    'waves': []}
+
+    waves, cycle = section_waves(rows)
+    if cycle:
+        return {'ok': False, 'mode': 'sections',
+                'reason': 'SECTION_DEPENDENCY_CYCLE',
+                'detail': '节依赖成环（无法分波）: ' + ', '.join(cycle), 'waves': []}
+
+    budget, budget_src = resolve_token_budget(token_budget, work_root)
+    max_wave = max((len(w) for w in waves or []), default=0)
+    # 复用章级 Q2 四级授权，不另立默认值（诊断「沿用 Q2 现有 4 级决策」）
+    concurrency, notes = resolve_concurrency(max_wave, max_concurrency, rate_limit)
+    by_id = {r['节号']: r for r in rows}
+
+    out_waves: list[dict] = []
+    for i, wave in enumerate(waves or [], 1):
+        est = sum(r['estimated_tokens'] for r in wave)
+        wave_conc = min(concurrency, len(wave))
+        degraded = False
+        if budget is not None and est > budget:
+            wave_conc = 1
+            degraded = True
+            notes.append(f'第 {i} 波估 {est} tok > 预算 {budget}（{budget_src}）'
+                         f' ⇒ 降为串行（优雅退化，不截断执行）')
+        tasks = []
+        for r in wave:
+            # strong-dep 节的关键术语必须已在上游定义；派单时注入给 writer
+            required_terms = sorted({t for d in r['strong_dep']
+                                     for t in by_id[d]['terms']})
+            tasks.append({
+                '节号': r['节号'],
+                'chapter': chapter,
+                'phase': 'PRODUCE-R1',
+                'task_id': f"{chapter}-PRODUCE-R1-节{r['节号']}",
+                'correlation_id': chapter,
+                'must_produce': f"章节/{chapter}/sections/{r['节号']}.md",
+                'strong_dep': r['strong_dep'],
+                'required_terms': required_terms,
+                'word_budget': r['word_budget'],
+                'estimated_tokens': r['estimated_tokens'],
+                'note': '每节写独立文件 → path-ownership §1.4 允许波内并行；'
+                        'required_terms 由上游 §C.1 注入，writer 不得自行定义',
+            })
+        out_waves.append({
+            'wave_id': i, 'sections': [r['节号'] for r in wave],
+            'concurrency': wave_conc, 'estimated_tokens': est,
+            'budget_degraded': degraded, 'tasks': tasks,
+        })
+
+    return {
+        'ok': True, 'mode': 'sections', 'chapter': chapter,
+        'reason': None,
+        'concurrency': concurrency, 'concurrency_notes': notes,
+        'token_budget': budget, 'token_budget_source': budget_src,
+        'branch_cap': BRANCH_CAP,
+        'sections': rows, 'waves': out_waves,
+    }
+
+
+def render_sections(plan: dict) -> str:
+    """节级计划的人类可读渲染。"""
+    lines: list[str] = []
+    if not plan.get('ok'):
+        lines.append(f'[FAIL] 节级调度前置不满足：{plan.get("reason")}')
+        lines.append(f'  {plan.get("detail")}')
+        return '\n'.join(lines)
+    lines.append(f'═══ 节级并行调度计划 · {plan["chapter"]} ═══')
+    lines.append(f'并发上限 = {plan["concurrency"]}'
+                 f'（协议分支硬上限 {plan["branch_cap"]}）')
+    for n in plan['concurrency_notes']:
+        lines.append(f'  · {n}')
+    lines.append(f'token 预算 = {plan["token_budget"]}'
+                 f'（来源：{plan["token_budget_source"]}）')
+    for w in plan['waves']:
+        tag = ' · 预算降级串行' if w['budget_degraded'] else ''
+        lines.append(f'── 第 {w["wave_id"]} 波（{len(w["sections"])} 节 / '
+                     f'并发 {w["concurrency"]} / 估 {w["estimated_tokens"]} tok）{tag} ──')
+        for t in w['tasks']:
+            terms = ('术语=' + ','.join(t['required_terms'])
+                     if t['required_terms'] else '术语=—')
+            lines.append(f'  spawn {t["task_id"]:<30} → {t["must_produce"]}  {terms}')
+    return '\n'.join(lines)
+
+
 def render(plan: dict) -> str:
     """人类可读渲染。"""
     lines: list[str] = []
@@ -485,6 +717,10 @@ def main() -> int:
                         help='本批 token 预算上限（超出则顺延到下一批，不截断执行）')
     p_plan.add_argument('--rate-limit', type=int, default=None,
                         help='API 速率上限（并发上限来源之一）')
+    p_plan.add_argument('--mode', choices=['chapters', 'sections'], default='chapters',
+                        help='chapters=章级批次（默认，兼容既有调用）；sections=节级拓扑波次（升级 B）')
+    p_plan.add_argument('--chapter', default='',
+                        help='--mode sections 时必填，如 ch01')
     p_plan.add_argument('--json', action='store_true', help='以 JSON 输出')
 
     args = ap.parse_args()
@@ -494,6 +730,24 @@ def main() -> int:
         return 2
 
     if args.cmd == 'plan':
+        if args.mode == 'sections':
+            if not CHAPTER_RE.fullmatch(args.chapter or ''):
+                print(f'[ERROR] --mode sections 必须给合法 --chapter（ch##），'
+                      f'实为 {args.chapter!r}', file=sys.stderr)
+                return 2
+            plan = compute_section_plan(wr, args.chapter,
+                                        max_concurrency=args.max_concurrency,
+                                        token_budget=args.token_budget,
+                                        rate_limit=args.rate_limit)
+            if args.json:
+                print(json.dumps(plan, ensure_ascii=False, indent=2))
+            else:
+                print(render_sections(plan))
+            if not plan.get('ok'):
+                # 输入缺失/格式非法 = 2；依赖成环 = 1（与章级 DEPENDENCY_CYCLE 同口径）
+                return 2 if plan.get('reason') == 'SECTION_DEPS_INVALID' else 1
+            return 0
+
         plan = compute_plan(wr, max_concurrency=args.max_concurrency,
                             token_budget=args.token_budget,
                             rate_limit=args.rate_limit)

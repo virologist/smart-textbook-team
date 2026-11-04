@@ -1,7 +1,7 @@
 ---
 name: agent-harness-protocol
 description: "Execution-layer harness for multi-agent orchestration: message envelope schema, state blackboard spec, retry/timeout/budget/circuit-breaker rules, trace logging format, degradation chains, plus executable enforcement bodies for parallel scheduling, member contract checks, and split-merge verification. Load when dispatching agents, handling cross-agent state, or when a task stalls, retries, or times out. Trigger words: 任务卡住 / 成员超时 / 重试几次了 / 熔断 / 黑板怎么patch / 信封格式 / 预算耗尽 / 并发写冲突 / dispatch checklist / 并行度 / 成员契约 / 拆分合并."
-version: 1.6.0
+version: 1.7.0
 ---
 
 # agent-harness-protocol — 多代理编排执行层
@@ -702,6 +702,48 @@ python3 scripts/merge_sections.py --work-root "$WORK_ROOT" --chapter ch01 --chec
 
 ---
 
+#### 6.5.5 节级并行与恢复（`scripts/scheduler.py --mode sections` / `assemble_sections.py`，B4）
+
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §节级并行与恢复协议。
+> 与 §6.5.4 同纪律：**脚本只报决策、不 spawn 成员**，波次调度与重派权归编排者。
+> `PHASE_ORDER` 23 相位**不变**——节级波次是既有相位内的机制，不是新相位。
+
+**节级 dispatch 的额外必填字段**（缺任一 ⇒ 不得并行派工，退回串行）：
+
+| 字段 | 作用 | 缺失后果 |
+|---|---|---|
+| `must_produce` | 本节唯一落盘路径 | 不知写哪 ⇒ 可能写整章稿 ⇒ 第二写者覆盖 |
+| `section_no` | 节号 | 节号自查与 `exports/imports` 声明失效 |
+| `required_terms` | 上游已定义术语 | 上游术语可能被重定义 ⇒ 术语冲突 |
+| `target_words` | 本节净字数目标 | 预算降级无法估 token |
+| `task_id` | 本节独立任务号 | trace 与 `retries.{task_id}` 无法归因 |
+
+**§1.4 路径归属核对的具体结论（B4）**：同波次各节写入
+`章节/{ch##}/sections/{节号}.md`（归 subject-writer）——**路径互不相同** ⇒ 允许并行；
+`章节/{ch##}/draft.md` 在节级模式下**不由 writer 写**，由编排者执行的
+`assemble_sections.py` 拼接产出 ⇒ 防止并行 writer 各写整章稿造成覆盖。
+
+**缺节恢复的 harness 约束**：
+
+| 分类 | 判据 | 编排者动作 | 成员动作 |
+|---|---|---|---|
+| `RECOVERABLE` | 上次成功拼接清单含该节（文件后来丢失） | 复用上次 spawn 文案重派该节 | 重做该节，**沿用上轮已确立的引用与标签口径**（不换锚点） |
+| `NEVER_PRODUCED` | 清单无该节 / 基线缺失或损坏 | 按 `on_partial=BLOCK` 重派 | 正常生产该节 |
+
+- **恢复报告只报不 spawn**：`运行态/section_recovery_{ch##}.json` 归编排者（路径归属
+  v1.6.0），成员只读；成员**不得**因为看到 `RECOVERABLE` 就自行重做并覆盖基线。
+- **基线损坏须人工核对**：`baseline_status=corrupt` ⇒ 不得静默当「从未产出」，
+  否则会误重派已交付内容、造成版本漂移；须主理人核对拼接清单后人工裁决。
+- **退出码语义**（`assemble_sections.py`）：`0` 成功 ｜ `1` 节级自查未过 ｜
+  `2` 输入缺失 ｜ `3 RECOVERY_REQUIRED`（已出恢复报告，待编排者重派）。
+- **trace 合规**：两种缺节分类都写合规 `BLOCK` trace（带 `phase` 与显式 `start`，
+  满足 §6.1 的 B2 强制契约），纳入 `retry_rate`；`--no-trace` 仅供 CI/离线排查。
+- **回归覆盖**：节级调度 22 例 + 恢复协议 11 例 + 跨章依赖 12 例，
+  共 45 例，均含反向例（条件翻转时结果随之改变），见 `tests/test_scheduler_sections.py`、
+  `tests/test_assemble_recovery.py`、`tests/test_cross_chapter_deps.py`。
+
+---
+
 ## 7. 交接检查表（dispatch 前逐项过）
 
 - [ ] 任务指令含 `task_id` 与 `correlation_id`
@@ -723,6 +765,9 @@ python3 scripts/merge_sections.py --work-root "$WORK_ROOT" --chapter ch01 --chec
 - [ ] **成员产物契约已校验（P1，2026-11-04）**：成员回传后已跑 `contract_check.py`；`PARTIAL/MISSING` 不得推进下一相位（§6.5.2）
 - [ ] **拆分-合并已过必检（P1，2026-11-04）**：单章超上下文而走了拆分路径的，已跑 `merge_sections.py` 且 `exit 0`；清单落盘 `章节/{ch##}/合并检查清单.json`（§6.5.3）
 - [ ] **预算优先级已声明（2026-10-29）**：本轮若触发预算预警，已在指令中写明按 §3.1 削减了哪一档，并记入黑板 `budget.cuts`
+- [ ] **节级派工五字段齐备（B4，2026-11-04）**：走节级并行时，指令含 `must_produce` / `section_no` / `required_terms` / `target_words` / `task_id`——缺任一 ⇒ 退回串行（§6.5.5）
+- [ ] **节级波次计划已生成（B4，2026-11-04）**：已跑 `scheduler.py --mode sections --chapter ch##`；同波次内各节目标路径归属不同（§6.5.5）
+- [ ] **缺节恢复已裁决（B4，2026-11-04）**：`assemble_sections.py` exit 3 时已按 `RECOVERABLE`/`NEVER_PRODUCED` 分派重派；`baseline_status=corrupt` 已人工核对（§6.5.5）
 
 ---
 

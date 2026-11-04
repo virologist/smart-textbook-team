@@ -1,7 +1,7 @@
 ---
 name: textbook-pipeline-workflow
 description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear. Trigger words: 编排章节 / 流程卡在哪个阶段 / 下一步该干嘛 / 13态 / 状态机 / 门禁 / 返修回哪 / handoff 字段."
-version: 1.3.0
+version: 1.4.0
 ---
 
 # textbook-pipeline-workflow — 13 态教材编写流水线
@@ -42,6 +42,7 @@ version: 1.3.0
 │   ├── trace.jsonl                # 每次成员调用一行
 │   ├── knowledge_anchor_{ch##}.json   # B3 锚校验报告（含 baseline_ids，门禁 2 读它）
 │   ├── visual_drift_{ch##}.json       # B3 图表位漂移决策报告（含 learn_signal）
+│   ├── section_recovery_{ch##}.json   # B4 缺节恢复报告（RECOVERABLE / NEVER_PRODUCED）
 │   ├── dynamic-members.yaml       # 动态成员注册表（confirmed_by_user: true 才生效）
 │   └── team-proposal-{ch##}.yaml  # 动态团队提案（未确认前不生效）
 ├── 学习/候补/{日期}_{ch##}_候补.yaml   # LEARN 候补池（≥3 候选或用户 ack 才合并）
@@ -245,6 +246,120 @@ python3 scripts/parallel_gate.py visual-drift \
 - 回退后本章按旧串行序走完，不得在下一章自动重试并行；是否调阈值须经指标评审门裁决。
 - 收益口径：升级 A 省一个完整串行相位（约总时延 10-15%），升级 C 把图表时延与
   R2/R3 重叠（约 15-20%）——**以 trace 的 `start`/`ts` 实测为准，不以估计值写进报告**。
+
+## 节级并行与恢复协议（B4，2026-11-04）
+
+> **本节是升级 B / E / F 的唯一权威口径（SSOT）**；执行体 =
+> `scripts/scheduler.py --mode sections`、`scripts/assemble_sections.py`、
+> `scripts/check_cross_chapter.py` 第 7 项；回归 = 3 份测试共 45 例。
+> 立项依据 = 诊断报告 §3.2 升级 B/E/F 与 Q5/Q6。
+> **B4 同样不新增相位**：节级波次、恢复分类、依赖图都是既有相位内的机制，
+> `PHASE_ORDER` 仍 23 相位，`check_phase_consistency.EXPECTED_PHASES` 未改。
+
+### 1. 升级 B：节级拓扑波次（`scheduler.py --mode sections`）
+
+`chapter_design.md` 的 **§C.1 节依赖标注**必须是下列机器可读表（列序固定）：
+
+```markdown
+<!-- SECTION_DEPS_BEGIN -->
+| 节号 | strong-dep | no-dep | 关键术语 | 字数目标 |
+| --- | --- | --- | --- | --- |
+| 1.1 | — | yes | T1,T2 | 800 |
+| 1.2 | 1.1 | no | T3 | 1200 |
+| 1.3 | — | yes | — | 900 |
+<!-- SECTION_DEPS_END -->
+```
+
+- `strong-dep`（依赖上游节号）为空的节进第 1 波；此后按 Kahn 拓扑逐波推进，
+  **波内并行、波间串行**。有强依赖却标 `no-dep=yes`、引用表外节号、列错位、
+  字数非正整数、成环 ⇒ `exit 2`/`exit 1`，**绝不静默当「无依赖」放行**。
+- 并发度**复用章级 Q2 四级授权**（`--max-concurrency` > `STB_MAX_CONCURRENCY` >
+  `STB_RATE_LIMIT` > 退化为串行），不另立默认值；`BRANCH_CAP` 仍生效。
+- token 预算不足 ⇒ 该波次 `budget_degraded=true`、并发降为 1（优雅退化，不截断执行）。
+- `strong-dep` 节派单注入上游 `关键术语`（`required_terms`），writer 不得自行定义；
+  每节独立 `task_id` 与 `must_produce=章节/{ch##}/sections/{节号}.md`，
+  路径归属不同 ⇒ 满足 path-ownership §1.4 并行前置检查。
+
+```bash
+python3 scripts/scheduler.py --work-root "$WORK_ROOT" plan \
+    --mode sections --chapter ch01 --json
+```
+
+### 2. 升级 E：缺失节恢复协议（`assemble_sections.py`）
+
+拼接时发现设计节序里的节号无文件 ⇒ **不再只 exit 1 终止**，而是查上次成功的
+`章节/{ch##}/拼接清单.json` 判定该节曾否成功落盘：
+
+| 分类 | 判据 | 建议动作 |
+|---|---|---|
+| `RECOVERABLE` | 上次清单含该节（文件后来丢失） | E2 升级：复用上次 spawn 文案重派该节 |
+| `NEVER_PRODUCED` | 清单无该节 / 基线缺失或损坏 | 按成员契约 `on_partial=BLOCK`，主理人重派 |
+
+- 报告落 `运行态/section_recovery_{ch##}.json`，两种分类都写合规 `BLOCK` trace
+  （纳入 `retry_rate`）；`拼接清单.json` 损坏必须显式记 `baseline_status=corrupt`，
+  **不得静默当「从未产出」**。
+- **脚本只报不 spawn**：重派是主理人的编排权（与 B3 裁决门、升级 B/F 同一纪律）。
+- 退出码：`0` 拼接成功 ｜ `1` 节级自查未过（标签/编号缺陷）｜ `2` 输入缺失 ｜
+  `3 RECOVERY_REQUIRED`（已出恢复报告，主理人据它重派）。
+  `--no-trace` 仅供 CI/离线排查，常态必须写 trace。
+
+### 3. 升级 F：跨章术语依赖图（`check_cross_chapter.py` 第 7 项）
+
+每章 `draft.md` frontmatter 声明本章**定义**与**引用**的术语：
+
+```yaml
+---
+exports: [T3, T4]          # 本章新定义、可供下游使用的术语
+imports:
+  - term: T1               # 本章用到、由外章定义的术语
+    from: ch02             # 来源章号（必填，是依赖图的边）
+---
+```
+
+- 机械判据：`ch03` 的 `imports` 项必须出现在 `ch02` 的 `exports` 且 ch02
+  **当前版本**仍有该条目；来源章不存在 / 缺 `from` / 上游已删改术语 ⇒ `FAIL`。
+- 未声明 `exports/imports` 的章记 `WARN`（渐进接入，不阻塞）——存量章节可分章补声明。
+- **联动检查**：任何章 PROOFREAD pass 后，按其静态 `imports` 反向边做 BFS 闭包，
+  只重跑受影响下游章，无需全量重扫：
+
+```bash
+python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
+    --affected-from ch02 --strict --json
+```
+
+- 第 7 项是**追加**，既有 6 项（术语/数据矛盾/重复/难度递进/字数分配/图号连续）不变；
+  JSON 输出新增 `term_dependency` 摘要（含 `affected_chapters` 闭包）。
+
+### 4. 三升级的共同纪律
+
+```mermaid
+flowchart TD
+    A["PRODUCE：教学设计产出 §C.1 节依赖表"] --> B["scheduler.py plan --mode sections<br/>Kahn 拓扑分波"]
+    B --> C{"预算足？"}
+    C -- 是 --> D["波内并行派工<br/>每节独立 task_id + must_produce"]
+    C -- 否 --> E["budget_degraded=true<br/>并发降为 1（串行）"]
+    E --> D
+    D --> F["writer 逐节产出 sections/{节号}.md<br/>上游术语注入 required_terms"]
+    F --> G{"assemble_sections.py<br/>拼接"}
+    G -- exit 0 --> H["draft.md + 拼接清单.json"]
+    G -- exit 3 --> I["查 拼接清单.json 基线"]
+    I --> J{"曾成功落盘？"}
+    J -- 是 --> K["RECOVERABLE<br/>复用原 spawn 文案重派"]
+    J -- 否 --> L["NEVER_PRODUCED<br/>on_partial=BLOCK 重派"]
+    I -.-> M["baseline_status=corrupt<br/>⇒ 人工核对，禁止自动判定"]
+    K --> F
+    L --> F
+    H --> N["PROOFREAD pass 后<br/>check_cross_chapter --affected-from"]
+    N --> O["按 imports 反向边 BFS 闭包<br/>只重跑受影响下游章"]
+    O --> P["上游删改术语 ⇒ 下游 FAIL<br/>回下游章补一致性修订"]
+```
+
+1. **脚本只报不 spawn**：波次计划、恢复报告、依赖图都只是决策输入，派工调度归主理人。
+2. **不恒真放行**：解析歧义 / 空表 / 基线损坏 / 无校验目标一律显式报错，
+   测试均含反向例（B4 共 45 例）。
+3. **trace 合规**：所有写入经 `record_trace.py`，带 `phase` 与显式 `start`（B2 强制契约）；
+   `BLOCK` 行纳入 `retry_rate`，`STATUS` 行不污染 `dispatch_hit_rate`。
+4. 路径归属：`运行态/section_recovery_{ch##}.json` 归主理人（已登记 path-ownership v1.6.0）。
 
 ## 检索门禁（三重规则）
 

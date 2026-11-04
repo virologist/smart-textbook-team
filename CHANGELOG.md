@@ -3,6 +3,78 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 2026-11-04 诊断批次 B4：节级并行与恢复（升级 B + 升级 E + 升级 F）
+
+> 用户 2026-11-04 批准「按优先级与建议顺序执行」，B3 完成后放行 B4。
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §节级并行与恢复协议；
+> 立项依据 = `tb-writer/docs/smart-textbook-team-诊断与升级设计-2026-11-04.md` §3.2 升级 B/E/F、Q5/Q6。
+
+### 升级 B：节级拓扑波次（`scripts/scheduler.py --mode sections`）
+
+- `plan --mode sections --chapter ch##` 读 `chapter_design.md` §C.1 节依赖表，
+  按 `strong-dep` 做 Kahn 拓扑分波：**波内并行、波间串行**。
+- 并发度**复用章级 Q2 四级授权**（`--max-concurrency` > `STB_MAX_CONCURRENCY` >
+  `STB_RATE_LIMIT` > 退化为串行），不另立默认值；`BRANCH_CAP` 仍生效。
+- token 预算不足 ⇒ 该波次 `budget_degraded=true`、并发降为 1（**优雅退化，不截断执行**）。
+- **不恒真放行**：有强依赖却标 `no-dep=yes`、引用表外节号、列错位、字数非正整数、
+  成环 ⇒ 显式报错退出，**绝不静默当「无依赖」放行**。
+- 章级 `plan`（默认 `--mode chapters`）行为**完全不变** ⇒ B4 可独立回滚。
+
+### 升级 E：缺失节恢复协议（`scripts/assemble_sections.py`）
+
+- 拼接时发现设计节序里的节号无文件 ⇒ 不再只 exit 1 终止，查上次成功的
+  `章节/{ch##}/拼接清单.json` 判定该节**曾否成功落盘**：
+  - `RECOVERABLE`：清单含该节（文件后来丢失）⇒ 可复用上次 spawn 文案重派；
+  - `NEVER_PRODUCED`：清单无该节 ⇒ 按成员契约 `on_partial=BLOCK` 重派。
+- 报告落 `运行态/section_recovery_{ch##}.json`；两种分类都写合规 `BLOCK` trace（纳入 `retry_rate`）。
+- `拼接清单.json` 损坏必须显式记 `baseline_status=corrupt`，**不得静默当「从未产出」**
+  （否则会误重派已交付内容、造成版本漂移）。
+- **脚本只报不 spawn**：重派是主理人的编排权（与 B3 裁决门同一纪律）。
+- 退出码：`0` 成功 ｜ `1` 节级自查未过 ｜ `2` 输入缺失 ｜ `3 RECOVERY_REQUIRED`。
+  `--no-trace` 仅供 CI/离线排查，常态必须写 trace。
+
+### 升级 F：跨章术语依赖图（`scripts/check_cross_chapter.py` 第 7 项）
+
+- 每章 `draft.md` frontmatter 声明 `exports`（本章新定义术语）与
+  `imports: [{term, from}]`（用到的外章术语）；`from` 是依赖图的边，**必填**。
+- 机械判据：下游 `imports` 项必须出现在上游 `exports` 且上游**当前版本**仍有该条目；
+  来源章不存在 / 缺 `from` / 上游已删改术语 ⇒ `FAIL`。
+- 未声明 `exports/imports` 的章记 `WARN`（渐进接入，不阻塞）——存量章节可分章补声明。
+- 新增 `--affected-from ch##`：按静态 `imports` 反向边做 BFS 闭包，
+  **只重跑受影响下游章**，不全量重扫。
+- 第 7 项是**追加**，既有 6 项（术语/数据矛盾/重复/难度递进/字数分配/图号连续）不变；
+  JSON 输出新增 `term_dependency` 摘要（含 `affected_chapters` 闭包）。
+
+### 流程结构变更（相位枚举不变）
+
+- 节级波次、恢复分类、依赖图都是**既有相位内的机制**，不是新相位：
+  `progress.py PHASE_ORDER` 仍 23 相位，`check_phase_consistency.py` 的
+  `EXPECTED_PHASES` 契约快照**不改** ⇒ 续跑顺序、相位时延桶、门禁基线全部不受影响。
+- `references/path-ownership.md` v1.6.0 新增 1 条路径（27→28），
+  并给出 §1.4 并行前置检查结论：同波次各节写 `sections/{节号}.md`（路径互不相同）⇒ 允许并行；
+  `draft.md` 在节级模式下由 `assemble_sections.py` 拼接产出，**禁止并行 writer 各写整章稿**。
+- 文档同步：`textbook-pipeline-workflow/SKILL.md` v1.4.0（新增节级并行与恢复协议章节）、
+  `agent-harness-protocol/SKILL.md` v1.7.0（新增 §6.5.5 + 3 条交接检查项）、
+  `didactic-architect.md` v2.2.0（新增 §C.1 节依赖标注）、
+  `subject-writer.md` v2.1.0（新增节级并行生产章节 + 契约扩展）、
+  `smart-textbook-team-team-lead.md` v2.3.0（PRODUCE 改节级规划 + LEARN 消费跨章信号）、
+  `skills/book-orchestration/SKILL.md`（新增 §6 全书层节级调度与联动）、
+  `references/chapter-structure.md` v1.2.0（新增 §3.2 节依赖表）、
+  `references/path-ownership.md` v1.6.0、`README.md`（主理人体积 25.4KB→26.9KB）。
+
+### 回归（B4 批次独立）
+
+- `tests/test_scheduler_sections.py` **22 例全绿**｜`tests/test_assemble_recovery.py` **11 例全绿**｜
+  `tests/test_cross_chapter_deps.py` **12 例全绿**——合计 **45 例**，均含反向例
+  （条件翻转时结果随之改变），证明断言非恒真。
+- 全量：`pytest 250 passed`｜静态契约 `280/280 = 1.000`｜router `47/47 = 1.000`｜
+  manifest `33/33`｜doc-consistency `11 passed`｜相位一致 `23 相位 / 30 md / 383 字面量 / 0 不一致`。
+- 踩坑（继承自 B3，本次复核确认）：`bash grep` 对中文/长文件漏检（`grep -n "版本"` 在
+  path-ownership 上返回空，实际文件正常）⇒ 本批次一律用结构化检索工具核对，
+  不以 bash grep 空结果下结论。
+
+---
+
 ## [Unreleased] — 2026-11-04 诊断批次 B3：搭接并行（升级 A + 升级 C）
 
 > 用户 2026-11-04 批准「放行 B3」，并确认**并行裁决权归主理人**。
