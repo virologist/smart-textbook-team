@@ -559,8 +559,24 @@ def _files_under(work_root: Path, pattern: str) -> list[str]:
 
 def check_contract(work_root: Path, pkg_root: Path, member: str,
                    chapter: str, produce: list[str] | None = None,
-                   mode: str = 'default', slug: str = '') -> dict:
-    """核对成员的 must_produce 落盘情况 + must_not_write 越界扫描。"""
+                   mode: str = 'default', slug: str = '',
+                   task_type: str = '', section_no: str = '') -> dict:
+    """核对成员的 must_produce 落盘情况 + must_not_write 越界扫描。
+
+    ★H2（v2.10.1）：条件产物（task_type_required）
+    -----------------------------------------------
+    契约 JSON 新增可选键 `task_type_required: {task_type: [产物...]}`——
+    仅在对应 task_type 派工时才必查的产物（如 r5_score.json 只在
+    review-proofread-score / review-score 轮产出；{节号}.verdict.md 只在
+    review-section 轮产出）。
+
+    规则（临时目录实证驱动，消 2 个假阳性）：
+    · 无 --task-type（常规核对）→ 跳过全部条件产物，不算缺项；
+      响应附 `conditional_skipped` 信息行（审计可见，非静默）；
+    · 有 --task-type → 用对应清单**替换**默认 must_produce（显式覆盖，
+      与 --produce 同语义）；清单里的 {节号} 占位符由 --section 展开，
+      未展开的占位符仍按 PATTERN_UNRESOLVED 报（不静默）。
+    """
     contracts = load_contracts(pkg_root)
     members = contracts['members']
     if member not in members:
@@ -569,16 +585,37 @@ def check_contract(work_root: Path, pkg_root: Path, member: str,
                 'missing': [], 'present': [], 'out_of_scope': []}
 
     mc = members[member]
+    tt_required = mc.get('task_type_required') or {}
+    conditional_skipped: list[str] = []
 
     # ── 待核对产物清单 ────────────────────────────────────────────────
     if produce:
         targets = list(produce)
+    elif task_type:
+        if task_type not in tt_required:
+            return {'ok': False, 'verdict': 'UNKNOWN_TASK_TYPE',
+                    'detail': (f'成员 {member} 的契约无 task_type={task_type} '
+                               f'的条件产物；已登记: {sorted(tt_required)}'),
+                    'missing': [], 'present': [], 'out_of_scope': []}
+        targets = list(tt_required[task_type])
     elif mode == 'sections' and member == 'subject-writer':
         # 节级模式：产物落在 sections/ 下，节号由设计文件给出（此处宽松判定）
         targets = [f'章节/{chapter}/sections/{s}.md'
                    for s in _section_numbers(work_root, chapter)]
     else:
         targets = list(mc.get('must_produce') or [])
+        # 常规核对：条件产物不进核对（附信息行，不静默）
+        # 注意 targets 存的是未展开的 {ch} 模式，比对须用同口径
+        targets_expanded = {expand(t, chapter, slug) for t in targets}
+        for tlist in tt_required.values():
+            for pat in tlist:
+                rel = expand(pat, chapter, slug)
+                if rel not in targets_expanded and rel not in conditional_skipped:
+                    conditional_skipped.append(rel)
+
+    # review-section 条件产物的 {节号} 占位符由 --section 展开
+    if task_type and section_no:
+        targets = [t.replace('{节号}', section_no) for t in targets]
 
     # ── 落盘核对 ──────────────────────────────────────────────────────
     present, missing = [], []
@@ -589,7 +626,9 @@ def check_contract(work_root: Path, pkg_root: Path, member: str,
             # 记为 missing 并标注原因（不静默当通过）
             missing.append({'path': rel, 'reason': 'PATTERN_UNRESOLVED',
                             'note': '占位符未消解，无法机械核对——'
-                                    '请用 --produce 给出具体产物路径'})
+                                    '请用 --produce 给出具体产物路径'
+                                    + ('（review-section 须配合 --section <节号>）'
+                                       if task_type == 'review-section' else '')})
             continue
         p = _resolve_artifact(work_root, rel)
         if p.is_file() and p.stat().st_size > 0:
@@ -706,9 +745,11 @@ def check_contract(work_root: Path, pkg_root: Path, member: str,
         'member': member,
         'chapter': chapter,
         'mode': mode,
+        'task_type': task_type or None,
         'targets': targets,
         'present': present,
         'missing': missing,
+        'conditional_skipped': conditional_skipped,
         'out_of_scope': out_of_scope,
         'suspected': suspected,
         'conflicts': conflicts,
@@ -899,6 +940,14 @@ def main() -> int:
                     help='显式指定本轮应产出的具体路径（可多次；覆盖契约默认清单）')
     ap.add_argument('--mode', default='default', choices=['default', 'sections'],
                     help='sections = 节级模式（产物落在 sections/）')
+    # ── ★H2（v2.10.1）：条件产物（task_type_required）──
+    ap.add_argument('--task-type', default='',
+                    help='★H2：按任务类型激活条件产物必查清单'
+                         '（review-proofread-score / review-style / review-score / review-section）；'
+                         '不给则常规核对 must_produce 并跳过条件产物（附 conditional_skipped 信息行）')
+    ap.add_argument('--section', default='',
+                    help='★H2：配合 --task-type review-section，展开 {节号} 占位符'
+                         '（如 --section 3 → sections/3.verdict.md）')
     ap.add_argument('--slug', default='', help='slug（展开 {slug} 占位符）')
     ap.add_argument('--pkg-root', default=None,
                     help='专家包根（默认取本脚本所在包的上一级）')
@@ -967,7 +1016,8 @@ def main() -> int:
 
     try:
         r = check_contract(wr, pkg_root, args.member, args.chapter,
-                           produce=args.produce, mode=args.mode, slug=args.slug)
+                           produce=args.produce, mode=args.mode, slug=args.slug,
+                           task_type=args.task_type, section_no=args.section)
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as e:
         print(f'ERROR  {e}', file=sys.stderr)
         return EXIT_INPUT_ERROR
@@ -976,6 +1026,11 @@ def main() -> int:
         print(json.dumps(r, ensure_ascii=False, indent=2))
     else:
         print(render(r))
+        if r.get('conditional_skipped'):
+            print(f'\nℹ 条件产物 {len(r["conditional_skipped"])} 项本轮未核对'
+                  f'（仅对应 task_type 派工时必查，用 --task-type 激活）：')
+            for pth in r['conditional_skipped']:
+                print(f'  - {pth}')
     return _EXIT.get(r.get('verdict'), EXIT_INPUT_ERROR)
 
 

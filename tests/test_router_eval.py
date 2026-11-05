@@ -60,6 +60,8 @@ KNOWN_SAMPLES = {
     '校对这章，出校对后稿和修订记录': 'review-style',
     '给这章打个五维质量分': 'review-score',
     '校对并给这章打五维质量分': 'review-proofread-score',
+    '审一下第 3 节的深度够不够': 'review-section',
+    '单独核查第 5 节是否达标': 'review-section',
     '画一张疫区封锁的决策树': 'visual-spec',
     '按 gaps.md 把缺口逐条补证据': 'gap-retrieval',
 }
@@ -148,6 +150,11 @@ def route(query: str) -> tuple[str | None, float, list[str]]:
         return 'review-score', conf(KNOWN_SAMPLES.get(q.strip()) == 'review-score'), signals
 
     # ── 审查-结构/深度/风格 ──
+    # ── 审查-节级(★G3 v2.10: review-section —— 「节」意图优先于整章审查词,
+    #    否则「审一下第 3 节」会被「结构/深度」截胡) ──
+    if '节' in q and any(kw in q for kw in ('审', '查', '核')):
+        signals.append('review-section')
+        return 'review-section', conf(KNOWN_SAMPLES.get(q.strip()) == 'review-section'), signals
     if ('结构' in q or '框架' in q) and '审' in q:
         signals.append('structure')
         return 'review-structure', conf(KNOWN_SAMPLES.get(q.strip()) == 'review-structure'), signals

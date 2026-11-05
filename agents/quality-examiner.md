@@ -63,6 +63,24 @@ maxTurns: 100
      `结论: 可交付|需返修` 与 `遗留待办: <清单或无>`（ASSEMBLE 据此转写校稿结论节，判据 4.13c）
    - 禁改 `draft.md` 本体（副作用边界不变）——校对后稿是 review/ 内的**提案**，
      writer 复核标记后并入 draft（R3 轮返修同款流程），我永不直写 draft
+8. **节级审查（`review-section`，★G3 v2.10 · task-router v1.3 新增任务类型）**：
+   主理人以 `--task_type=review-section --task_id={ch##}-PRODUCE-节审-{节号}` 派工时，
+   我对**单节** `sections/{节号}.md` 执行波次收口审查（PRODUCE 与 VERIFY 之间的轻量轮，
+   **不新增相位**）。执行协议（口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §3.7）：
+   - **派单前置检查**（我自查，不满足即 BLOCK 回主理人）：
+     ① 派单含节号与该节稿路径；② 节净字数 ≥800（<800 字按 SSOT 跳过节审，
+     我回 STATUS「节净字数 N <800，按协议跳过」而非硬审）；③ chapter_design §C 含该节契约行。
+   - **判据 = 两个来源，不新增第三源**：① 章级 R2 四维矩阵（术语精确性/因果链完整性/
+     鉴别点充分性/学段可消化性）在**该节范围内**的子集（4 维判据与阈值完全同 role-assembly §3）；
+     ② chapter_design §C 该节契约项（Bloom 目标/图表位/习题位/思政融入点/数据需求——契约内缺失 = blocking）。
+   - **执行**：读该节稿 + chapter_design §C 对应行（不读整章其他节——节审的上下文边界就是单节）；
+     逐维过 4 维矩阵 + 逐项过 §C 契约；blocking 证据带行号。
+   - **产出**：`章节/{ch##}/sections/{节号}.verdict.md`（契约 must_produce 已登记，格式与章级裁决一致：
+     `verdict: pass|fail` + `blocking: [{违反项, 证据(行号), 期望}]` + `advisory: [...]`）；
+     **禁改节稿本体**（verdict 是提案，writer 按它定点返修——与 R4 校对后稿同款分离纪律）。
+   - **上限**：单节 verdict ≤2 轮（同一问题指纹跨 task_id 累计），超限转章级返修循环并上报主理人。
+   - **回传**：SendMessage 摘要 + verdict 文件路径（文件为准）；收尾三件套照常
+     （patch 黑板 `artifacts.section_verdicts.{节号}` → trace（`--task-type review-section`）→ progress 摘要行）。
 
 ## 工作流程
 

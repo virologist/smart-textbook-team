@@ -259,8 +259,39 @@ python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
 | 查文献/PMID 核验 | literature-scout |
 | 写正文/改写/润色 | subject-writer |
 | 审查/质检/AI 腔 | quality-examiner |
+| **审/查单个节（如「审一下第 3 节」）** | quality-examiner（task_type=`review-section`，★G3 v2.10） |
 | 图表/Mermaid | visual-instructional-designer |
 | 综合（写一章） | W1 |
+
+> **路由细则**：问法含「节」且含审/查/核意图 → `review-section`（须带节号派单，
+> `<800 字跳过`协议见 pipeline §3.7）；无「节」字的整章审查词 → 既有 R1-R5 路由不变。
+> 优先级由 task-router §1 枚举与影子实现（test_router_eval）双向锚定。
+
+## ★G1 节级坍缩提示义务（v2.10，Phase B0/D 派工前检查）
+
+architect 产出 §A 知识块后，我在 Phase B0 判定：同一章内**异质知识域 ≥2 且字数目标 >8000**
+→ **必须**向用户提示「建议对异质节做节级坍缩」（构成表原文呈现 + team-generation §0.1 三问；
+用户明确跳过 → trace 记 `notes: section-collapse-declined` 后放行，**不提示 = 编排缺陷**）。
+提示时附 reasoning_chain（★G4）：`{"decision":"建议节级坍缩","criteria_refs":["team-generation §0.1"],"computation":"<异质域清单+字数>"}`。
+
+## ★G3 节级审查派工（v2.10，Phase D 波次收口）
+
+节净字数 ≥800 的节在波次收口后、拼接前，派轻量节审：
+
+```bash
+# 装配派工文案（成员人设注入协议三步不变）
+python3 scripts/assemble_spawn_prompt.py --member quality-examiner \
+  --task-id {ch##}-PRODUCE-节审-{节号} --task-file <任务包> \
+  --run-dir {WORK_ROOT}/.harness-runs/{task_id} --check-task-package \
+  --out "$RUN_DIR/spawn__quality-examiner.md"
+# spawn 后收产出：章节/{ch##}/sections/{节号}.verdict.md（文件为准）
+# 契约核对（激活条件产物必查）：
+python3 scripts/contract_check.py --work-root "$WORK_ROOT" --member quality-examiner \
+  --chapter {ch##} --task-type review-section --section {节号}
+```
+
+纪律：节审 verdict 是**定点返修提案**（writer 按它改该节），pass ≠ 章级 R1-R3 免审；
+单节 verdict ≤2 轮，超限转章级返修循环；同波多节可并行派（路径互异）。
 
 ## 团队协作铁律
 

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "updated": "2026-11-05",
+  "updated": "2026-11-06",
   "note": "成员产物契约 SSOT（M2 部分落盘判据 + §3.3.2 数据传递协议的具体化）。编排者 spawn 前注入本契约，收件时用 scripts/contract_check.py 比对 must_produce —— 缺项判 PARTIAL，不静默当合格。",
   "placeholders": {
     "{ch}": "章节号，如 ch03",
@@ -61,9 +61,7 @@
         "章节/{ch}/review/round2_report.md",
         "章节/{ch}/review/round3_report.md",
         "章节/{ch}/review/proofread.md",
-        "章节/{ch}/review/proofread_revisions.md",
-        "章节/{ch}/review/r5_score.json",
-        "章节/{ch}/sections/{节号}.verdict.md"
+        "章节/{ch}/review/proofread_revisions.md"
       ],
       "must_not_write": [
         "章节/{ch}/draft.md",
@@ -74,7 +72,24 @@
       "max_retry": 3,
       "on_partial": "BLOCK",
       "on_timeout": "TIMEOUT",
-      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套——现已登记 R1-R3 报告 + R4 校稿两件套。★G2（v2.10）：r5_score.json 为 R5 评分默认落盘路径——score_quality.py 无 --out 时默认写此路径，编排者 --produce 显式指定的路径优先于默认值；contract_check 在 review-proofread-score task_type 下必查此文件，运行时漏传 --produce 不再静默丢失。★G3（v2.10）：sections/{节号}.verdict.md 为节级审查 verdict（可选产物，task_type=review-section 时必查；节净字数 <800 字跳过节审则不产出，契约按「按需产物」处理——只在出现时校验合法性）。R45 合并派工（task_type=review-proofread-score）时用 --produce 显式给出 proofread 两件套+评分段路径。"
+      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套。★G2+v2.10.1（H2 修正）：r5_score.json 与 sections/{节号}.verdict.md 从 must_produce 平铺清单移入 task_type_required 条件产物映射——常规核对（无 --task-type）跳过条件产物，防止「本轮没派 R5/节审」被误判缺项（临时目录实证：四件套齐备被判 PARTIAL 的假阳性）；派 review-proofread-score / review-style / review-score / review-section 时用 --task-type 激活对应必查清单（review-section 须配合 --section 展开占位符）。score_quality.py 无 --out 时默认双落盘（运行态 SSOT + 契约路径 r5_score.json）。",
+      "task_type_required": {
+        "review-proofread-score": [
+          "章节/{ch}/review/proofread.md",
+          "章节/{ch}/review/proofread_revisions.md",
+          "章节/{ch}/review/r5_score.json"
+        ],
+        "review-style": [
+          "章节/{ch}/review/proofread.md",
+          "章节/{ch}/review/proofread_revisions.md"
+        ],
+        "review-score": [
+          "章节/{ch}/review/r5_score.json"
+        ],
+        "review-section": [
+          "章节/{ch}/sections/{节号}.verdict.md"
+        ]
+      }
     },
     "visual-instructional-designer": {
       "role": "图表设计",

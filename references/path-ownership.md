@@ -46,6 +46,8 @@ version: 1.7.0
 | `章节/{ch##}/review/r3_verification_log.md` | quality-examiner | append | 只读 |
 | `章节/{ch##}/review/proofread.md` | quality-examiner | 写/改（校对后稿·带修订标记，v1.1.0） | 只读 |
 | `章节/{ch##}/review/proofread_revisions.md` | quality-examiner | 写/改（修订记录+结论行，v1.1.0） | 只读 |
+| `章节/{ch##}/review/r5_score.json` | quality-examiner（v1.8.0 ★G2：由 `score_quality.py` 无 `--out` 时默认双落盘的契约路径；运行态 SSOT 仍归主理人侧脚本） | 写（R5 评分五维+证据 JSON） | 只读；contract_check 在 review-proofread-score / review-score task_type 下必查 |
+| `章节/{ch##}/sections/{节号}.verdict.md` | quality-examiner（v1.8.0 ★G3：节级审查 verdict，task_type=review-section 专属产物） | 写（单节 pass/blocking 裁决；**禁改 `{节号}.md` 节稿本体**——verdict 是提案，writer 按它定点返修） | 只读；<800 字节按 SSOT 跳过节审则无此文件（contract_check 常规核对不查，--task-type review-section + --section 激活必查） |
 | `章节/{ch##}/review/interventions.md` | smart-textbook-team-team-lead | append | 只读 |
 | `章节/{ch##}/figures/{图号}.md` | visual-instructional-designer | 写/改 | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.mmd` | visual-instructional-designer | 写（图表源码：Mermaid） | 只读 |
@@ -64,6 +66,8 @@ version: 1.7.0
 | `运行态/team-proposal-{ch##}.yaml` | smart-textbook-team-team-lead（由 `generate_team.py` 生成） | 写 | 禁写 |
 | `学习/候补/` | smart-textbook-team-team-lead | 写/改 | 只读 |
 | `学习/团队档案/` | smart-textbook-team-team-lead | 写/改（动态成员归档，批次 D 补登记） | 只读 |
+| `运行态/dynamic-members.yaml` 的 `scopes[]` 节级/块级成员条目 | smart-textbook-team-team-lead（v1.8.0 ★G1：三级坍缩注册，仍须 per-scope 用户确认） | 写/改（确认后注册） | 禁写 |
+| `references/tool-orchestration.md`（包内，非 WORK_ROOT） | smart-textbook-team-team-lead（v1.8.0 ★G5：全团工具编排总表 SSOT；变更须过 doc_consistency C-TOOL 计分） | 写/改 | 只读引用（成员 MD 只引行号，不得复制降级链全文） |
 | `.harness-runs/{task_id}/` | 由装配器与当次成员写 | 写 | 只读 |
 
 ## 3. 资源冲突仲裁（与 harness §0「冲突仲裁五类」对齐）
@@ -155,3 +159,21 @@ version: 1.7.0
     波次状态本身是单写者（编排者）→ 不产生双写者，
     可与节级并行安全共存。
   - 覆盖路径数 28 → 29
+- v1.8.0 [2026-11-06 升维批次 v2.10（★G1/G2/G3/G5 新路径登记）]:
+  - 新增 3 条 WORK_ROOT 路径：
+    ① `章节/{ch##}/review/r5_score.json`（★G2 R5 评分契约路径，quality-examiner 经
+       `score_quality.py` 默认双落盘；常规契约核对跳过，`--task-type
+       review-proofread-score|review-score` 激活必查——条件产物语义见
+       `references/member-contracts.json` 的 `task_type_required` 键）；
+    ② `章节/{ch##}/sections/{节号}.verdict.md`（★G3 节级审查 verdict，task_type=review-section
+       专属产物；verdict 是提案，禁改节稿本体——与 R4 校对后稿同款「生成者≠审查者」分离）；
+    ③ `运行态/dynamic-members.yaml` 的 `scopes[]` 节级/块级条目（★G1 三级坍缩，
+       per-scope 用户确认义务不变）。
+  - 新增 1 条包内路径：`references/tool-orchestration.md`（★G5 全团工具编排总表 SSOT；
+    成员 MD 只引行号不得复制——违反即 doc_consistency C-TOOL 计分漂移）。
+  - **§1 第 4 条并行前置检查的 v2.10 落地结论**：同波次各节的 `verdict.md` 路径互不相同
+    （`sections/{节号}.verdict.md` 按 节号 一节一文件）⇒ 节级审查可与节级撰写共用同一
+    并行安全判据；`r5_score.json` 与运行态 SSOT `运行态/r5-score.json` 是**双落盘双归属**
+    （前者 examiner 产物、后者主理人侧脚本产物）——语义不同（契约可查 vs 门禁 4.14 消费），
+    不构成双写者冲突。
+  - 覆盖路径数 29 → 33

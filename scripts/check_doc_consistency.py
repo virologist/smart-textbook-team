@@ -293,17 +293,32 @@ def check(root: Path, verbose: bool = False):
             例：`章节/{ch##}/figures/assets/{图号}.mmd/.svg`
               → 剥扩展名片段 → `章节/{ch##}/figures/assets/{图号}`
               → dir=`章节/{*}/figures/assets`，stem=`{*}`
+
+            ★H3 修正（v2.10.1，真实误伤驱动）：**复合双扩展名是不同文件名**。
+              `sections/{节号}.md`（writer 节稿）与 `sections/{节号}.verdict.md`
+              （examiner 节审 verdict）是**两个不同文件**——归一化后若都剥成
+              `sections/{*}` + ext=md，会把合法的双归属误判为冲突。
+              修正：剥扩展名前**先保留首个扩展名到主干**——即把
+              `.verdict.md` 视为「主干 `{节号}.verdict` + 扩展名 md」，
+              而非「主干 `{节号}` + 扩展名 verdict+md 连写」。
+              判别规则（正则见下，名字段为实义词）→ 主干含该复合后缀；
+              裸连写（`.mmd/.svg` 斜杠分隔）仍按多扩展名剥。
             """
             p = path_cell.strip().strip("`")
-            # 剥掉所有扩展名片段：`.ext` 或 `/.ext`（连写形式）
-            p = re.sub(r"(?:/)?\.[A-Za-z0-9]+", "", p)
-            if "/" in p:
-                d, last = p.rsplit("/", 1)
+            p = re.sub(r"\{[^}]*\}", "{*}", p)          # ★先归一占位符，正则才匹配到 {N}/{节号}
+            # ★H3：复合双扩展名（`{N}.verdict.md` 形态）→ 主干保留 `.verdict`
+            m = re.search(r"/([^/]+)\.(verdict|report|revisions|score|log)\.(md|json)$", p)
+            if m:
+                stem_full = m.group(1) + "." + m.group(2)
+                d = p[: m.start()]
             else:
-                d, last = "", p
-            d = re.sub(r"\{[^}]*\}", "{*}", d)
-            last = re.sub(r"\{[^}]*\}", "{*}", last)
-            return d, last
+                # 剥掉所有扩展名片段：`.ext` 或 `/.ext`（连写形式）
+                p2 = re.sub(r"(?:/)?\.[A-Za-z0-9]+", "", p)
+                if "/" in p2:
+                    d, stem_full = p2.rsplit("/", 1)
+                else:
+                    d, stem_full = "", p2
+            return d, stem_full
 
         dir_ext_owner = {}
         for ln, path_cell, owner, action, others in rows:
