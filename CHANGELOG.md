@@ -3,6 +3,78 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-11-05 R2 批次：波次状态落盘与契约回写
+
+> 立项依据 = 实施后复诊报告 §3.4 残留 R2：「B4 的节级拓扑波次只 print 到 stdout，
+> 调度器算出的波次结构没有持久化锚点」⇒ 契约回写无对象、效率指标无数据源、
+> 中断续跑不知上次跑到哪个波次。
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §波次状态与契约回写协议。
+> **R2 不新增相位**：`PHASE_ORDER` 仍 23 相位。
+
+### 波次状态锚点（`scripts/scheduler.py --write-wave-state`）
+
+- `plan --mode sections --chapter ch## --write-wave-state` 把波次计划落盘为
+  `运行态/wave_{ch##}_w{n}.json`（schema = `stt.wave_state/1`），
+  **每波一个文件** = 调度计划、契约快照与主理人裁决之间的**唯一落盘接口**。
+- 顶层保留既有 `out_waves` **全字段**（`wave_id`/`sections`/`concurrency`/
+  `estimated_tokens`/`budget_degraded`/`tasks`）⇒ 既有消费方按同一形状读取。
+- 增量字段：`plan_hash`/`wave_verdict`/`proposed_verdict`/`runtime`/
+  `contract`/`net_words`/`reason`/`patched_at`/`patched_by` 等。
+- `plan_hash` = sha256，**只覆盖波次内容**（不含并发度/预算等运行时授权）
+  ⇒ 同一份 §C.1 在不同授权下不会被误判「计划已变更」。
+- **只在计划成立时落盘**：依赖成环 / §C.1 表非法 ⇒ **不落盘**，
+  绝不把一份失败的计划写成事实。
+- 退出码新增 `5` = 落盘失败（锚点未建立 ⇒ **不得据此派工**）。
+
+### 计划与授权分离（核心纪律）
+
+- `proposed_verdict` = 脚本的**机器建议**（预算不足 ⇒ `BUDGET_DEGRADED`）。
+- `wave_verdict` = **主理人裁决位**，初始 `PENDING`，
+  由主理人落定 `READY` / `BLOCKED` / `BUDGET_DEGRADED`。
+- **脚本不写 `wave_verdict`**——脚本写它等于「计划存在」被误读成「已获执行授权」
+  （与 B3 裁决门、B4 恢复报告同一纪律：脚本只报不 spawn）。
+
+### 契约回写与主理人裁决（`scripts/contract_check.py --wave`）
+
+- `--wave {n}` 增量 patch `contract[节号].produced` / `net_words[节号]` / `reason`；
+  净字数口径**同源** `count_net_words.py`（与 `assemble_sections.py`、
+  `check_manuscript.py` 一致）——否则回写值与章节门禁量的是不同的东西。
+- `--wave {n} --verdict READY|BLOCKED|BUDGET_DEGRADED` 落定主理人裁决，
+  记录 `wave_verdict`/`verdict_by`/`verdict_at`/`verdict_reason`；
+  非法裁决值 ⇒ 报错退出，不静默写入。
+- 波次状态文件缺失 / schema 不匹配 ⇒ 报错退出（**宁可报错也不污染锚点**）。
+
+### 效率指标数据源（`scripts/compute_metrics.py`）
+
+- 新增 `[9] 波次级效率`：`wave_time`（波次墙钟耗时）与 `parallel_gain`
+  （**串行基准耗时 ÷ 波次墙钟耗时**；1.0 = 无并行收益，3.0 = 3 倍加速）。
+- join 键：波次 `contract[节号].task_id` 与 trace 的 `task_id` 格式完全一致
+  （`ch01-PRODUCE-R1-节1.10`）⇒ 不引入第二套 ID 体系。
+- **观测项，不设门槛**（与 `avg_concurrency` 同纪律）；
+  数据不足 ⇒ `None` + 说明，**不静默当 0**。
+
+### 顺带修复（真实跑批暴露）
+
+- **§C.1「关键术语」列此前无处落地**：调度器只把**上游**术语注入
+  `required_terms`，本节**定义/首用**的术语未进任何结构化字段 ⇒
+  「术语定义改到别的节」不可检测。现新增 `defined_terms`（与 `required_terms`
+  方向相反：前者=本节该定义什么，后者=本节须沿用什么），
+  并纳入 `plan_hash` 与契约快照。
+
+### 路径归属
+
+- `references/path-ownership.md` **v1.6.0 → v1.7.0**：
+  新增 `运行态/wave_{ch##}_w{n}.json` 归主理人（覆盖路径数 28 → 29）。
+  归属理由：波次计划、契约回写、主理人裁决三者都是**编排权动作**的产物；
+  若归 writer，则成员可自行宣布「已获授权」并自行回写契约 ⇒ 越界。
+
+### 回归
+
+- 新增 `tests/test_wave_state.py`（**24 例**，含反向例）：
+  落盘完整性 / `plan_hash` 稳定性与敏感性 / 计划-授权分离 /
+  契约回写 / 非法输入不落盘 / 落盘失败显式报错 / 效率指标数据源。
+- 全量回归 **284 passed**（原 260 + 新增 24）。
+
 ## [Unreleased] — 2026-11-04 诊断批次 B4：节级并行与恢复（升级 B + 升级 E + 升级 F）
 
 > 用户 2026-11-04 批准「按优先级与建议顺序执行」，B3 完成后放行 B4。

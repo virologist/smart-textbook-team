@@ -88,9 +88,18 @@ def compute(traces: list[dict], work_root: Path | None = None,
         'latency_by_phase': {},
         'latency_tasks': {},
         'product_quality': _product_quality(work_root) if work_root else None,
+        # ── R2：波次级效率指标（wave_time / parallel_gain）──────────
+        'wave_time_ms': None,
+        'parallel_gain': None,
+        'wave_metrics': None,
     }
     if not traces:
         # 无 trace 不代表无产物：产物质量（[6]）仍应计算（C9）
+        if work_root:
+            wm = _compute_wave_metrics(work_root, traces)
+            base['wave_metrics'] = wm
+            base['wave_time_ms'] = (wm or {}).get('wave_time_ms')
+            base['parallel_gain'] = (wm or {}).get('parallel_gain')
         return base
 
     # ── P2-6 口径修复(2026-10-15) ──────────────────────────────────
@@ -219,6 +228,11 @@ def compute(traces: list[dict], work_root: Path | None = None,
     # 本指标从工作区产物直接计算三个结构化维度；数据源缺失时整体 N/A（不阻塞）。
     product = _product_quality(work_root)
 
+    # ── R2：波次级效率指标（wave_time / parallel_gain）──────────────────
+    # 数据源 = 波次状态锚点（运行态/wave_{ch##}_w{n}.json）+ trace 的
+    # start/duration_ms。缺任一 → None + 说明，**不静默当 0**。
+    wave_metrics = _compute_wave_metrics(work_root, traces)
+
     return {
         'total_traces': len(traces),
         'total_tasks': len(by_task),
@@ -249,6 +263,9 @@ def compute(traces: list[dict], work_root: Path | None = None,
         'concurrency_tasks': concurrency.get('task_count'),
         'concurrency_note': concurrency.get('note'),
         'product_quality': product,
+        'wave_time_ms': (wave_metrics or {}).get('wave_time_ms'),
+        'parallel_gain': (wave_metrics or {}).get('parallel_gain'),
+        'wave_metrics': wave_metrics,
     }
 
 
@@ -459,6 +476,32 @@ def render(m: dict) -> str:
         if m.get('concurrency_note'):
             lines.append(f'      原因: {m["concurrency_note"]}')
 
+    # ── R2：波次级效率指标 ─────────────────────────────────────────
+    lines.append('')
+    lines.append('[9] 波次级效率 (R2 · wave_time / parallel_gain · 观测项·不设门槛)')
+    wm = m.get('wave_metrics')
+    if wm and wm.get('waves'):
+        lines.append(f'    波次墙钟合计 = {(wm.get("wave_time_ms") or 0) / 1000:.1f}s   '
+                     f'串行基准 = {(wm.get("serial_baseline_ms") or 0) / 1000:.1f}s   '
+                     f'并行收益 = {wm.get("parallel_gain")}×   '
+                     f'波次数 = {wm.get("wave_count")}')
+        lines.append('    口径：parallel_gain = 串行基准耗时 ÷ 波次墙钟耗时；'
+                     '1.0 = 无并行收益（退化为串行）')
+        for w in wm['waves']:
+            lines.append(f'      w{w.get("wave_id")} {w.get("chapter")} '
+                         f'节={w.get("sections")} 墙钟={w.get("wave_time_ms")}ms '
+                         f'串行基准={w.get("serial_baseline_ms")}ms '
+                         f'gain={w.get("parallel_gain")}×')
+        if wm.get('note'):
+            lines.append(f'    ({wm["note"]})')
+    else:
+        lines.append('    ⚠ 不可计算（不是「耗时为 0」，是数据不足）')
+        if wm and wm.get('note'):
+            lines.append(f'      原因: {wm["note"]}')
+        else:
+            lines.append('      原因: 无 波次状态锚点（运行态/wave_{ch##}_w{n}.json）'
+                         '——须先跑 scheduler.py --mode sections --write-wave-state')
+
     lines.append('=' * 60)
     return '\n'.join(lines)
 
@@ -595,6 +638,126 @@ def _compute_concurrency(traces: list[dict]) -> dict:
         'span_ms': span,
         'task_count': len(intervals),
         'note': (f'{missing} 条缺 start 已排除' if missing else ''),
+    }
+
+
+def _compute_wave_metrics(work_root: Path | None,
+                           traces: list[dict]) -> dict | None:
+    """波次级效率指标（R2）：`wave_time` 与 `parallel_gain`。
+
+    数据源：`运行态/wave_{ch##}_w{n}.json`（R2 波次状态锚点）+ `trace.jsonl`。
+
+    【join 键】波次状态里的 `contract[节号].task_id` 与 trace 的 `task_id`
+    格式完全一致（`ch01-PRODUCE-R1-节1.10`，由 `scheduler.py` 生成）⇒ 不需要
+    引入第二套 ID 体系。
+
+    ── `wave_time`（毫秒）──────────────────────────────────────────
+    单个波次的**墙钟耗时** = 波内最早 start → 最晚结束。
+    波内并行 ⇒ 墙钟远小于各节耗时之和；这是「并行到底省了多少」的分子。
+
+    ── `parallel_gain`（倍数）──────────────────────────────────────
+    **串行基准耗时 ÷ 实际波次墙钟耗时**：
+        serial_baseline = Σ(波内各节的可判定耗时)
+        parallel_gain    = serial_baseline / wave_time
+    语义 = 「同样这些节，串行跑要花 wave_time×gain 的时间；波内并行实际只花
+    wave_time」⇒ gain=1.0 表示**完全没有并行收益**（退化为串行），
+    gain=3.0 表示 3 倍加速。
+
+    为什么不用 `Σduration / wave_time`：那个值等于「波内平均并发度」，
+    与既有的 `avg_concurrency` 指标重复；`parallel_gain` 用**串行基准**
+    做分母，度量的是**本波次**的并行收益，可与 avg_concurrency 互为佐证。
+
+    数据不足（无波次状态 / 无可判定 trace 区间）→ 返回 None + 说明，
+    **不静默当 0**（与 `_compute_concurrency` 同一纪律）。
+    """
+    if not work_root:
+        return None
+    wave_dir = work_root / '运行态'
+    if not wave_dir.is_dir():
+        return None
+    state_files = sorted(p for p in wave_dir.iterdir()
+                         if p.name.startswith('wave_ch') and p.name.endswith('.json'))
+    if not state_files:
+        return None
+
+    # trace 索引：task_id → (start_ms, duration_ms)
+    tindex: dict[str, tuple[int, int]] = {}
+    for t in traces:
+        tid = str(t.get('task_id') or '')
+        if not tid:
+            continue
+        start = _parse_ts(t.get('start'))
+        if start is None:
+            continue
+        dur = int(t.get('duration_ms') or 0)
+        if dur <= 0:
+            dur = _delta_ms(t.get('start'), t.get('ts'))
+        if dur <= 0:
+            continue
+        prev = tindex.get(tid)
+        if prev is None or dur > prev[1]:
+            tindex[tid] = (start, dur)
+
+    waves: list[dict] = []
+    total_wall = 0
+    total_serial = 0
+    n_gain = 0
+    skipped = 0
+    for p in state_files:
+        try:
+            st = json.loads(p.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            skipped += 1
+            continue
+        if not isinstance(st, dict) or not st.get('schema', '').startswith('stt.wave_state'):
+            skipped += 1
+            continue
+        contract = st.get('contract') or {}
+        # 收集本波次内可判定的 trace 区间
+        ivs: list[tuple[int, int]] = []
+        for sec, entry in contract.items():
+            tid = (entry or {}).get('task_id')
+            hit = tindex.get(str(tid)) if tid else None
+            if hit:
+                ivs.append(hit)
+        if not ivs:
+            skipped += 1
+            continue
+        wave_start = min(s for s, _ in ivs)
+        wave_end = max(s + d for s, d in ivs)
+        wall = wave_end - wave_start
+        serial = sum(d for _, d in ivs)
+        gain = round(serial / wall, 3) if wall > 0 else None
+        waves.append({
+            'wave_id': st.get('wave_id'),
+            'chapter': st.get('chapter'),
+            'sections': st.get('sections'),
+            'wave_time_ms': wall,
+            'serial_baseline_ms': serial,
+            'parallel_gain': gain,
+            'sections_measured': len(ivs),
+        })
+        total_wall += wall
+        total_serial += serial
+        if gain is not None:
+            n_gain += 1
+
+    if not waves:
+        return {'waves': [], 'wave_time_ms': None, 'parallel_gain': None,
+                'note': f'有 {len(state_files)} 个波次状态文件，但无一匹配到'
+                        f'可判定的 trace 区间（需 trace 带 start 与 duration_ms）'
+                        f'——不是「耗时为 0」，是数据不足'}
+
+    overall_gain = (round(total_serial / total_wall, 3)
+                    if total_wall > 0 and n_gain else None)
+    return {
+        'waves': waves,
+        'wave_time_ms': total_wall,
+        'wave_count': len(waves),
+        'parallel_gain': overall_gain,
+        'serial_baseline_ms': total_serial,
+        'note': (f'{skipped} 个波次状态未匹配到可判定 trace 区间'
+                 if skipped else ''),
     }
 
 

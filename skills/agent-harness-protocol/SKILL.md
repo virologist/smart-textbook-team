@@ -742,6 +742,48 @@ python3 scripts/merge_sections.py --work-root "$WORK_ROOT" --chapter ch01 --chec
   共 45 例，均含反向例（条件翻转时结果随之改变），见 `tests/test_scheduler_sections.py`、
   `tests/test_assemble_recovery.py`、`tests/test_cross_chapter_deps.py`。
 
+#### 6.5.6 波次状态与契约回写（`scheduler.py --write-wave-state` / `contract_check.py --wave`，R2）
+
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §波次状态与契约回写协议。
+> 与 §6.5.5 同纪律：**脚本只报不 spawn**，波次计划、契约回写、裁决都归编排者。
+> `PHASE_ORDER` 23 相位**不变**——波次状态是既有相位内的机制，不是新相位。
+
+**为什么必须有它**：B4 的节级波次此前只 `print` 到 stdout，调度器算出的波次结构
+**没有持久化锚点** ⇒ 契约回写无对象、效率指标无数据源、中断续跑不知上次跑到哪波。
+
+| 环节 | 执行体 | 产物 |
+|---|---|---|
+| 落盘计划 | `scheduler.py plan --mode sections --chapter ch## --write-wave-state` | `运行态/wave_{ch##}_w{n}.json`（schema `stt.wave_state/1`） |
+| 契约回写 | `contract_check.py --chapter ch## --wave {n}` | 增量 patch `contract`/`net_words`/`reason` |
+| 主理人裁决 | `contract_check.py --chapter ch## --wave {n} --verdict READY\|BLOCKED\|BUDGET_DEGRADED` | `wave_verdict`/`verdict_by`/`verdict_at`/`verdict_reason` |
+| 效率指标 | `compute_metrics.py` | `[9] wave_time` / `parallel_gain` |
+
+**「计划」与「授权」必须分离**（本节核心纪律）：
+
+| 字段 | 谁写 | 初值 |
+|---|---|---|
+| `proposed_verdict` | 脚本（机器建议） | `READY` / `BUDGET_DEGRADED` |
+| `wave_verdict` | **主理人**（正式裁决） | `PENDING` |
+
+脚本写 `wave_verdict` ⇒ 「计划存在」被误读成「已获执行授权」。
+
+**退出码语义**：
+
+| 脚本 | 退出码 | 含义 |
+|---|---|---|
+| `scheduler.py --write-wave-state` | `0` | 计划成立且波次状态已落盘 |
+| | `1` / `2` | 依赖成环 / §C.1 表非法 ⇒ **不落盘** |
+| | `5` | 落盘失败（锚点未建立 ⇒ **不得据此派工**） |
+| `contract_check.py --wave` | `0` | 回写完成（`wave_verdict` 未被脚本改动） |
+| | `4` | 波次状态缺失 / schema 不匹配 / 非法裁决值 |
+
+**净字数口径必须同源** `count_net_words.py`——否则回写值与章节门禁
+量的是不同的东西（C-05 病灶：同一规则两份口径）。
+
+**路径归属**：`运行态/wave_{ch##}_w{n}.json` 归主理人（path-ownership v1.7.0）；
+波次状态**按波次一个文件**，同波次各节写的是不同的 `sections/{节号}.md`
+⇒ 与 §6.5.5 的节级并行不产生双写者。
+
 ---
 
 ## 7. 交接检查表（dispatch 前逐项过）
@@ -768,6 +810,8 @@ python3 scripts/merge_sections.py --work-root "$WORK_ROOT" --chapter ch01 --chec
 - [ ] **节级派工五字段齐备（B4，2026-11-04）**：走节级并行时，指令含 `must_produce` / `section_no` / `required_terms` / `target_words` / `task_id`——缺任一 ⇒ 退回串行（§6.5.5）
 - [ ] **节级波次计划已生成（B4，2026-11-04）**：已跑 `scheduler.py --mode sections --chapter ch##`；同波次内各节目标路径归属不同（§6.5.5）
 - [ ] **缺节恢复已裁决（B4，2026-11-04）**：`assemble_sections.py` exit 3 时已按 `RECOVERABLE`/`NEVER_PRODUCED` 分派重派；`baseline_status=corrupt` 已人工核对（§6.5.5）
+- [ ] **波次状态已落盘（R2，2026-11-05）**：已跑 `scheduler.py --mode sections --chapter ch## --write-wave-state`（exit 0）；`运行态/wave_{ch##}_w{n}.json` 存在且 `wave_verdict=PENDING`（§6.5.6）
+- [ ] **波次裁决已落定（R2，2026-11-05）**：主理人已跑 `contract_check.py --wave {n} --verdict ...`；`wave_verdict` ∈ `READY`/`BLOCKED`/`BUDGET_DEGRADED`（脚本不得自行写该字段）（§6.5.6）
 
 ---
 

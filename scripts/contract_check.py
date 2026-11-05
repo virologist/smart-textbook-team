@@ -62,6 +62,7 @@ import fnmatch
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 CONTRACT_REL = ('references', 'member-contracts.json')
@@ -72,6 +73,188 @@ EXIT_PARTIAL = 1
 EXIT_MISSING = 2
 EXIT_OUT_OF_SCOPE = 3
 EXIT_INPUT_ERROR = 4
+
+# ═══════════════════════════════════════════════════════════════════════
+# R2：波次状态回写与主理人裁决消费端（schema = stt.wave_state/1）
+# ═══════════════════════════════════════════════════════════════════════
+#
+# 病灶（复诊 R2）：B4 的节级波次只 print 到 stdout，调度器算出的波次结构
+# 没有持久化锚点 ⇒ ① 契约回写无从核对「本波该交付什么」
+# ② 效率指标（波次耗时 / 并行收益）没有数据源 ③ 中断续跑不知上次跑到哪个波次。
+#
+# R2 落地：`scheduler.py plan --mode sections --write-wave-state` 把波次计划落盘为
+# `运行态/wave_{ch##}_w{n}.json`（唯一消费端锚点）。本模块负责**增量回写**：
+#   · `contract[节号].produced` —— 该节实际是否交付
+#   · `net_words[节号]`        —— 该节实际净字数（SSOT 口径：count_net_words.py）
+#   · `reason`                 —— 本次回写的判据说明
+#
+# 【计划与授权分离】本脚本**只报不裁决**：
+#   · `contract` / `net_words` / `reason` = 机械核对结果（脚本可自证）
+#   · `wave_verdict`（READY|BLOCKED|BUDGET_DEGRADED）= **主理人裁决位**，
+#     本脚本**不写**它——脚本写它等于「计划存在」被误读成「已获执行授权」。
+#     主理人裁决由 `wave_verdict` 子命令落定。
+
+WAVE_STATE_SCHEMA = 'stt.wave_state/1'
+WAVE_STATE_RE = re.compile(r'^wave_(ch\d{2})_w(\d+)\.json$')
+WAVE_VERDICTS = ('READY', 'BLOCKED', 'BUDGET_DEGRADED')
+WAVE_VERDICT_PENDING = 'PENDING'
+
+
+def wave_state_path(work_root: Path, chapter: str, wave_id: int) -> Path:
+    """波次状态文件路径（运行态/wave_{ch##}_w{n}.json）。"""
+    return work_root / '运行态' / f'wave_{chapter}_w{wave_id}.json'
+
+
+def list_wave_states(work_root: Path, chapter: str) -> list[Path]:
+    """列出某章的全部波次状态文件（按 wave_id 升序）。"""
+    d = work_root / '运行态'
+    if not d.is_dir():
+        return []
+    out: list[tuple[int, Path]] = []
+    for p in d.iterdir():
+        m = WAVE_STATE_RE.match(p.name)
+        if m and m.group(1) == chapter:
+            out.append((int(m.group(2)), p))
+    return [p for _, p in sorted(out)]
+
+
+def load_wave_state(path: Path) -> dict:
+    """读波次状态。文件缺失/损坏 → 抛异常（调用方 exit 4）。
+
+    schema 不匹配 → 抛异常：跨 schema 的增量回写会把不相干字段写进状态文件，
+    宁可报错也不静默污染锚点。
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f'波次状态文件不存在: {path}')
+    data = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(data, dict):
+        raise ValueError(f'波次状态文件格式错误（顶层不是对象）: {path}')
+    schema = data.get('schema')
+    if schema != WAVE_STATE_SCHEMA:
+        raise ValueError(f'波次状态 schema 不匹配（期望 {WAVE_STATE_SCHEMA}，'
+                         f'实为 {schema!r}）: {path}')
+    return data
+
+
+def write_wave_state(path: Path, state: dict) -> None:
+    """写回波次状态（原子替换，避免半截文件）。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n',
+                   encoding='utf-8')
+    tmp.replace(path)
+
+
+def _net_words_of(work_root: Path, rel_path: str) -> int | None:
+    """按 SSOT 口径（count_net_words.py）算某产物文件的净字数。
+
+    口径必须与 `assemble_sections.py` / `check_manuscript.py` 同源——否则
+    回写的净字数与章节门禁量的是不同的东西（C-05 病灶：同一规则两份口径）。
+    """
+    p = work_root / rel_path
+    if not p.is_file():
+        return None
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from count_net_words import count_net_words
+    except ImportError:
+        return None
+    try:
+        return count_net_words(p.read_text(encoding='utf-8'))['net_final']
+    except (OSError, ValueError):
+        return None
+
+
+def patch_wave_state(work_root: Path, chapter: str, wave_id: int,
+                     patched_by: str = 'contract_check.py') -> dict:
+    """增量回写某波次的契约快照（contract / net_words / reason）。
+
+    回写内容 = **机械核对结果**：
+      · `contract[节号].produced` = 该节产物文件是否存在且非空
+      · `net_words[节号]`        = 该节实际净字数（SSOT 口径）
+      · `reason`                 = 本次回写的判据说明（含缺失节清单）
+
+    **不写 `wave_verdict`** —— 那是主理人裁决位，脚本无权代填。
+    返回回写后的状态摘要（供 JSON 输出与断言）。
+    """
+    path = wave_state_path(work_root, chapter, wave_id)
+    state = load_wave_state(path)
+
+    contract = dict(state.get('contract') or {})
+    net_words = dict(state.get('net_words') or {})
+    missing: list[str] = []
+    checked: list[str] = []
+
+    for sec, entry in contract.items():
+        entry = dict(entry or {})
+        rel = (entry.get('must_produce')
+               or f'章节/{chapter}/sections/{sec}.md')
+        p = work_root / rel
+        produced = p.is_file() and p.stat().st_size > 0
+        entry['produced'] = produced
+        entry['must_produce'] = rel
+        contract[sec] = entry
+        if produced:
+            nw = _net_words_of(work_root, rel)
+            net_words[sec] = nw
+            checked.append(sec)
+        else:
+            net_words[sec] = None
+            missing.append(sec)
+
+    state['contract'] = contract
+    state['net_words'] = net_words
+    state['reason'] = (
+        f'契约回写：已交付 {len(checked)}/{len(contract)} 节'
+        + (f'；缺失 {", ".join(missing)}' if missing else '；无缺失')
+    )
+    state['patched_at'] = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+    state['patched_by'] = patched_by
+
+    write_wave_state(path, state)
+    return {
+        'wave_id': wave_id,
+        'chapter': chapter,
+        'path': str(path),
+        'delivered': checked,
+        'missing': missing,
+        'net_words': {k: v for k, v in net_words.items()},
+        'wave_verdict': state.get('wave_verdict'),
+        'proposed_verdict': state.get('proposed_verdict'),
+        'verdict_untouched': True,
+    }
+
+
+def set_wave_verdict(work_root: Path, chapter: str, wave_id: int,
+                     verdict: str, reason: str = '',
+                     verdict_by: str = 'smart-textbook-team-team-lead'
+                     ) -> dict:
+    """落定主理人裁决（wave_verdict）。
+
+    这是**消费端**：脚本只提供机械核对结果，`READY|BLOCKED|BUDGET_DEGRADED`
+    的授权判断由主理人做。本函数只负责**忠实记录**裁决，不自行产生裁决——
+    裁决值必须由调用方显式给出。
+    """
+    v = (verdict or '').strip().upper()
+    if v not in WAVE_VERDICTS:
+        raise ValueError(f'非法裁决值 {verdict!r}；合法值：'
+                         f'{"|".join(WAVE_VERDICTS)}')
+    path = wave_state_path(work_root, chapter, wave_id)
+    state = load_wave_state(path)
+    state['wave_verdict'] = v
+    state['verdict_by'] = verdict_by
+    state['verdict_at'] = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+    state['verdict_reason'] = reason or None
+    write_wave_state(path, state)
+    return {
+        'wave_id': wave_id,
+        'chapter': chapter,
+        'path': str(path),
+        'wave_verdict': v,
+        'verdict_by': verdict_by,
+        'verdict_at': state['verdict_at'],
+        'verdict_reason': state['verdict_reason'],
+    }
 
 
 def load_contracts(pkg_root: Path) -> dict:
@@ -710,7 +893,7 @@ _EXIT = {
 def main() -> int:
     ap = argparse.ArgumentParser(description='contract_check — 成员产物契约校验（部分落盘判据）')
     ap.add_argument('--work-root', required=True)
-    ap.add_argument('--member', required=True, help='成员 ID，如 subject-writer')
+    ap.add_argument('--member', default='', help='成员 ID，如 subject-writer')
     ap.add_argument('--chapter', required=True, help='章号，如 ch03')
     ap.add_argument('--produce', action='append', default=None,
                     help='显式指定本轮应产出的具体路径（可多次；覆盖契约默认清单）')
@@ -719,6 +902,17 @@ def main() -> int:
     ap.add_argument('--slug', default='', help='slug（展开 {slug} 占位符）')
     ap.add_argument('--pkg-root', default=None,
                     help='专家包根（默认取本脚本所在包的上一级）')
+    # ── R2：波次状态回写 / 主理人裁决 ────────────────────────────────
+    ap.add_argument('--wave', type=int, default=None,
+                    help='R2：回写该波次的契约快照（contract/net_words/reason）；'
+                         '不给则走常规成员契约核对')
+    ap.add_argument('--verdict', default='',
+                    help=f'R2：主理人裁决 wave_verdict，合法值 '
+                         f'{" | ".join(WAVE_VERDICTS)}（须配合 --wave）')
+    ap.add_argument('--verdict-by', default='smart-textbook-team-team-lead',
+                    help='R2：裁决落定者（默认主理人）')
+    ap.add_argument('--verdict-reason', default='',
+                    help='R2：裁决理由（写入 verdict_reason）')
     ap.add_argument('--json', action='store_true')
     args = ap.parse_args()
 
@@ -728,6 +922,48 @@ def main() -> int:
         return EXIT_INPUT_ERROR
     pkg_root = (Path(args.pkg_root).expanduser().resolve() if args.pkg_root
                 else Path(__file__).resolve().parent.parent)
+
+    # ── R2 分支：波次状态回写 / 主理人裁决 ──────────────────────────
+    if args.wave is not None or args.verdict:
+        if args.wave is None:
+            print('ERROR  --verdict 必须配合 --wave（不知道改哪个波次）',
+                  file=sys.stderr)
+            return EXIT_INPUT_ERROR
+        try:
+            if args.verdict:
+                r = set_wave_verdict(wr, args.chapter, args.wave,
+                                     args.verdict, reason=args.verdict_reason,
+                                     verdict_by=args.verdict_by)
+            else:
+                r = patch_wave_state(wr, args.chapter, args.wave)
+        except (FileNotFoundError, ValueError, json.JSONDecodeError, OSError) as e:
+            print(f'ERROR  {e}', file=sys.stderr)
+            return EXIT_INPUT_ERROR
+        if args.json:
+            print(json.dumps(r, ensure_ascii=False, indent=2))
+        else:
+            if args.verdict:
+                print(f'波次裁决落定：{args.chapter} w{args.wave} → '
+                      f'**{r["wave_verdict"]}**（by {r["verdict_by"]}）')
+                if r.get('verdict_reason'):
+                    print(f'  理由：{r["verdict_reason"]}')
+                print(f'  {r["path"]}')
+            else:
+                print(f'波次契约回写：{args.chapter} w{args.wave} → '
+                      f'已交付 {len(r["delivered"])} 节，'
+                      f'缺失 {len(r["missing"])} 节')
+                for sec in r['delivered']:
+                    print(f'  ✓ {sec}  净字数={r["net_words"].get(sec)}')
+                for sec in r['missing']:
+                    print(f'  ✗ {sec}  未交付')
+                print(f'  {r["path"]}')
+                print(f'  wave_verdict={r["wave_verdict"]}（脚本未改；'
+                      f'由主理人落定）')
+        return EXIT_PASS
+
+    if not args.member:
+        print('ERROR  常规契约核对须给 --member', file=sys.stderr)
+        return EXIT_INPUT_ERROR
 
     try:
         r = check_contract(wr, pkg_root, args.member, args.chapter,

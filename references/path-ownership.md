@@ -1,7 +1,7 @@
 ---
 name: path-ownership
 description: "路径归属表（SSOT）——每个可写路径的唯一归属者、允许动作与冲突仲裁规则。harness SKILL.md §0「并行安全：路径表唯一归属」与「资源冲突」仲裁条款指向本表。spawn 前/并行派工前必读。"
-version: 1.6.0
+version: 1.7.0
 ---
 
 # 路径归属表（path-ownership）
@@ -39,6 +39,7 @@ version: 1.6.0
 | `运行态/knowledge_anchor_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py anchor` 生成，B3） | 写（含 `baseline_ids`，门禁 2 读它） | 只读 |
 | `运行态/visual_drift_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py visual-drift` 生成，B3） | 写（含变更率决策与 `learn_signal`） | 只读 |
 | `运行态/section_recovery_{ch##}.json` | smart-textbook-team-team-lead（由 `assemble_sections.py` 生成，B4） | 写（含 `RECOVERABLE`/`NEVER_PRODUCED` 分类与 `baseline_status`） | 只读 |
+| `运行态/wave_{ch##}_w{n}.json` | smart-textbook-team-team-lead（R2：由 `scheduler.py plan --mode sections --write-wave-state` 生成波次计划；`contract_check.py --wave` 增量回写 `contract`/`net_words`/`reason`；`wave_verdict` 裁决由主理人落定） | 写（含波次计划 + 契约快照 + 净字数 + 主理人裁决） | 只读 |
 | `章节/{ch##}/draft.md` | subject-writer | 写/改（版本 R1→R2→R3 递增；由 sections/ 拼接） | 只读；**examiner/designer 均不得直接修改**（修正意见走回传清单，由编排者转 writer） |
 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner | 写/改 | 只读 |
 | `章节/{ch##}/review/r3_verification_log.md` | quality-examiner | append | 只读 |
@@ -135,3 +136,21 @@ version: 1.6.0
     节级模式下 draft 由 `assemble_sections.py` 拼接产出（写入方仍为编排者执行的脚本），
     禁止并行 writer 各写各的整章稿 ⇒ 防止第二写者覆盖。
   - 覆盖路径数 27 → 28
+- v1.7.0 [2026-11-05 R2 批次：波次状态落盘与契约回写]:
+  - 新增 1 条路径：`运行态/wave_{ch##}_w{n}.json`（节级波次状态锚点，
+    schema = `stt.wave_state/1`）。
+  - 归属理由：该文件承载**节级波次的调度计划 + 节级契约快照 + 净字数 +
+    主理人裁决**，三部分都是**编排权动作**的产物——
+    ① 波次计划由 `scheduler.py`（编排者执行的脚本）生成，只报不 spawn；
+    ② 契约回写由 `contract_check.py` 做**机械核对**（produced / net_words），
+       口径同源 `count_net_words.py`，脚本无权自行宣布「已交付」；
+    ③ `wave_verdict`（READY|BLOCKED|BUDGET_DEGRADED）是**主理人裁决位**，
+       初始为 `PENDING`——脚本只提供机器建议 `proposed_verdict`，
+       授权判断归主理人（与 B3 裁决门、B4 恢复报告同一纪律）。
+    若归 writer，则会出现「成员自行宣布已获授权 / 自行回写契约」的越界，
+    且并行中被写者覆盖基准的撕裂（B3 升级 A/C 的核心风险）。
+  - **§1 第 4 条并行前置检查的 R2 落地结论**：波次状态文件**按波次一个**
+    （`w{n}`），同波次内各节写的是**不同的** `sections/{节号}.md`，
+    波次状态本身是单写者（编排者）→ 不产生双写者，
+    可与节级并行安全共存。
+  - 覆盖路径数 28 → 29

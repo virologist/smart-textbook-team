@@ -69,10 +69,12 @@ Kahn 拓扑分波，波内节并行、波间串行；并发度**复用章级 Q2 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # 相位枚举 SSOT = progress.py PHASE_ORDER（与 check_phase_consistency 同源，
@@ -606,6 +608,10 @@ def compute_section_plan(work_root: Path, chapter: str,
                 'must_produce': f"章节/{chapter}/sections/{r['节号']}.md",
                 'strong_dep': r['strong_dep'],
                 'required_terms': required_terms,
+                # 本节**定义/首用**的术语（§C.1「关键术语」列）。
+                # 与 required_terms（上游注入）方向相反：前者是「本节该定义什么」，
+                # 后者是「本节须沿用什么」。两者缺一，术语漂移就查不出来。
+                'defined_terms': list(r['terms']),
                 'word_budget': r['word_budget'],
                 'estimated_tokens': r['estimated_tokens'],
                 'note': '每节写独立文件 → path-ownership §1.4 允许波内并行；'
@@ -625,6 +631,148 @@ def compute_section_plan(work_root: Path, chapter: str,
         'branch_cap': BRANCH_CAP,
         'sections': rows, 'waves': out_waves,
     }
+
+
+# ── R2：波次状态落盘（schema = stt.wave_state/1）────────────────────────
+#
+# 病灶（复诊 R2）：B4 的节级拓扑波次**只 print 到 stdout**——调度器算出的
+# 波次结构没有任何持久化锚点，导致三个下游全断：
+#   ① 契约回写（member-contracts）无从核对「本波该交付什么」
+#   ② 效率指标（波次耗时 / 并行收益）没有数据源
+#   ③ 中断续跑时不知道上次跑到哪个波次
+# 本段把波次落盘为 `运行态/wave_{ch##}_w{n}.json`，作为**唯一消费端锚点**。
+#
+# 纪律（与 B3 裁决门 / B4 升级 E 同一口径）：
+#   · **脚本只报不 spawn**：落盘的是「计划 + 契约快照」，不派工。
+#   · **wave_verdict 初始为 PENDING**：READY/BLOCKED/BUDGET_DEGRADED 由
+#     **主理人**落定（消费端），脚本不得自行宣布「可并行执行」——
+#     否则「计划存在」会被误读成「已获授权」。
+#   · **plan_hash 只覆盖内容**：并发度/预算是运行时授权，不进指纹，
+#     否则同一份 §C.1 因授权不同而误判「计划已变更」。
+
+WAVE_STATE_SCHEMA = 'stt.wave_state/1'
+WAVE_STATE_RE = re.compile(r'^wave_(ch\d{2})_w(\d+)\.json$')
+WAVE_VERDICTS = ('READY', 'BLOCKED', 'BUDGET_DEGRADED')
+WAVE_VERDICT_PENDING = 'PENDING'
+WAVE_STATE_GENERATOR = 'scheduler.py plan --mode sections --write-wave-state'
+
+
+def wave_state_path(work_root: Path, chapter: str, wave_id: int) -> Path:
+    """波次状态文件路径（运行态/wave_{ch##}_w{n}.json）。"""
+    return work_root / '运行态' / f'wave_{chapter}_w{wave_id}.json'
+
+
+def _canonical(obj) -> str:
+    """规范化 JSON 文本（键排序 + 无空格）——用于算稳定指纹。"""
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+
+
+def wave_content_hash(wave: dict) -> str:
+    """波次**内容**指纹（sha256）。
+
+    只覆盖「这份波次要产出什么」：节号集合 + 每节的任务契约。
+    **不含**并发度/预算/告警等运行时决策——那些每次授权都可能变，
+    进指纹会让「计划已变更」误报。
+
+    覆盖字段：`task_id`/`must_produce`/`word_budget`/`required_terms`/
+    `strong_dep`/**`defined_terms`**。
+    `defined_terms` 是本节**定义/首用**的术语（§C.1「关键术语」列）——
+    缺它则「术语定义改到别的节」不会改变指纹 ⇒ 漏报「计划已变更」。
+    """
+    payload = {
+        'wave_id': wave.get('wave_id'),
+        'sections': wave.get('sections'),
+        'tasks': [
+            {
+                'task_id': t.get('task_id'),
+                'must_produce': t.get('must_produce'),
+                'word_budget': t.get('word_budget'),
+                'required_terms': t.get('required_terms'),
+                'strong_dep': t.get('strong_dep'),
+                'defined_terms': t.get('defined_terms'),
+            }
+            for t in (wave.get('tasks') or [])
+        ],
+    }
+    return 'sha256:' + hashlib.sha256(_canonical(payload).encode('utf-8')).hexdigest()
+
+
+def build_wave_state(plan: dict, wave: dict, chapter: str) -> dict:
+    """构造单波状态文件内容。
+
+    顶层字段 = 既有 `out_waves` **全字段**（wave_id/sections/concurrency/
+    estimated_tokens/budget_degraded/tasks），便于既有消费方按同一形状读取；
+    另加 R2 的契约快照与裁决位。
+    """
+    contract: dict[str, dict] = {}
+    net_words: dict[str, int | None] = {}
+    for t in (wave.get('tasks') or []):
+        sec = str(t.get('节号'))
+        contract[sec] = {
+            'task_id': t.get('task_id'),
+            'must_produce': t.get('must_produce'),
+            'word_budget': t.get('word_budget'),
+            'required_terms': t.get('required_terms'),
+            'defined_terms': t.get('defined_terms'),
+            'strong_dep': t.get('strong_dep'),
+            'produced': False,
+        }
+        net_words[sec] = None
+    degraded = bool(wave.get('budget_degraded'))
+    return {
+        'schema': WAVE_STATE_SCHEMA,
+        'chapter': chapter,
+        # ── out_waves 全字段（原样）──────────────────────────────
+        'wave_id': wave.get('wave_id'),
+        'sections': wave.get('sections'),
+        'concurrency': wave.get('concurrency'),
+        'estimated_tokens': wave.get('estimated_tokens'),
+        'budget_degraded': degraded,
+        'tasks': wave.get('tasks'),
+        # ── R2 增量 ────────────────────────────────────────────
+        'generated_at': datetime.now(timezone.utc).isoformat(timespec='milliseconds'),
+        'generator': WAVE_STATE_GENERATOR,
+        'plan_hash': wave_content_hash(wave),
+        'wave_verdict': WAVE_VERDICT_PENDING,
+        'proposed_verdict': 'BUDGET_DEGRADED' if degraded else 'READY',
+        'verdict_by': None,
+        'verdict_at': None,
+        'verdict_reason': None,
+        'runtime': {
+            'concurrency': plan.get('concurrency'),
+            'branch_cap': plan.get('branch_cap'),
+            'token_budget': plan.get('token_budget'),
+            'token_budget_source': plan.get('token_budget_source'),
+            'concurrency_notes': plan.get('concurrency_notes'),
+        },
+        'contract': contract,
+        'net_words': net_words,
+        'reason': None,
+        'patched_at': None,
+        'patched_by': None,
+    }
+
+
+def write_wave_states(work_root: Path, plan: dict) -> tuple[list[str], list[str]]:
+    """把波次计划落盘为 运行态/wave_{ch##}_w{n}.json。
+
+    返回 (成功路径列表, 错误列表)。**部分失败不静默**：失败项进错误列表，
+    由调用方决定退出码。既有同名文件会被覆盖（同一计划的重复落盘是幂等刷新）。
+    """
+    chapter = str(plan.get('chapter') or '')
+    ok: list[str] = []
+    errs: list[str] = []
+    for wave in (plan.get('waves') or []):
+        state = build_wave_state(plan, wave, chapter)
+        p = wave_state_path(work_root, chapter, int(wave.get('wave_id') or 0))
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '\n',
+                         encoding='utf-8')
+            ok.append(str(p))
+        except OSError as e:
+            errs.append(f'波次 {wave.get("wave_id")} 状态写入失败: {p}（{e}）')
+    return ok, errs
 
 
 def render_sections(plan: dict) -> str:
@@ -721,6 +869,10 @@ def main() -> int:
                         help='chapters=章级批次（默认，兼容既有调用）；sections=节级拓扑波次（升级 B）')
     p_plan.add_argument('--chapter', default='',
                         help='--mode sections 时必填，如 ch01')
+    p_plan.add_argument('--write-wave-state', action='store_true',
+                        help='把节级波次落盘为 运行态/wave_{ch##}_w{n}.json（R2 消费端锚点；'
+                             '仅节级模式有效。落盘只记录计划与契约快照，'
+                             'wave_verdict 初始 PENDING，由主理人落定）')
     p_plan.add_argument('--json', action='store_true', help='以 JSON 输出')
 
     args = ap.parse_args()
@@ -739,13 +891,44 @@ def main() -> int:
                                         max_concurrency=args.max_concurrency,
                                         token_budget=args.token_budget,
                                         rate_limit=args.rate_limit)
+            # ── R2：波次状态落盘 ──────────────────────────────────
+            # 只有**计划本身成立**时才落盘——绝不把一份失败的计划写成事实。
+            # 落盘只建立「计划 + 契约快照」锚点；wave_verdict 初始 PENDING，
+            # 由主理人消费端落定（脚本不自行宣布「已获授权」）。
+            wave_written: list[str] = []
+            wave_errors: list[str] = []
+            if args.write_wave_state:
+                if plan.get('ok'):
+                    wave_written, wave_errors = write_wave_states(wr, plan)
+                else:
+                    wave_errors.append(
+                        f'计划前置不满足（{plan.get("reason")}）⇒ 不落盘波次状态')
             if args.json:
-                print(json.dumps(plan, ensure_ascii=False, indent=2))
+                out = dict(plan)
+                if args.write_wave_state:
+                    out['wave_state'] = {
+                        'written': wave_written,
+                        'errors': wave_errors,
+                    }
+                print(json.dumps(out, ensure_ascii=False, indent=2))
             else:
                 print(render_sections(plan))
+                if args.write_wave_state:
+                    if wave_written:
+                        print(f'── 波次状态落盘（{len(wave_written)} 个）──')
+                        for p in wave_written:
+                            print(f'  ✓ {p}')
+                    for e in wave_errors:
+                        print(f'  ✗ {e}', file=sys.stderr)
             if not plan.get('ok'):
                 # 输入缺失/格式非法 = 2；依赖成环 = 1（与章级 DEPENDENCY_CYCLE 同口径）
                 return 2 if plan.get('reason') == 'SECTION_DEPS_INVALID' else 1
+            if wave_errors:
+                # 5 = 波次状态落盘失败：计划本身可用，但消费端锚点未建立
+                # ⇒ 不得据该计划派工（契约核对/指标/断点续跑都无锚点可依）
+                print('[ERROR] 波次状态落盘失败——消费端锚点未建立，'
+                      '不得据此派工', file=sys.stderr)
+                return 5
             return 0
 
         plan = compute_plan(wr, max_concurrency=args.max_concurrency,

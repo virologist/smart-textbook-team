@@ -361,6 +361,98 @@ flowchart TD
    `BLOCK` 行纳入 `retry_rate`，`STATUS` 行不污染 `dispatch_hit_rate`。
 4. 路径归属：`运行态/section_recovery_{ch##}.json` 归主理人（已登记 path-ownership v1.6.0）。
 
+## 波次状态与契约回写协议（R2，2026-11-05）
+
+> **本节是 R2 的唯一权威口径（SSOT）**；执行体 =
+> `scripts/scheduler.py --mode sections --write-wave-state`（落盘）+
+> `scripts/contract_check.py --wave`（回写）+ `scripts/contract_check.py --wave --verdict`（裁决）；
+> 指标源 = `scripts/compute_metrics.py` 的 `[9] wave_time / parallel_gain`。
+> **R2 不新增相位**：波次状态是既有 `PRODUCE-R1` 相位内的机制，
+> `PHASE_ORDER` 仍 23 相位。
+
+### 1. 病灶与落地
+
+B4 的节级拓扑波次此前**只 print 到 stdout**——调度器算出的波次结构没有任何
+持久化锚点，导致三个下游全断：① 契约回写无从核对「本波该交付什么」
+② 效率指标没有数据源 ③ 中断续跑不知上次跑到哪个波次。
+
+R2 落地：**每波一个状态文件** `运行态/wave_{ch##}_w{n}.json`
+（schema = `stt.wave_state/1`），作为调度计划、契约快照与主理人裁决之间的
+**唯一落盘接口**。
+
+### 2. 落盘
+
+```bash
+python3 scripts/scheduler.py --work-root "$WORK_ROOT" plan \
+    --mode sections --chapter ch01 --write-wave-state --json
+```
+
+- 顶层字段 = 既有 `out_waves` **全字段**（`wave_id`/`sections`/`concurrency`/
+  `estimated_tokens`/`budget_degraded`/`tasks`），便于既有消费方按同一形状读取。
+- 增量字段：`schema`/`chapter`/`generated_at`/`generator`/`plan_hash`/
+  `wave_verdict`/`proposed_verdict`/`verdict_by`/`verdict_at`/`verdict_reason`/
+  `runtime`/`contract`/`net_words`/`reason`/`patched_at`/`patched_by`。
+- `plan_hash` = sha256，**只覆盖波次内容**（`wave_id`/`sections`/每节任务的
+  `task_id`/`must_produce`/`word_budget`/`required_terms`/`strong_dep`），
+  **不含**并发度/预算等运行时授权——否则同一份 §C.1 因授权不同而误判「计划已变更」。
+- **只在计划成立时落盘**：计划前置不满足（依赖成环 / §C.1 表非法）⇒ **不落盘**，
+  绝不把一份失败的计划写成事实。
+- 退出码：新增 `5` = 波次状态落盘失败（计划可用但锚点未建立 ⇒ 不得据此派工）。
+
+### 3. 计划与授权分离（关键纪律）
+
+| 字段 | 谁写 | 初值 | 含义 |
+|---|---|---|---|
+| `proposed_verdict` | 脚本 | `READY` / `BUDGET_DEGRADED` | **机器建议**（预算不足 ⇒ `BUDGET_DEGRADED`） |
+| `wave_verdict` | **主理人** | `PENDING` | **正式裁决位**：`READY`/`BLOCKED`/`BUDGET_DEGRADED` |
+
+**脚本不写 `wave_verdict`**——脚本写它等于「计划存在」被误读成「已获执行授权」。
+这与 B3 裁决门、B4 恢复报告是同一纪律：**脚本只报不 spawn**。
+
+### 4. 契约回写
+
+```bash
+python3 scripts/contract_check.py --work-root "$WORK_ROOT" \
+    --chapter ch01 --wave 2 --json
+```
+
+- 增量更新 `contract[节号].produced` / `net_words[节号]` / `reason`。
+- 净字数口径**必须同源** `count_net_words.py`（与 `assemble_sections.py`、
+  `check_manuscript.py` 一致）——否则回写值与章节门禁量的是不同的东西。
+- 回写**不改** `wave_verdict`。
+
+### 5. 主理人裁决（消费端）
+
+```bash
+python3 scripts/contract_check.py --work-root "$WORK_ROOT" \
+    --chapter ch01 --wave 2 --verdict READY \
+    --verdict-reason "5 节全部交付，术语齐备" --json
+```
+
+- 非法裁决值（如 `MAYBE`）⇒ 报错退出（`4`），不静默写入。
+- 裁决记录 `wave_verdict`/`verdict_by`/`verdict_at`/`verdict_reason`。
+
+### 6. 效率指标数据源
+
+`compute_metrics.py` 的 `[9] 波次级效率`：
+
+| 指标 | 口径 |
+|---|---|
+| `wave_time` | 单波次**墙钟耗时** = 波内最早 `start` → 最晚结束 |
+| `parallel_gain` | **串行基准耗时 ÷ 波次墙钟耗时**（1.0 = 无并行收益；3.0 = 3 倍加速） |
+
+- join 键：波次 `contract[节号].task_id` 与 trace 的 `task_id` 格式完全一致
+  （`ch01-PRODUCE-R1-节1.10`）⇒ 不引入第二套 ID 体系。
+- **观测项，不设门槛**（与 `avg_concurrency` 同纪律：并发度由 API 速率/token
+  预算动态决定，写死阈值等于把动态策略固化成静态假设）。
+- 数据不足 ⇒ `None` + 说明，**不静默当 0**。
+
+### 7. 路径归属
+
+`运行态/wave_{ch##}_w{n}.json` 归主理人（已登记 path-ownership **v1.7.0**）：
+波次计划、契约回写、主理人裁决三者都是编排权动作的产物；
+若归 writer，则成员可自行宣布「已获授权」并自行回写契约 ⇒ 越界。
+
 ## 检索门禁（三重规则）
 
 - **门禁 1（SPECIFY 后）**：设计的知识域均有对应检索计划
