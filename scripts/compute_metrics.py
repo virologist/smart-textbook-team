@@ -347,11 +347,16 @@ def _product_quality(work_root: Path) -> dict | None:
 
         # ① 结构完整率：5 类必备段各自存在即 +1
         #    （章标题 / ≥1 节标题 / 图表位或图表 / 习题位 / 参考文献）
+        #    习题位（v2.9.0 口径统一，2026-11-05 R3-遗留 L1a）：canonical 形式
+        #    `[习题 {章}-{序}]` 与 legacy 形式 `[习题位 {节号}：…]` **都算存在**。
+        #    理由：结构完整率只答「有没有习题位」，不答「格式对不对」——
+        #    格式由判据 4.8b 单独判 FAIL（check_manuscript）。若此处只认 canonical，
+        #    同一处缺陷会被**重复计一次**（结构扣分 + 格式 FAIL）⇒ 指标失真。
         required = {
             '章标题': re.search(r'^#\s+', text, re.M),
             '节标题': re.search(r'^##\s+', text, re.M),
             '图表': re.search(r'\[图\s*\d+-\d+|^\s*图\s*\d+-\d+', text, re.M),
-            '习题位': re.search(r'\[习题\s*\d+-\d+', text),
+            '习题位': re.search(r'\[习题\s*\d+-\d+|\[习题位\s*\d', text),
             '参考文献': re.search(r'^##\s*参考文献', text, re.M),
         }
         ok = sum(1 for v in required.values() if v)
@@ -373,19 +378,37 @@ def _product_quality(work_root: Path) -> dict | None:
         # 修法：命中句后再看**紧邻其后**的标签，若贴在该句之后则计入。
         # 不放宽触发条件，只修标签归属判定——否则该指标长期误报 FAIL。
         label_tail = re.compile(r'^[。！？\s]*\[(?:实|估|引|待核实)[^\]]*\]')
+        # ★ v2.9.0（2026-11-05 R3-遗留 L2）：分母必须是「**带具体数值**」的陈述句。
+        #   病灶（真实章 ch_01 实测）：触发词命中 188 句，其中 **155 句只有触发词
+        #   而无数值**（如「本病多见于日龄较大鸡群」「免疫程序规范与否影响保护率」）
+        #   ⇒ 原口径把这类**无数值**定性描述计入分母 ⇒ 覆盖率被系统性稀释
+        #   （真值约 0.21，口径读数 0.17）。
+        #   协议原文是「每条**学科数据**必须带标签」⇒ 分母只该算「数据句」。
+        #   ⇒ 增「具体数值」判据：数字 + 单位/百分号（纯数量词如「3号舍」不算数据）。
+        _has_value = re.compile(
+            r'\d+(?:\.\d+)?\s*(?:%|％|倍|次|天|日|周|月|年|小时|分钟|'
+            r'mg|kg|ml|L|羽|只|例|个|项|种|元|万元|亿|万|℃|度|克|吨)')
         n_trig = 0
         n_lab = 0
+        n_trig_nodata = 0
         for mt in trigger.finditer(text):
+            seg = mt.group(0)
+            if not _has_value.search(seg):
+                # 触发词命中但**无数值** ⇒ 不是数据句，不计入分母（单列计数）
+                n_trig_nodata += 1
+                continue
             n_trig += 1
-            if label.search(mt.group(0)):
+            if label.search(seg):
                 n_lab += 1
                 continue
-            tail = text[mt.end():mt.end() + 80].lstrip()
-            if label_tail.match(tail):
+            tail = text[mt.end():mt.end() + 120].lstrip('。！？\n \t')
+            if label_tail.match(tail) or label.match(tail):
                 n_lab += 1
         n_label_total += n_trig
         n_label_ok += n_lab
         entry['labels'] = f'{n_lab}/{n_trig}' if n_trig else 'N/A(无数值陈述)'
+        if n_trig_nodata:
+            entry['labels_no_value'] = f'触发词命中但无数值 {n_trig_nodata} 句（不计入分母）'
 
         # ③ 引用核验通过率：从 R3 审查报告抓核验汇总（无报告 → N/A）
         pass_rate = None

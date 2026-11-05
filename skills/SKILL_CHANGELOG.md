@@ -28,6 +28,26 @@
 
 ## manuscript-delivery（书稿交付规格，2026-10-30 新建）
 
+### v1.3.0 → v1.4.0（R3 遗留 L1a · 习题位标记口径统一，2026-11-05）
+
+**背景**：`agents/subject-writer.md` 规定 writer 在书稿里写
+`[习题位 {节号}：{Bloom 层级}×{题数}]`，而本 skill §1.3 / `chapter-structure.md` /
+`veterinary.md` / `check_manuscript.py` 的 `RE_EXERCISE` / `compute_metrics.py` C9
+五处一律用 `[习题 {章}-{序}]` ⇒ writer 写的习题位**永远匹配不到** ⇒
+判据 4.8 恒走「无标记」WARN ⇒ **习题位缺失/断号永不被拦**（实测证据见
+`stt-diag-20261101/B/findings-B.md:202`）。
+
+**变更**：
+- §1.3 补「**习题位的两层语义**」表（设计层按节 / 书稿层按全章流水号），
+  明确 legacy 是**设计层**写法、**不得落进书稿**。
+- §1.3 习题位行补 **4.8b**；§4 判据表**新增 4.8b**（legacy 形式判 FAIL）。
+- 配套：`count_net_words.py` 剔除口径扩到 canonical 形式；
+  `compute_metrics.py` C9 让 canonical 与 legacy **都算「存在」**
+  （结构只答「有没有」，格式由 4.8b 单独判，避免同一缺陷被重复计一次）。
+
+**破坏性变更**：是 —— 书稿层习题位标记必须用 `[习题 {章}-{序}]`，
+legacy 形式被 4.8b 判 FAIL；存量书稿需迁移（迁移规则 = 设计层节号顺序映射为全章流水号）。
+
 ### v1.2.0 → v1.3.0（批次 B4 · ADR-05 硬门槛落盘，2026-11-01）
 
 **背景**：R5 五维评分此前是 LLM 自评散文（80 分红线不可审计、权重可伪造），

@@ -1,6 +1,6 @@
 ---
 name: subject-writer
-version: 2.1.0
+version: 2.2.0
 description: "Subject content writer for textbook chapters. Executes multi-round drafting (skeleton, revision, final) from the chapter design and retrieval evidence, enforces data-source tagging ([verified]/[estimated]/[cited]/[pending]), organic ideological integration, and multi-expert role assembly. Supports section-level parallel production for chapters exceeding 8000 words."
 displayName:
   en: "Zhu Shubai"
@@ -135,7 +135,10 @@ maxTurns: 100
 - **字数口径（净字数）**：字数目标指正文净字数——不含 frontmatter、图表位/习题位标记行、数据标签（`[实]/[估]` 等）与缺口上报清单；章节字数 = 各节净字数之和，在 frontmatter 报 `{目标字数, 实际净字数}` 供 R1 结构审查比对。**净字数一律用 SSOT 脚本取数，禁止手工自报**（2026-10-15 P2-4：真实运行实证三方口径 1203/1213/1329 不可复现）：`python3 {专家包根}/scripts/count_net_words.py <draft路径> --json`，frontmatter 的 `实际净字数` 必须等于脚本输出的 `net` 值；主理人与审查官按脚本值复核，声明值≠脚本值 → advisory 并以脚本值为准
 - 正文每学科断言可溯源：有 PMID/DOI 的打 `[实]`，无源的估计值打 `[估]` 并说明估算依据
 - 图表位格式：`[图 {章}-{序}：{图表标题}｜教学目的：{...}｜数据来源：{...}]`；**纯示意图（无检索数据支撑的机制/流程示意）在数据来源处标 `纯示意（无数据支撑）`**——不冒充有据图表
-- 习题位格式：`[习题位 {节号}：{Bloom 层级}×{题数}]`，**节号 = 习题所在节的实际节号**（如习题出现在 §3.6 则写 3.6，不按全章习题流水号编号）
+- 习题位格式（**书稿层唯一合法形式，v2.9.0 口径统一，2026-11-05**）：`[习题 {章}-{序}]`，**{序} = 全章习题流水号**（从 1 起连续，如 `[习题 1-1]`、`[习题 1-2]`），与图位/表位同一套编号学，判据 4.8 可机械校验连续性
+  - ⚠ **不要写 `[习题位 {节号}：{Bloom 层级}×{题数}]`**——那是**设计层**（`chapter_design.md` §C 每节分配梯度题）用的结构化写法，落到书稿层会被判据 **4.8b 判 FAIL**（legacy 形式，书稿层不合法）
+  - 两层映射：设计层按**节**给梯度题（节号 + Bloom + 题数）→ 落位时由你映射为**全章流水号**（第几题就是第几号），保证 4.8「编号连续」不跳号
+  - 判据 4.8 只看**编号连续**；Bloom 层级递进与题数由 examiner R1/R2 按 chapter_design §C 核，属设计契约，不在标记里表达
 - 思政融入不设显式标题，正文自然展开
 - 中文学段教材默认简体中文；用户指定其他语言除外
 

@@ -1,7 +1,7 @@
 ---
 name: manuscript-delivery
 description: "University textbook MANUSCRIPT delivery spec (not slides): Markdown as the single source of truth carrying revision semantics, DOCX as the deliverable + review vehicle rendered with real Word tracked changes (w:ins/w:del). Defines md structure contract (heading hierarchy, frontmatter, figure/exercise/ideology markers, cross-reference syntax, review-revision marks §1.5, proofread-conclusion §4.2), built-in DOCX typesetting with override, dual-track figures, review-copy build (--revisions) and Word-backflow (--apply-revisions). Load in ASSEMBLE/DELIVER/PROOFREAD phases, or whenever deliverable format, docx typesetting, revision marks, or figure handling is in question. Trigger words: 书稿 / docx / 交付格式 / 版式 / 题注 / 目录 / 参考文献格式 / 图表栅格化 / 修订 / 追踪修订 / 审阅版 / manuscript."
-version: 1.3.0
+version: 1.4.0
 ---
 
 # manuscript-delivery — 大学教材书稿交付规格（md 源 + docx 交付）
@@ -66,7 +66,7 @@ version: 1.3.0
 | 图表位 | `[图 {章}-{序}：{标题}]` | 序号连续无跳号 + 有题注 | 4.2a/b-图 |
 | 图题注 | 图位下一行 `图 {章}-{序} {标题}` | 与图位一一对应 | 4.2a-图 |
 | 表题注 | 表格上一行 `表 {章}-{序} {标题}` | 同上 | 4.2a/b-表 |
-| 习题位 | `[习题 {章}-{序}]` | 编号连续（无习题位时 WARN） | 4.8 |
+| 习题位 | `[习题 {章}-{序}]` | 编号连续（无习题位时 WARN）；**legacy `[习题位 …]` 判 FAIL**（4.8b） | 4.8 / 4.8b |
 | 思政融入 | `[思政·{主题}]` | **仅校验存在性**；占比 2–3% 属写作约定，由 didactic-architect 在设计阶段把关，**无自动判据** | 4.9（存在性） |
 | 数据标签 | `[实]`/`[估]`/`[引]`/`[待核实]` | 沿用既有规则（属门禁 3.1，非门禁 4） | 3.1 |
 | **交叉引用** | `[见 §1.2]` / `[见图 1-3]` | **目标必须真实存在**（可解析） | 4.3a/b |
@@ -74,6 +74,21 @@ version: 1.3.0
 > **判据编号说明（2026-10-30 补）**：初版只写「校验要求」文字、未标注由哪条判据执行，
 > 其中「思政占比 2–3%」实际**没有任何自动判据**。现逐行标注编号，无判据的项明确写出，
 > 避免规范声称的校验与实际能力不符。
+
+> **习题位的两层语义（v2.9.0 口径统一，2026-11-05 · R3-遗留 L1a）**：
+> | 层 | 位置 | 形式 | 编号依据 | 判据 |
+> |---|---|---|---|---|
+> | 设计层 | `章节/{ch##}/chapter_design.md` §C | `[习题位 {节号}：{Bloom}×{题数}]` | **所在节**（梯度题按节分配） | examiner R1/R2 按 §C 核 |
+> | 书稿层 | `章节/{ch##}/draft.md` / `交付/*.md` | **`[习题 {章}-{序}]`** | **全章习题流水号**（与图位/表位同一套编号学） | 4.8（连续）/ **4.8b（格式合规）** |
+>
+> ⚠ 病灶（已修）：旧版 `agents/subject-writer.md` 规定书稿里写 legacy 形式，
+> 而本表 + `chapter-structure.md` + `veterinary.md` + 检查器 + C9 五处用
+> `[习题 {章}-{序}]` ⇒ writer 按自己规范写的习题位**永远匹配不到** ⇒
+> 4.8 恒走「无标记」WARN ⇒ **习题位缺失/断号永不被拦**。
+> 现统一以书稿层形式为唯一权威，并新增 4.8b 把 legacy 形式**显式判 FAIL**——
+> 「格式用错」必须报错，不能退化成「缺」（静默放行 = 缺陷）。
+> 真实受影响的历史产物（迁移时需改）：`tests/fixtures/smart-textbook-team/e2e_ch06/`、
+> `章节/ch03/draft.md`、`.omc/e2e-p1/章节/ch08/draft_R*.md`。
 
 > **空行强制（实测得出，2026-10-30）**：图位 / 题注 / 规格卡三者之间**必须空行分隔**。
 > 实测反例：三行连写无空行 → pandoc 按 Markdown 规则合并为同一段落，
@@ -256,6 +271,7 @@ python3 scripts/check_manuscript.py \
 | 4.6 | **md 与 docx 图数一致**（docx 图数 == md 图位数 − 显式降级数） | 重建或补栅格化 |
 | 4.7 | 净字数 ±5%（`count_net_words.py` 脚本值） | 回 writer 或经用户同意放宽 |
 | 4.8 | 习题位编号连续 | 回 writer |
+| 4.8b | **习题位格式合规**（书稿层唯一合法形式 `[习题 {章}-{序}]`；检出 legacy `[习题位 {节号}：…]` 即 FAIL——格式用错必须报错，不得退化成「缺」而静默放行） | 回 writer 迁移为全章流水号 |
 | 4.9 | 思政融入点已标注（存在性） | 回 writer |
 | 4.10 | **数据图 notebook**（`assets/{图号}.ipynb` 存在且符合 4-cell 契约：md 图说明 + 原始数据 + 绘图 + 导出；`--exec-notebooks` 时再跑 4.10e） | 补建或回 designer |
 | 4.10e | **notebook 真执行**（`--exec-notebooks` 开启时成立；优先 `nbconvert --execute`，环境不可用降级逐-cell 直执行并在 detail 标注「降级」；超时/报错均 FAIL） | 回 designer 修 notebook 或补依赖 |

@@ -549,8 +549,18 @@ def check_executability(ck, expert_dir):
     ck.check("F18a", "F", "主理人统稿 checklist",
              "统稿 checklist" in lead and "净字数达标" in lead)
     # F19 习题位编号规则（P2-3）
-    ck.check("F19a", "F", "习题位编号=所在节实际节号",
-             "实际节号" in texts["subject-writer"])
+    # ★ 2026-11-05 v2.9.0 口径统一（R3-遗留 L1a）：书稿层唯一合法形式是
+    #   `[习题 {章}-{序}]`（**全章习题流水号**），原口径「习题位编号=所在节实际节号」
+    #   只描述 legacy 设计层形式 `[习题位 {节号}：…]`——它不是书稿层形式，
+    #   且 RE_EXERCISE 匹配不到 ⇒ 4.8 恒走 WARN ⇒ 习题位缺失永不被拦。
+    #   ⇒ 断言改为「书稿层形式 + 全章流水号 + 显式禁止 legacy」三要素。
+    ck.check("F19a", "F", "习题位编号=全章习题流水号（书稿层唯一合法形式）",
+             "[习题 {章}-{序}]" in texts["subject-writer"]
+             and "全章习题流水号" in texts["subject-writer"])
+    ck.check("F19b", "F", "writer 显式禁止 legacy 习题位形式（否则 4.8 恒失效）",
+             "[习题位 {节号}：{Bloom 层级}×{题数}]" in texts["subject-writer"]
+             and ("不要写" in texts["subject-writer"]
+                  or "不得" in texts["subject-writer"]))
 
     # ── F20+ Evo-5 回归防护（遗留解决）────────────────────────
     # F20 R2 角色视角机械化 4 维度（遗留-1）

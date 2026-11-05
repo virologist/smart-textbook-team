@@ -69,7 +69,34 @@ RE_XREF_SEC = re.compile(r"\[见\s*§(\d+(?:\.\d+)*)\]")
 RE_XREF_FIG = re.compile(r"\[见图\s*(\d+)-(\d+)\]")
 RE_REF_ITEM = re.compile(r"^\[(\d+)\]\s+(.*)$", re.M)
 RE_YEAR = re.compile(r"(1[89]\d{2}|20\d{2})")
+# ── 习题位标记（v2.9.0 口径统一，2026-11-05 R3-遗留 L1a）────────────────────
+# 【书稿层唯一合法形式】`[习题 {章}-{序}]` —— 判据 4.8（编号连续）/ 4.8b（格式合规）。
+#
+# 【为什么曾有第二套形式】subject-writer.md 历史上规定书稿里写
+#   `[习题位 {节号}：{Bloom 层级}×{题数}]`（节号 + Bloom + 题数），
+# 而 chapter-structure.md / veterinary.md / manuscript-delivery §1.3 /
+# 本检查器 RE_EXERCISE / compute_metrics C9 五处一律用 `[习题 {章}-{序}]`。
+# ⇒ writer 按自己规范写的习题位，RE_EXERCISE **永远匹配不到**
+#   ⇒ 判据 4.8 恒走「本章无 [习题 X-Y] 标记」WARN 分支
+#   ⇒ 习题位缺失/断号永不被拦（真实病灶，stt-diag-20261101/B/findings-B.md:202）。
+#
+# 【两套形式的层级归属（v2.9.0 裁决）】
+#   · 设计层 chapter_design §C：按**节**分配梯度题 → 保留「节号 + Bloom + 题数」
+#     结构化语义（这正是 didactic-architect 契约要求的 `习题位预留`）。
+#   · 书稿层 draft/delivery：按**全章习题流水号**编号 → `[习题 {章}-{序}]`，
+#     与图位/表位同一套编号学，判据 4.8 可机械校验连续性。
+#   落位时由 writer 做「节级设计 → 全章流水号」的映射。
+#
+# 【为何必须显式判 legacy 为 FAIL，而不是继续无视】
+#   legacy 形式若不被识别，真实稿件里已存在的习题位（e2e_ch06 5 处 /
+#   ch08 e2e 5 处 / fixtures ch03 1 处）就是**静默隐身**的——
+#   章节「看起来有习题」，但 4.8 与 C9 都当它不存在。
+#   「失败必须显式报错，不得静默放行」⇒ legacy 必须被 4.8b 抓出来并给出迁移指引。
 RE_EXERCISE = re.compile(r"\[习题\s*(\d+)-(\d+)\]")
+# legacy 形式：`[习题位 {节号}：{Bloom}×{题数}]`；节号形如 6.1 / 3.2
+RE_EXERCISE_LEGACY = re.compile(r"\[习题位\s*(\d+(?:\.\d+)*)\s*[：:][^\]]*\]")
+# 书稿层习题位的规范形态（供报告文案引用；**非 f-string**——`{章}` 会被当占位符）
+EXERCISE_CANON_FORM = "[习题 {章}-{序}]"
 RE_IDEOLOGY = re.compile(r"\[思政·([^\]]+)\]")
 # frontmatter 七项（书稿元数据，见 manuscript-delivery §1.2）
 FM_REQUIRED = ["教材名", "章节号", "章节标题", "字数目标", "实际净字数", "版本", "学科profile"]
@@ -260,12 +287,32 @@ def check_refs(text: str, r: Result):
 
 # ── 4.8 习题位 / 思政融入点（落实 manuscript-delivery §1.3 的标记要求）
 def check_exercise_ideology(text: str, r: Result):
+    """习题位判据（v2.9.0 口径统一，2026-11-05 R3-遗留 L1a）。
+
+    4.8  习题位编号连续（`[习题 {章}-{序}]`，全章流水号从 1 起）
+    4.8b 习题位格式合规（**legacy `[习题位 …]` 判 FAIL**——静默隐身即缺陷）
+    """
     exs = [f"{a}-{b}" for a, b in RE_EXERCISE.findall(text)]
     if exs:
         gaps = _seq_gaps(_nums(exs))
         r.add("4.8", f"习题位编号连续（{len(exs)} 个）", not gaps, f"断号处: {gaps}")
     else:
         r.warn("4.8", "存在习题位", "本章无 [习题 X-Y] 标记（教材通常需要）")
+
+    # ── 4.8b：legacy 形式显式判 FAIL（v2.9.0 新增）
+    # 病灶：legacy 形式 RE_EXERCISE 匹配不到 ⇒ 习题位静默隐身 ⇒
+    #       4.8 走「无标记」WARN 分支、C9 结构完整率扣分，
+    #       但**没有任何一条判据说「这里格式错了」**——只表现为「缺」。
+    # 现在把「格式用错」与「压根没有」区分开：错误要报错，不是消失。
+    legacy = RE_EXERCISE_LEGACY.findall(text)
+    if legacy:
+        # ⚠ 不可写成 f-string 里的 `{章}-{序}`——那是 f-string 占位符，会 NameError。
+        #   形态说明用普通字符串拼（下面 `FORM` 常量），只让计数/清单进 f-string。
+        r.add("4.8b", f"习题位格式合规（书稿层用 `{EXERCISE_CANON_FORM}`）", False,
+              f"检出 legacy 形式 {len(legacy)} 处: {legacy[:5]}；"
+              f"书稿层唯一合法形式为 `{EXERCISE_CANON_FORM}`（全章流水号），"
+              f"迁移指引见 manuscript-delivery §1.3")
+
     ide = RE_IDEOLOGY.findall(text)
     if ide:
         r.add("4.9", f"思政融入点已标注（{len(ide)} 处）", True)

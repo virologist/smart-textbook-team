@@ -1,7 +1,7 @@
 ---
 name: textbook-pipeline-workflow
 description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear. Trigger words: 编排章节 / 流程卡在哪个阶段 / 下一步该干嘛 / 13态 / 状态机 / 门禁 / 返修回哪 / handoff 字段."
-version: 1.4.0
+version: 1.5.0
 ---
 
 # textbook-pipeline-workflow — 13 态教材编写流水线
@@ -502,7 +502,7 @@ python3 scripts/contract_check.py --work-root "$WORK_ROOT" \
 | 3.1 | **数据标签完整率** | 正文中凡含数值触发词（发病率/病死率/死亡率/剂量/浓度/免疫程序/日龄/效价/阳性率 等）的陈述，必须带 `[实]`/`[估]`/`[引]`/`[待核实]` 之一；**无标签率 = 0** | 回 writer 补标签；**禁止**由主理人代标 |
 | 3.2 | **净字数达标** | `python3 scripts/count_net_words.py --target <目标> <draft.md>`，偏差 ≤±5%。**脚本值为唯一权威**，writer 自报值不作为判据 | 超 ±5% → 回 writer 补齐/删减；或经用户同意放宽并记录 |
 | 3.3 | **角色团声明完整** | draft frontmatter 含 `角色团:`，每角色必带 `role_id`（kebab-case）+ `role_name` + `examines`（≥1 项）；role_id 取自 `references/role-assembly.md` | 缺/空 → blocking（role-assembly §5） |
-| 3.4 | **图表位与习题位编号连续** | `[图 {章}-{序}]` 无跳号；习题位节号与设计 §C 一致 | 回 writer 对齐 |
+| 3.4 | **图表位与习题位编号连续** | `[图 {章}-{序}]` 无跳号；书稿层习题位用 `[习题 {章}-{序}]` 全章流水号且无跳号（legacy `[习题位 …]` 判 4.8b FAIL；设计层按节分配的节号由 writer 落位时映射） | 回 writer 对齐 |
 
 **fail 一律回 PRODUCE 返修，不得带着 fail 进 VERIFY**；同一项 fail 2 次 → 按介入协议（A/B/C/D 根因）处置。门禁 3 结论记入 `运行态/progress.md` 的 PRODUCE 行摘要
 （`progress.py` 已支持 `PRODUCE`/`VERIFY` 粗粒度别名 → 自动落到 `PRODUCE-R3`/`VERIFY-R3` 行；`PROOFREAD` 别名落到 `PROOFREAD-R5` 行）。
@@ -628,7 +628,7 @@ VERIFY R3 → citation-verify 逐条核验 → 查无此文即删
 > 从 team-lead 拆入（evo-11）。
 
 1. **术语一致**：全章同一概念无多种写法；对照教材术语表（如有）——可委托 examiner 抽查，主理人核结论
-2. **编号连续**：图表号 `图{章}-{序}` 与习题位节号无跳号/错位
+2. **编号连续**：图表号 `图{章}-{序}` 与习题位（书稿层 `[习题 {章}-{序}]` 全章流水号）无跳号/错位
 3. **引用格式统一**：全部 `[实]` 条目「来源: PMID/DOI」格式一致
 4. **正文清洁**：无流程标注残留（TODO、写作过程说明、测试标记）
 5. **遗留清单**：全部 `[待核实]` 汇总成表附交付物末尾

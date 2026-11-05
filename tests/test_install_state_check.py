@@ -496,7 +496,7 @@ class TestCliExitCodes:
         _write(src_dir / '.versionctl' / 'state.json', '{"v":1}')
         r = run_cli('--plugins-root', str(work_root))
         assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
-        assert 'SRC_ONLY' not in r.stdout, r.stdout + r.stderr
+        assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -569,3 +569,157 @@ class TestReadOnlyContract:
                 if p.is_file():
                     after[str(p)] = p.read_text(encoding='utf-8')
         assert before == after, '检查器必须只读，不得改动任何文件'
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 9. R3-遗留 L4a：git 忽略路径必须排除（假漂移零容忍 · 2026-11-05）
+# ══════════════════════════════════════════════════════════════════════
+#
+# 实战病灶（vet-med-ppt-team 实测）：
+#   `packages/.mirror_backups/`（mirror_sync.py 每次 --confirm 同步前的备份目录，
+#   实测 227 个文件 / 20MB）已在该包 `.gitignore` 中明确排除
+#   （`git ls-files` 命中 0 项）⇒ 它们**永远进不了分发包**。
+#   但检查器只排除了固定 6 个目录名 ⇒ 源码侧的备份目录被算成
+#   「安装态缺失 30 项」= **纯假漂移**，与真实漂移（39 项内容 diff）同量级
+#   ⇒ 假漂移淹没真漂移。
+#
+# 修复：不再逐个点名排除目录，改为**读源码仓自己的 .gitignore 语义**
+#      （`git ls-files --others --ignored --exclude-standard --full-name`）。
+#
+# ⚠ 三轮实测踩坑全部固化为反向用例（本组存在的理由）：
+#   ① 取「路径首段」当前缀 ⇒ 'packages/' ⇒ 整个 packages/ 被剪（含真包内容）
+#   ② 取「文件所在目录」当前缀 ⇒ 'scripts/' ⇒ 整个 scripts/ 被剪（含真包内容）
+#      ⇒ 两者都把源码侧文件数从 357 打到 41/117，产生**反向假漂移**
+#   ③ 只有**逐路径精确匹配**是安全口径。
+
+class TestGitIgnoredPaths:
+    """源码仓 .gitignore 排除的路径不得算作「安装态缺失」"""
+
+    @staticmethod
+    def _make_git_repo(pkg_dir: Path, ignore_lines: list[str],
+                       cache_dir: Path | None = None) -> None:
+        """把 pkg_dir 变成一个带 .gitignore 的独立 git 仓（真实 git 语义）。
+
+        注意：仓根 = 包目录 ⇒ `git ls-files --full-name` 的路径基准
+        与 collect_files 的「相对包根」口径一致（my-experts 各包均如此布局，
+        实测 `git -C plugins/vet-med-ppt-team rev-parse --show-toplevel`
+        返回包目录本身）。
+
+        `cache_dir` 给定时，`.gitignore` **也写入安装态** —— 真实包两侧都带
+        `.gitignore`（实测 vet-med-ppt-team 源码与 cache 均有该文件），
+        它是**包内容**，不是忽略规则的载体就自动消失。
+        """
+        import subprocess as sp
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+        body = '\n'.join(ignore_lines) + '\n'
+        (pkg_dir / '.gitignore').write_text(body, encoding='utf-8')
+        if cache_dir is not None:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            (cache_dir / '.gitignore').write_text(body, encoding='utf-8')
+        sp.run(['git', 'init', '-q'], cwd=pkg_dir, check=True,
+               capture_output=True)
+        sp.run(['git', 'config', 'user.email', 't@t.t'], cwd=pkg_dir, check=True)
+        sp.run(['git', 'config', 'user.name', 't'], cwd=pkg_dir, check=True)
+
+    def test_ignored_backup_dir_not_reported_as_missing(self, work_root):
+        """核心正向：源码侧被 gitignore 的备份目录 ⇒ 不得报「安装态缺失」"""
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        self._make_git_repo(src_dir, ['packages/.mirror_backups/'],
+                           cache_dir=work_root / 'cache' / 'my-experts' /
+                           'demo-pkg' / '1.0.0')
+        _write(src_dir / 'packages' / '.mirror_backups' / '20261031-062546' /
+               'CHANGELOG.md', 'backup')
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+        assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
+
+    def test_ignored_file_pattern_not_prune_whole_dir(self, work_root):
+        """反向①：忽略的是**文件模式**（scripts/*.bak_*）⇒ 只跳该文件。
+
+        不得因此把整个 scripts/ 剪掉 —— 那是真包内容，
+        剪掉会反向产生「安装态多出」假漂移（实测源码侧 357→41）。
+        """
+        make_plugins_root(work_root,
+                          src_files={'a.py': 'same', 'scripts/harness.py': 'code'},
+                          cache_files={'a.py': 'same', 'scripts/harness.py': 'code'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        self._make_git_repo(src_dir, ['*.bak_*'],
+                           cache_dir=work_root / 'cache' / 'my-experts' /
+                           'demo-pkg' / '1.0.0')
+        _write(src_dir / 'scripts' / 'insight_carrier.py.bak_t9', 'old copy')
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+        assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
+        assert '安装态多出' not in r.stdout, r.stdout + r.stderr
+
+    def test_nested_ignored_dir_keeps_sibling_content(self, work_root):
+        """反向②：嵌套忽略目录（packages/.mirror_backups/）⇒ 兄弟目录保留。
+
+        packages/vet-med-ppt-team/ 是**真包内容**，
+        不得因 packages/.mirror_backups/ 被忽略而一起消失。
+        """
+        make_plugins_root(work_root,
+                          src_files={'packages/real-pkg/plugin.json': '{"v":"1"}'},
+                          cache_files={'packages/real-pkg/plugin.json': '{"v":"1"}'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        self._make_git_repo(src_dir, ['packages/.mirror_backups/'],
+                           cache_dir=work_root / 'cache' / 'my-experts' /
+                           'demo-pkg' / '1.0.0')
+        _write(src_dir / 'packages' / '.mirror_backups' / '20261031' / 'x.md', 'bk')
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+        assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
+        assert '安装态多出' not in r.stdout, r.stdout + r.stderr
+
+    def test_cache_side_ignored_dir_is_still_reported(self, work_root):
+        """反向③：git 忽略只作用于**源码侧**。
+
+        安装态若反过来多出这些目录 ⇒ 那是**真残留**（该清），
+        必须继续报 cache_only，否则真残留永远清不掉。
+        """
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        cache_dir = work_root / 'cache' / 'my-experts' / 'demo-pkg' / '1.0.0'
+        self._make_git_repo(src_dir, ['packages/.mirror_backups/'],
+                           cache_dir=cache_dir)
+        _write(cache_dir / 'packages' / '.mirror_backups' / '20261031' / 'x.md', 'residue')
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_DRIFT, r.stdout + r.stderr
+        # 人读报告里的「安装态多出」= cache_only（真残留，该清）
+        assert '安装态多出' in r.stdout, r.stdout + r.stderr
+        assert 'packages/.mirror_backups/20261031/x.md' in r.stdout, r.stdout + r.stderr
+
+    def test_real_drift_still_detected_with_git_repo(self, work_root):
+        """正向：git 仓存在时，**真漂移**仍必须被抓到（不能被过滤吞掉）"""
+        make_plugins_root(work_root, src_files={'a.py': 'NEW', 'b.py': 'x'},
+                          cache_files={'a.py': 'OLD', 'b.py': 'x'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        self._make_git_repo(src_dir, ['packages/.mirror_backups/'],
+                           cache_dir=work_root / 'cache' / 'my-experts' /
+                           'demo-pkg' / '1.0.0')
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_DRIFT, r.stdout + r.stderr
+        assert '内容陈旧' in r.stdout, r.stdout + r.stderr
+
+    def test_non_git_dir_degrades_gracefully(self, work_root):
+        """降级：非 git 目录 ⇒ 只用固定 EXCLUDE_DIRS，不得崩、不得误判。"""
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+
+    def test_git_ignored_paths_helper_returns_exact_paths(self, work_root):
+        """单元级：_git_ignored_paths 返回**精确路径**，不含目录推断。"""
+        pkg = work_root / 'pkg'
+        self._make_git_repo(pkg, ['packages/.mirror_backups/', '*.bak_*'])
+        _write(pkg / 'packages' / '.mirror_backups' / '20261031' / 'x.md', 'bk')
+        _write(pkg / 'a.py.bak_t9', 'old')
+        got = isc._git_ignored_paths(pkg)
+        assert 'packages/.mirror_backups/20261031/x.md' in got
+        assert 'a.py.bak_t9' in got
+        # 不得出现「被推断出来的目录前缀」
+        assert 'packages/' not in got
+        assert 'scripts/' not in got

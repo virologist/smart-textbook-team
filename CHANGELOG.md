@@ -3,6 +3,126 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] — 2026-11-05 R3 遗留批次：习题位标记口径统一（L1a）+ 标签/漂移口径修正（L2/L4a）
+
+> 立项依据 = R3 真实节级跑批报告 §8「遗留发现 L1–L4」的逐条收口。
+> 本批四条病灶中，**L4a / L2 / L4b 已在前序批次落地**（见下「本批已含」）；
+> 本条目主记 **L1a（习题位标记口径统一）** 与 **版本号/清单对齐**。
+> **R3 不新增相位**：`PHASE_ORDER` 仍 23 相位。
+
+### 修复：习题位标记两套形式并存（L1a · 真缺陷，4.8 形同虚设）
+
+**病灶（实测，非推测）**：`stt-diag-20261101/B/findings-B.md:202` 已记录——
+`RE_EXERCISE.findall('[习题位 3.6：理解×2]')` → `[]`，
+而 `findall('[习题 1-1]')` → `[('1','1')]`。
+即 `agents/subject-writer.md` 规定 writer 写的 `[习题位 {节号}：{Bloom}×{题数}]`
+**永远匹配不到**判据正则 ⇒ 判据 4.8 恒走「本章无 [习题 X-Y] 标记」WARN 分支
+⇒ **习题位缺失 / 断号永不被拦**。
+
+**权威数**：书稿层形式 `[习题 {章}-{序}]` 在 **5 处**声明
+（`references/chapter-structure.md` / `references/profiles/veterinary.md` /
+`skills/manuscript-delivery/SKILL.md` §1.3 / `scripts/check_manuscript.py` 的
+`RE_EXERCISE` / `scripts/compute_metrics.py` C9），
+legacy 形式只在 **1 处**声明（`agents/subject-writer.md`）⇒ 以书稿层形式为唯一权威。
+
+**两层语义分工（v2.9.0 裁决，不再抹平）**：
+| 层 | 位置 | 形式 | 编号依据 | 判据 |
+|---|---|---|---|---|
+| 设计层 | `chapter_design.md` §C | `[习题位 {节号}：{Bloom}×{题数}]` | 所在节 | examiner R1/R2 按 §C 核 |
+| 书稿层 | `draft.md` / `交付/*.md` | **`[习题 {章}-{序}]`** | 全章习题流水号 | 4.8（连续）/ **4.8b（格式）** |
+
+**变更**：
+- **新增判据 4.8b**：legacy 形式在书稿层**显式判 FAIL**。
+  理由：legacy 若不被识别，真实稿件里已存在的习题位就是**静默隐身**的——
+  章节「看起来有习题」，但 4.8 与 C9 都当它不存在，只表现为「缺」而非「错」。
+  「失败必须显式报错，不得静默放行」⇒ 格式用错必须报错。
+- `agents/subject-writer.md`（v2.1.0 → **v2.2.0**）：书稿层形式改为 canonical，
+  并**显式禁止** legacy 形态 + 说明「设计层节号 → 全章流水号」的映射职责。
+- `agents/didactic-architect.md`（v2.2.0 → **v2.3.0**）：保留设计层结构化语义，
+  并声明「不得原样落进书稿」。
+- `scripts/count_net_words.py`：`[习题 {章}-{序}]` 整行 / 行内**必须剔除**——
+  否则统一后新形式不被剔除 ⇒ 净字数口径漂移（两个形式都剔除）。
+- `scripts/compute_metrics.py` C9：canonical 与 legacy **都算「习题位存在」**——
+  结构完整率只答「有没有」，格式由 4.8b 单独判，否则同一处缺陷被
+  **重复计一次**（结构扣分 + 格式 FAIL）⇒ 指标失真。
+- `references/chapter-structure.md`（v1.2.0 → **v1.3.0**）/
+  `references/profiles/veterinary.md`（v1.0.0 → **v1.1.0**）/
+  `skills/manuscript-delivery/SKILL.md`（v1.3.0 → **v1.4.0**，含 §1.3 两层分工表 +
+  §4 判据表登记 4.8b）/
+  `skills/textbook-pipeline-workflow/SKILL.md`（v1.4.0 → **v1.5.0**，3.4 判据 + 统稿 checklist）：
+  口径同步。
+
+**真实产物迁移（书稿层 5 文件 / 16 处）**：
+`tests/fixtures/smart-textbook-team/章节/ch03/draft.md`（1 处）、
+`tests/fixtures/smart-textbook-team/e2e_ch06/章节/ch06/draft.md`（5 处）、
+`.omc/e2e-p1/章节/ch08/draft_R1.md` / `draft_R2.md`（各 5 处）、
+`.omc/e2e-before/章节/ch08/draft.md`（5 处）。
+迁移后实测：4.8 由「**恒 WARN（无标记）**」变为「**习题位编号连续（N 个）PASS**」——
+即这些章节的习题位**第一次真正进入门禁视野**。
+（`chapter_design.md` 属设计层，保留 legacy 语义不动。）
+
+### 修复：数据标签完整率分母口径（L2 · 指标说真话）
+
+- **病灶**：触发词命中 188 句中 **155 句只有触发词而无数值**
+  （如「本病多见于日龄较大鸡群」）⇒ 原口径把无数值定性描述计入分母
+  ⇒ 覆盖率被系统性稀释（真值约 0.21，口径读数 0.17）。
+- **修法**：分母只算「**带具体数值**」的陈述句（数字 + 单位/百分号；
+  纯序号「3号舍」不算数据）——协议原文是「每条**学科数据**必须带标签」。
+- **效果**：标签完整率 0.172 → **0.203**（ch_01 32/188 → 27/133）。
+  剩余 106 个未标注句**确认为真实内容缺陷**（非指标问题），转入内容返修。
+
+### 修复：安装态检查器假漂移淹没真漂移（L4a）
+
+- **病灶**：`install_state_check.py` 用**逐个点名**的固定排除目录清单
+  ⇒ 每包有自己的运行态目录（`.harness-runs/` / `02-design/` / `03-code/` /
+  `packages/.mirror_backups/` …），漏一个就多一批假漂移。
+  实测 30 项「假漂移」淹没 39 项真漂移。
+- **修法**：改用**源码仓自己的 .gitignore 语义**
+  （`git ls-files --others --ignored --exclude-standard --full-name`），
+  逐路径**精确匹配**（不做任何目录级推断——两次踩坑：
+  取首段会把整个 `packages/` 剪掉，取所在目录会把整个 `scripts/` 剪掉）。
+  **必须加 `--full-name`**：不加时路径相对当前工作目录而非仓根，
+  与 `collect_files` 的「相对包根」口径对不上 ⇒ 排除静默失效。
+- **效果**：假漂移 30 项消除；真漂移 39 项正常报出。
+
+### 本批已含（前序批次已落地，此处仅记录）
+
+- **L4b 安装态同步**：`vet-med-ppt-team` 安装态 3.28.6 → **3.28.8**
+  （`git archive HEAD` 只同步**已提交内容**，不混入源码侧 11 个未提交在制品）；
+  注册表 `installed_plugins.json` 更新 `installPath`/`version`/`lastUpdated`，
+  **保留 `installedAt`**；同步前已备份注册表到宿主安装根的 `backups/` 目录
+  （文件名 `installed_plugins.20261105-3.28.8.json`）。
+
+### 修复：跨平台清单版本漂移（继承的 P3-1 缺陷）
+
+- `.codebuddy-plugin/plugin.json` 版本 2.5.0 ≠ `.claude-plugin/plugin.json` 2.8.0；
+  `description` 两份不一致；`install.sh` VERSION 与 plugin.json 不一致；
+  README 头部版本号与 plugin.json 不一致 ⇒ **清单同步门禁 29/33（4 项失败）**。
+- 现全部对齐 **2.9.0** ⇒ **清单同步门禁 33/33 全绿**。
+
+### 测试
+
+- `tests/test_exercise_marker.py` — **新增 23 例**（L1a 专项，正反双向）：
+  canonical 识别 / legacy 显式 FAIL / 4.8 与 4.8b 互不遮蔽 / 规范层口径一致 /
+  净字数剔除（整行 + 行内）/ C9 canonical 与 legacy 都算存在 /
+  **3 轮反向注入**（关 4.8b / 正则放宽 / 净字数退回旧口径 ⇒ 用例必须 FAIL）。
+- `tests/test_install_state_check.py` — **新增 7 例**（L4a），并修正 4 处**恒真断言**
+  （`assert 'SRC_ONLY' not in stdout` 恒真——报告从不出现该字面量 ⇒ 无保护力）。
+- `tests/test_compute_metrics_label.py` — **新增 6 例**（L2 分母口径）。
+- 全量 pytest：**340 → 363 passed**（3 skipped），0 failed。
+- 静态契约基准：**281/281 = 1.000**（新增 F19b）。
+- 五道静态门禁全绿：protocol_eval / doc-consistency 6/6 / 相位一致性 23 相位 /
+  declaration（TECH_DEBT=0）/ domain-neutral（FAIL 0）。
+
+### 破坏性变更
+
+- **书稿层习题位标记必须用 `[习题 {章}-{序}]`**；legacy `[习题位 …]` 被 4.8b 判 **FAIL**。
+  存量书稿需迁移（迁移规则见上；本批已迁 5 文件 16 处）。
+- `count_net_words.py` 剔除口径扩展到 canonical 形式 ⇒ 含新形式习题位的稿件，
+  净字数读数会**下降**（此前被计入）——这是修正，不是回归。
+
+---
+
 ## [2.8.0] — 2026-11-05 R1 批次：protocol-eval 组件评测集（闭环末环落地）
 
 > 立项依据 = 实施后复诊报告 §3.2 R1：「首诊 §3.4.2 的五环闭环里，

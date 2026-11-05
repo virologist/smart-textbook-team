@@ -76,6 +76,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -94,6 +95,78 @@ EXCLUDE_DIRS = {'.git', '.in_use', '.pytest_cache', '__pycache__', '.DS_Store',
 #   ② cache_only 里全是它 → 误报「源码已删」。
 #   ⇒ 一律排除。
 EXCLUDE_FILES = {'.downloaded_at'}
+
+# ★ v2.9.0（2026-11-05 R3-遗留 L4a）：git 忽略目录的**通用排除**
+#
+# 病灶（真实漂移 vs 假漂移）：
+#   `vet-med-ppt-team` 的 `packages/.mirror_backups/`（mirror_sync.py 每次
+#   --confirm 同步前的备份目录，实测 227 个文件）已在该包 `.gitignore` 中
+#   明确排除（git ls-files 命中 0 项）⇒ **它们永远进不了分发包**。
+#   但 install_state_check 只排除了固定的 6 个目录名 ⇒ 源码侧的备份目录
+#   被算成「安装态缺失 30 项」= **纯假漂移**。
+#   真实漂移只有 39 项内容 diff（源码 3.28.8 vs 安装态 3.28.6）。
+#
+# 为什么不能继续逐个点名：
+#   每个包都有自己的运行态目录（.harness-runs/ / 02-design/ / 03-code/ …），
+#   逐个点名 = 漏一个就多一批假漂移 ⇒ 假漂移会淹没真漂移（本例 30 : 39）。
+#   ⇒ 改为**从源码仓的 .gitignore 里读出「被忽略的路径」**，
+#     用 git 自己的忽略语义做判定，而不是脚本自己复刻一份排除清单。
+#
+# 实现要点（实测踩坑）：
+#   ① `git ls-files --others --ignored --exclude-standard` 列出**未跟踪且被忽略**的文件；
+#   ② **必须加 `--full-name`** —— 不加时路径相对「当前工作目录」而非仓根
+#      （实测 `git -C packages ls-files ...` 返回 `.mirror_backups/...`，
+#        加 `--full-name` 才返回 `packages/.mirror_backups/...`），
+#      否则与 collect_files 的「相对包根」口径对不上 ⇒ 排除静默失效；
+#   ③ 非 git 目录 / 无 git 可用时降级为「不排除任何 git 忽略项」
+#      （只保留固定 EXCLUDE_DIRS）——不能因工具缺失而误判漂移。
+#   ④ 只排除**源码侧**被 git 忽略的路径；安装态侧的对应目录若存在，
+#      仍按 cache_only 报出（那是真实残留，该清）。
+_GIT_IGNORE_CACHE: dict[str, set[str]] = {}
+
+
+def _git_ignored_paths(src_root: Path) -> set[str]:
+    """源码仓中被 .gitignore 排除的**具体相对路径**集合（文件 + 目录条目）。
+
+    用途：把这些路径从「包内容」中剔除——它们是**运行态备份 / 本机工作产物**，
+    永远进不了分发包，不该算作「安装态缺失」。
+
+    ⚠ v2.9.0 两轮实测踩坑（都指向同一个错误方向）：
+      ① **不可**把 git 忽略的**文件**的「所在目录」当目录前缀剪枝：
+         `scripts/*.bak_*` 被忽略 ⇒ 取所在目录得 'scripts/'
+         ⇒ 把整个 scripts/ 剪掉（含真包内容）⇒ 源码侧 357→41 文件，
+            反向产生 547 项「安装态多出」的假漂移。
+      ② **不可**只取路径首段：`packages/.mirror_backups/…` ⇒ 'packages/'
+         ⇒ 把整个 packages/（含 packages/vet-med-ppt-team/ 真包内容）剪掉。
+      ⇒ 正确做法：**逐条路径精确匹配**，不做任何目录级推断。
+         git 输出的每条忽略路径原样进集合；collect_files 遇到**完全相等**
+         的相对路径才跳过。若 git 输出的是目录（少见），则该目录下的
+         所有文件都跳过——用「目录前缀 + '/'」精确前缀匹配实现，
+         且该前缀必须是 git **明确列出**的目录，不做任何推断。
+
+    降级策略（非 git 目录 / git 不可用 / 命令失败）⇒ 返回空集合，
+    只保留固定 EXCLUDE_DIRS。此时**不会**误判漂移（宁可漏排也不误排）。
+    """
+    key = str(src_root)
+    cached = _GIT_IGNORE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    out: set[str] = set()
+    try:
+        proc = subprocess.run(
+            ['git', '-C', str(src_root), 'ls-files', '--others', '--ignored',
+             '--exclude-standard', '--full-name'],
+            capture_output=True, text=True, timeout=60)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                line = line.strip().strip('"')
+                if not line:
+                    continue
+                out.add(line.replace(os.sep, '/'))
+    except (OSError, subprocess.SubprocessError):
+        out = set()
+    _GIT_IGNORE_CACHE[key] = out
+    return out
 
 # 默认 marketplace 目录名（可在 known_marketplaces.json 里查到真实 path）
 DEFAULT_MARKETPLACES = ('my-experts', 'experts')
@@ -130,11 +203,21 @@ def _sha256(path: Path) -> str:
     return digest
 
 
-def collect_files(root: Path) -> dict[str, str]:
-    """遍历目录 → {相对路径: sha256}，排除元数据目录。"""
+def collect_files(root: Path, git_ignored: set[str] | None = None) -> dict[str, str]:
+    """遍历目录 → {相对路径: sha256}，排除元数据目录与 git 忽略路径。
+
+    `git_ignored`：源码仓中被 .gitignore 排除的**具体相对路径**集合
+    （由 `_git_ignored_paths` 提供）。命中的路径整条跳过——它们是运行态
+    备份 / 本机工作产物，永远进不了分发包，不该算作「安装态缺失」。
+
+    ⚠ 刻意**不做**「git 忽略文件 ⇒ 其所在目录整棵剪掉」的推断
+      （v2.9.0 实测：会把 scripts/ 与 packages/ 整个剪掉 ⇒ 假漂移 547 项）。
+      精确匹配是唯一安全口径。
+    """
     out: dict[str, str] = {}
     if not root.is_dir():
         return out
+    ignored = git_ignored or set()
     for dp, dn, fn in os.walk(root):
         dn[:] = [d for d in dn if d not in EXCLUDE_DIRS]
         for name in fn:
@@ -144,6 +227,8 @@ def collect_files(root: Path) -> dict[str, str]:
             try:
                 rel = str(p.relative_to(root)).replace(os.sep, '/')
             except ValueError:
+                continue
+            if rel in ignored:
                 continue
             out[rel] = _sha256(p)
     return out
@@ -206,9 +291,16 @@ def find_source_dir(plugins_root: Path, mp: str, pkg: str) -> Path | None:
 
 
 def compare_pair(src: Path, cache: Path) -> dict:
-    """比对单个包的源码态与安装态。"""
-    s = collect_files(src)
-    c = collect_files(cache)
+    """比对单个包的源码态与安装态。
+
+    ⚠ v2.9.0（R3-遗留 L4a）：git 忽略前缀**只作用于源码侧**。
+      源码侧被 .gitignore 排除的目录（运行态备份）本就不该进安装态
+      ⇒ 不算「安装态缺失」；但若安装态**反而有**这些目录，那是真残留
+      ⇒ 仍按 cache_only 报出（该清）。两侧都排除 ⇒ 完全不报。
+    """
+    ignored = _git_ignored_paths(src)
+    s = collect_files(src, ignored)
+    c = collect_files(cache)   # 安装态不按 git 忽略剪枝
     src_only = sorted(set(s) - set(c))
     cache_only = sorted(set(c) - set(s))
     diff = sorted(k for k in set(s) & set(c) if s[k] != c[k])
@@ -225,6 +317,7 @@ def compare_pair(src: Path, cache: Path) -> dict:
         'diff': diff,
         'consistent': consistent,
         'status': 'SAME' if consistent else 'DRIFT',
+        'git_ignored_count': len(ignored),
     }
 
 
