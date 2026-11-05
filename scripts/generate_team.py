@@ -13,10 +13,21 @@ generate_team.py — 动态专家团队构成提案生成器（只出提案，�
 
 用法
 ------------------------------------------------------------------------------
+  # 章级坍缩（默认，v1 行为完全兼容）
   python3 scripts/generate_team.py \
       --design  "$WORK_ROOT/章节/ch01/chapter_design.md" \
       --profile veterinary \
       --out     "$WORK_ROOT/运行态/team-proposal-ch01.yaml"
+
+  # ★v2.10（G1）节级坍缩：只为指定节生成领域视角
+  python3 scripts/generate_team.py --design ... --profile veterinary \
+      --scope section --section 3 \
+      --out "$WORK_ROOT/运行态/team-proposal-ch01-sec3.yaml"
+
+  # ★v2.10（G1）模块级坍缩：只为知识块簇生成（§A 锚 block_id）
+  python3 scripts/generate_team.py --design ... --profile veterinary \
+      --scope block --blocks KB-07,KB-08 \
+      --out "$WORK_ROOT/运行态/team-proposal-ch01-blk.yaml"
 
 退出码：0 提案已生成 | 2 输入缺失 | 3 profile 无映射表
 ==============================================================================
@@ -96,6 +107,86 @@ def extract_knowledge_scope(design_path: Path) -> list[str]:
     return out
 
 
+# ── ★G1（v2.10）：三级坍缩的节/块级知识域提取 ──────────────────────────
+def extract_section_domains(design_path: Path, section_no: str) -> list[str]:
+    """提取指定节覆盖的知识域清单（scope=section 时用）。
+
+    来源优先级：
+    1. §C 分节计划的「覆盖知识块」列 → 反查 §A 知识块的「知识域」列；
+    2. 退化：§C 该节行的「主题/深度」列里出现的 knowledge_scope 域名词。
+    找不到任何域 → 返回空列表（调用方报错，不猜）。
+    """
+    text = design_path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    # 1) §A 知识块锚区块：block_id → 知识域
+    block_domain: dict[str, str] = {}
+    in_kb = False
+    for ln in lines:
+        if "KNOWLEDGE_BLOCKS_BEGIN" in ln:
+            in_kb = True
+            continue
+        if "KNOWLEDGE_BLOCKS_END" in ln:
+            in_kb = False
+            continue
+        if in_kb and ln.strip().startswith("|"):
+            cells = [c.strip().strip("`") for c in ln.strip("|").split("|")]
+            if len(cells) >= 2 and re.fullmatch(r"KB-\d+", cells[0]):
+                block_domain[cells[0]] = cells[1]
+
+    # 2) §C 节行：找「节号」列匹配的行 → 「覆盖知识块」列
+    sec_domains: list[str] = []
+    for ln in lines:
+        if not ln.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if len(cells) < 2 or cells[0] != section_no:
+            continue
+        # 找覆盖知识块列（含 KB- 的列）
+        for c in cells:
+            for bid in re.findall(r"KB-\d+", c):
+                d = block_domain.get(bid)
+                if d and d not in sec_domains:
+                    sec_domains.append(d)
+        break
+
+    # 3) 退化：knowledge_scope 域名词在该节行文本中出现
+    if not sec_domains:
+        for ln in lines:
+            if not ln.strip().startswith("|"):
+                continue
+            cells = [c.strip() for c in ln.strip("|").split("|")]
+            if not cells or cells[0] != section_no:
+                continue
+            row_text = " ".join(cells)
+            for d in extract_knowledge_scope(design_path):
+                if d and d in row_text and d not in sec_domains:
+                    sec_domains.append(d)
+            break
+    return sec_domains
+
+
+def extract_block_domains(design_path: Path, block_ids: list[str]) -> list[str]:
+    """提取指定知识块簇的知识域清单（scope=block 时用）。来源 = §A 锚区块。"""
+    text = design_path.read_text(encoding="utf-8")
+    want = set(block_ids)
+    out: list[str] = []
+    in_kb = False
+    for ln in text.splitlines():
+        if "KNOWLEDGE_BLOCKS_BEGIN" in ln:
+            in_kb = True
+            continue
+        if "KNOWLEDGE_BLOCKS_END" in ln:
+            in_kb = False
+            continue
+        if in_kb and ln.strip().startswith("|"):
+            cells = [c.strip().strip("`") for c in ln.strip("|").split("|")]
+            if len(cells) >= 2 and cells[0] in want:
+                if cells[1] not in out:
+                    out.append(cells[1])
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="动态专家团队构成提案生成器（只出提案）")
     ap.add_argument("--design", required=True, help="chapter_design.md 路径")
@@ -104,11 +195,30 @@ def main() -> int:
     ap.add_argument("--expert-dir", default=None,
                     help="专家包根（默认按本脚本位置反推）")
     ap.add_argument("--out", required=True, help="提案 yaml 输出路径")
+    # ★G1（v2.10）：三级坍缩作用域
+    ap.add_argument("--scope", choices=["chapter", "section", "block"],
+                    default="chapter",
+                    help="坍缩作用域：chapter（默认，v1 行为）/ section（节级）/ block（知识块级）")
+    ap.add_argument("--section", default=None,
+                    help="--scope section 时必填，节号（如 3 或 1.2）")
+    ap.add_argument("--blocks", default=None,
+                    help="--scope block 时必填，逗号分隔知识块 ID（如 KB-07,KB-08）")
     args = ap.parse_args()
 
     design = Path(args.design).expanduser()
     if not design.is_file():
         print(f"[ERROR] chapter_design 不存在：{design}", file=sys.stderr)
+        return 2
+
+    # scope 参数互检（fail-fast，不静默降级）
+    if args.scope == "section" and not args.section:
+        print("[ERROR] --scope section 必须同时给 --section <节号>", file=sys.stderr)
+        return 2
+    if args.scope == "block" and not args.blocks:
+        print("[ERROR] --scope block 必须同时给 --blocks KB-xx[,KB-yy]", file=sys.stderr)
+        return 2
+    if args.scope == "chapter" and (args.section or args.blocks):
+        print("[ERROR] --scope chapter 不接受 --section/--blocks（语义冲突）", file=sys.stderr)
         return 2
 
     pkg_root = (Path(args.expert_dir).expanduser() if args.expert_dir
@@ -123,9 +233,23 @@ def main() -> int:
         print(f"[ERROR] profile 映射表为空：{profile_path}", file=sys.stderr)
         return 3
 
-    domains = extract_knowledge_scope(design)
+    # ★G1：按作用域提取知识域
+    scope_label = ""
+    if args.scope == "chapter":
+        domains = extract_knowledge_scope(design)
+    elif args.scope == "section":
+        domains = extract_section_domains(design, args.section.strip())
+        scope_label = f"section:{args.section.strip()}"
+    else:  # block
+        bids = [b.strip() for b in args.blocks.split(",") if b.strip()]
+        domains = extract_block_domains(design, bids)
+        scope_label = f"block:{','.join(bids)}"
     if not domains:
-        print("[ERROR] chapter_design 中未找到 knowledge_scope / 知识域清单", file=sys.stderr)
+        if args.scope == "chapter":
+            print("[ERROR] chapter_design 中未找到 knowledge_scope / 知识域清单", file=sys.stderr)
+        else:
+            print(f"[ERROR] 作用域 {scope_label} 未解析出知识域"
+                  f"（检查 §C「覆盖知识块」列与 §A 锚区块）", file=sys.stderr)
         return 2
 
     # 领域成员：知识域 → 映射表命中；未命中 → 构造 {domain}-specialist
@@ -180,6 +304,8 @@ def main() -> int:
         f"# 团队构成提案（仅提案，未生效）— {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
         f"chapter_design: {design}",
         f"discipline: {args.profile}",
+        f"scope: {args.scope}" + (f" ({scope_label})" if scope_label else "")
+        + "   # ★G1 v2.10：chapter（章级）/ section（节级）/ block（知识块级）",
         "confirmed_by_user: false   # 闸门：用户明确确认后，主理人才可把它转写为注册表并置 true",
         "members:",
     ]
@@ -216,7 +342,9 @@ def main() -> int:
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print(f"[OK] 提案已写入：{out}", file=sys.stderr)
-    print(f"[OK] 领域成员 {len(domain_members)} + 固定 {len(FIXED)} = "
+    print(f"[OK] scope={args.scope}"
+          + (f" ({scope_label})" if scope_label else "")
+          + f"；领域成员 {len(domain_members)} + 固定 {len(FIXED)} = "
           f"{len(domain_members) + len(FIXED)} 个；知识域命中 "
           f"{n_hit}/{n_total}", file=sys.stderr)
     if constructed_domains:

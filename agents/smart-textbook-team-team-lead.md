@@ -38,7 +38,7 @@ maxTurns: 200
 
 **任何 spawn 前的强制步骤**（加载 `task-router` skill 后执行）：
 
-1. **标注 task_type**：按 router §1 枚举（`design-bloom` / `retrieval-pmid` / `write-skeleton` / `review-citation` 等 16 类）从用户问法或子任务判定
+1. **标注 task_type**：按 router §1 枚举（`design-bloom` / `retrieval-pmid` / `write-skeleton` / `review-citation` 等 17 类）从用户问法或子任务判定
 2. **评估置信度**：router §2 四步评分（**0-100 量纲**，与 envelope `confidence` 同源）；总分 <70 走升级（追问 / 拆任务 / 兜底 fallback）
 3. **envelope 写入 payload.task_type 与 routing_confidence**（trace + 离线 eval 用）
 4. **禁止合并跨 task_type 任务**（"审+补图"必须拆两个独立 spawn）

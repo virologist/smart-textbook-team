@@ -1,7 +1,7 @@
 ---
 name: task-router
-version: 1.2.0
-description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (16 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
+version: 1.3.0
+description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (17 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
 ---
 
 # task-router — 结构化任务路由
@@ -25,7 +25,10 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 1. task_type 枚举（16 类，SSOT）
+## 1. task_type 枚举（17 类，SSOT）
+
+> （★G3 v2.10：枚举 16→17——补 review-section（节级审查，波次收口检查）；
+> 审查粒度与节级生产对齐：撰写已到节级，审查补上节级轻量轮。）
 
 | task_type | 中文 | 责任成员 | 输入信号 | 输出契约 |
 |-----------|------|---------|---------|---------|
@@ -42,11 +45,20 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | `review-style` | 审查 R4（校稿三件套） | quality-examiner | `draft.md` | `proofread.md` + `proofread_revisions.md` + R4 verdict |
 | `review-score` | 审查 R5（五维质量评分） | quality-examiner | `draft.md` + `chapter_design.md` | R5 分数 + 质量评分段（<80 blocking） |
 | `review-proofread-score` | **审查 R4+R5 合并**（单次 spawn 双产出 · B1-3） | quality-examiner | `draft.md` + `chapter_design.md` | `proofread.md` + `proofread_revisions.md` + R5 评分段 + 双轮 verdict |
+| `review-section` | **节级审查**（★G3 v2.10 新增） | quality-examiner | `sections/{节号}.md` + `chapter_design.md` §C 对应节 | `sections/{节号}.verdict.md`（单节 pass/blocking） |
 | `visual-spec` | 图表规格 + 代码 | visual-instructional-designer | 图表位 `[图 X-X：...]` + `draft.md` | 规格卡 + Mermaid/SVG（数据图含 .ipynb） |
 | `visual-review` | 图表审查（图与正文一致性）| visual-instructional-designer | 已产图表 + 最终 `draft.md` | 图文一致性 verdict |
 | `gap-retrieval` | 缺口清单检索（gaps.md 消费） | literature-scout | `章节/{ch##}/gaps.md`（architect 产出） | 按缺口逐条证据 + 覆盖追踪 |
 
-> **扩展规则**：未覆盖的新场景（17+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+> **扩展规则**：未覆盖的新场景（18+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+
+> **review-section 派工纪律（★G3 v2.10）**：
+> ① 节级审查是**波次收口检查**（PRODUCE 与 VERIFY 之间），**不新增相位**；
+> ② 节净字数 **<800 字跳过**独立节审（并入章级 R1-R3，防成本倒挂）；
+> ③ 判据 = 章级 R2 四维矩阵在节范围内的子集 + chapter_design §C 该节契约项，
+>    **不新增判据源**（防两套标准漂移）；
+> ④ 单节 verdict 上限 2 轮，超限转章级返修循环（打回计数跨 task_id 累计不重置）；
+> ⑤ 同波多节可并行 spawn（每节独立 `must_produce=sections/{节号}.verdict.md`，路径互异）。
 
 > **B1-3 合并派工说明（2026-11-04）**：`review-style` 与 `review-score` 保留在枚举中（单轮问法仍可能只求其一），
 > 但 **PROOFREAD 态的标准派工改用 `review-proofread-score`**——单次 spawn 双产出，省一次派工与一次全稿重读。
@@ -219,3 +231,4 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 ## 7. Changelog
 
 - v1.0.0 [2026-09-18] 初版：12 task_type 枚举 + 4 步决策算法 + 置信度升级 + 离线 eval harness
+- v1.3.0 [2026-11-05] ★G3：枚举 16→17，新增 `review-section`（节级审查，波次收口检查；<800 字跳过；判据=章级 R2 四维节子集，不新增判据源）；§1 补派工纪律五条

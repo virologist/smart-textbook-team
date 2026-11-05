@@ -1,7 +1,7 @@
 ---
 name: citation-verify
 description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify [引] quotation tags at conclusion level via method 4c (source retrievable + conclusion locatable + assertion strength not inflated), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准), plus law-domain precedents/judicial interpretations and CS-domain RFCs/dblp entries against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 引标签核验 / 结论有没有被原文支持 / 法规现行有效 / 判例核验 / 裁判文书 / RFC 现行状态 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
-version: 1.6.0
+version: 1.7.0
 ---
 
 # citation-verify — 引用核验（零容忍防幻觉）
@@ -138,19 +138,21 @@ WebFetch https://api.crossref.org/works/{DOI}
 拿得出但核不过（结论拔高） → 改措辞或降级为 `[待核实·reason=原文结论强度不足]`。
 **禁止**用 `[引]` 兜住"我知道有这回事但说不清哪篇"的模糊记忆。
 
-### 方法 4d：本地源三形态核验（ADR-03 新增，2026-11-01 批次 B2）
+### 方法 4d：本地源锚核验（ADR-03 新增，2026-11-01 批次 B2；④形态 v2.10 G6 增）
 
-> **为什么单列一条**：Tier 0 本地知识源（Obsidian/书籍 md/ima 知识库）是**零幻觉面**的
+> **为什么单列一条**：Tier 0 本地知识源（Obsidian/书籍 md/ima 知识库/★学科标准 skill）是**零幻觉面**的
 > 首选来源，但此前锚定写法无统一契约——writer 写的「本地:路径」带不带锚、
 > Obsidian 写双链还是写路径，机械层 `_has_retrievable_anchor` 认不出，导致
-> 门禁 4.12d 逐处锚定要么误杀、要么漏过。本方法定死本地源三形态的**可检索锚**写法，
-> 与 `check_manuscript.py` 的 `RE_OBSIDIAN` / `RE_LOCAL_FILE` / `RE_IMA` 逐字对齐。
+> 门禁 4.12d 逐处锚定要么误杀、要么漏过。本方法定死本地源锚形态的**可检索锚**写法，
+> 与 `check_manuscript.py` 的 `RE_OBSIDIAN` / `RE_LOCAL_FILE` / `RE_IMA` 逐字对齐
+> （④ std-skill 形态走 ToolSearch 现查核验，机械层暂按「三段齐全」形式核验，渐进收紧）。
 
 | 形态 | 正文锚写法 | 核验动作 | 可检索性门槛 |
 |---|---|---|---|
 | ① Obsidian 双链 | `[[笔记名]]` 或 `[[路径#小节]]` | 读 `$TB_VAULT_PATH` 确认笔记存在 | 双链本身即锚（可反查） |
 | ② 本地文件 | `本地:相对路径#锚`（锚=小节标题或 `#L行号`） | 核验 `{WORK_ROOT}/相对路径` 文件存在 + 锚可定位 | **必须带 `#锚`**，只给路径不给锚 = 不可检索 → 4.12d FAIL |
 | ③ ima 知识库 | `ima:{kb_id}:{doc_title}` | 走 Tier 0 ima 两段式检索确认库/文档存在 | 三段齐全（kb_id + doc_title） |
+| ④ ★std-skill（v2.10 G6） | `[实]（std-skill:{skill名}:{条目}）` | ToolSearch 现查该 skill/MCP 可用 + 条目可定位 | 三段齐全（skill名 + 条目）；skill 不可用 → 降 `[待核实·reason=std-skill 不可用]` |
 
 **铁律**：本地源锚与 PMID/DOI **同等地位**，但同样受「有声明必有锚」约束——
 `[实]（本地:章节/ch01/fig/a.png）`（无 `#锚`）与裸 `[实]` 同等 FAIL；

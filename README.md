@@ -38,7 +38,7 @@
 - `textbook-pipeline-workflow` — **13 态状态机**（A-N + H LEARN）、门禁、E1-E5 错误协议、handoff 契约、介入协议（evo-11 迁入）、统稿 checklist（evo-11 迁入）
 - `citation-verify` — PMID/DOI 零容忍核验 + 中文法规/标准/公告源核验链（v1.3）；输入不可信原则（evo-11：指令注入防护/缓存不豁免三要素/来源分级）
 - `agent-harness-protocol` — **Harness 执行层骨架**（evo-11 自 team-lead 迁入）：消息信封、状态黑板、重试/超时/预算/熔断/trace、降级链、开工/收尾三件套（P2-7）、**角色矩阵与接口契约、任务分配三模式、冲突仲裁五类**
-- `task-router` — **16 类 task_type 路由**（v2.1 新增）：4 步路由算法、置信度合成（0-100 量纲）、ESC1-ESC4 升级规则（与 pipeline E1-E5 错误分级分离）、47 用例离线评测（1.000）
+- `task-router` — **17 类 task_type 路由**（v2.1 新增）：4 步路由算法、置信度合成（0-100 量纲）、ESC1-ESC4 升级规则（与 pipeline E1-E5 错误分级分离）、47 用例离线评测（1.000）
 - `multi-agent-patterns` — 多代理协作公共模式（串行/并行/条件触发；铁律）
 - `learn-protocol` — **LEARN 阶段协议**（evo-11 新建）：三步曲（数据收集 → 规则草案 → 候补池）+ 合并门禁 + 反模式
 - `manuscript-delivery` — **书稿交付规格**（v2.2.2 新增）：**md 为源、docx 为交付**的双格式铁律、md 结构契约、内置教材版式 + 三级覆写、**双轨图表**（md 保留可渲染源码 / docx 嵌栅格化 PNG，栅格化三级降级不静默丢图）、门禁 4 判据族（4.0–4.14）

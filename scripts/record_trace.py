@@ -32,13 +32,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import trace_schema as tsc  # noqa: E402
 
 # ── ADR-05（批次 B4）：信封全字段解析 ─────────────────────────────────────
-# harness §1 消息信封模板的完整 19 字段（唯一 SSOT）。--from-envelope 此前只
+# harness §1 消息信封模板的完整字段集（唯一 SSOT）。--from-envelope 此前只
 # 解析 from/to/task_id/type/correlation_id 5 字段，其余字段「trace 与信封两张皮」
-# （A-09/A-26）；现 19/19 全解析并落入 trace 记录 envelope 子对象 + 核心字段平铺。
+# （A-09/A-26）；现全字段解析并落入 trace 记录 envelope 子对象 + 核心字段平铺。
+# ★G4（v2.10）：19 → 21 字段——新增 reasoning_chain（决策推理链）与
+# divergence（分歧记录）；三类关键决策（门禁裁决/blocking/介入根因）必附
+# reasoning_chain，缺失由 CLI WARN（渐进接入），非法 JSON 拒收。
 ENVELOPE_FIELDS = (
     'agent_id', 'task_id', 'phase', 'status', 'confidence', 'deliverable_summary',
     'evidence', 'issues', 'next_agent_hint', 'metrics', 'msg_id', 'correlation_id',
     'type', 'from', 'to', 'context_refs', 'state_patch', 'ts', 'payload',
+    'reasoning_chain', 'divergence',
 )
 # 信封 status（小写）→ trace outcome 映射（harness §1「status 取值」）
 ENVELOPE_STATUS_MAP = {
@@ -144,7 +148,7 @@ def main() -> int:
                     help='成员回传信封 JSON 文件路径——传入后 from/to/task_id/type 以信封为准'
                          '(C14, 2026-10-30): CLI 自填值与信封不一致时以信封为准并 WARN,'
                          '消除「trace 与信封两张皮」;信封缺 from/to 时拒收(exit 2)。'
-                         'ADR-05: 19 字段全解析,输出 ENVELOPE_FIELDS_PARSED=n/19')
+                         'ADR-05 + ★G4: 21 字段全解析,输出 ENVELOPE_FIELDS_PARSED=n/21')
     # ── ADR-05（批次 B4）：硬门槛落盘的 4 个新 trace 字段 + 打回计数 ──
     ap.add_argument('--confidence', type=float, default=None,
                     help='置信度 0-100（信封 confidence 同源;两处不一致以信封为准）')
@@ -159,6 +163,15 @@ def main() -> int:
                          '（ADR-05 §5.2,禁止手工计数）。`appeal|` 前缀键 = 申诉计数'
                          '（#70 判据 A2:同一指纹申诉 ≤1 次）,不触发介入协议'
                          '（progress.py rejects 对其显示「申诉已用」）')
+    # ── ★G4（v2.10）：决策推理链 + 分歧记录（信封 19→21 字段扩展）──
+    ap.add_argument('--reasoning-chain', default='',
+                    help='JSON 化决策推理链（★G4）: {"decision","criteria_refs",'
+                         '"evidence_refs","computation","alternatives_considered"}——'
+                         '四道门禁裁决 / examiner blocking / 介入根因三类关键决策必附;'
+                         '判据引用须指向 SSOT 文件 §节。缺失仅 WARN（渐进接入,不拒收）')
+    ap.add_argument('--divergence', default='',
+                    help='JSON 化分歧记录（★G4）: {"parties","issue","resolution",'
+                         '"rule_ref"}——审查与写作有分歧时必附;无分歧不传')
     args = ap.parse_args()
 
     # ── G6: tokens 对账分支 ──
@@ -173,7 +186,7 @@ def main() -> int:
         ap.error(f'写入模式必填: {missing}（或使用 tokens 子命令: record_trace.py tokens --work-root …）')
         return 2
 
-    # ── C14: 信封优先解析（2026-10-30；ADR-05 B4: 5 字段 → 19 字段全解析）──
+    # ── C14: 信封优先解析（2026-10-30；ADR-05 B4: 5 字段 → 19 字段；★G4 v2.10 → 21 字段）──
     env = None
     env_parsed: dict = {}
     if args.from_envelope:
@@ -191,7 +204,7 @@ def main() -> int:
             print(f"[ERROR] 信封缺必填字段 {missing} ——来源不可验证,按不可信回传拒收"
                   f"(harness §安全对账)", file=sys.stderr)
             return 2
-        # 19 字段全解析（A-09/A-26）：逐字段抽取,统计解析数,缺字段 WARN 不静默
+        # 21 字段全解析（A-09/A-26 + ★G4 v2.10）：逐字段抽取,统计解析数,缺字段 WARN 不静默
         env_parsed = {k: env[k] for k in ENVELOPE_FIELDS
                       if k in env and env[k] not in (None, '')}
         n_parsed = len(env_parsed)
@@ -249,6 +262,29 @@ def main() -> int:
             print(f"[ERROR] --gate-verdict 不是合法 JSON: {e}", file=sys.stderr)
             return 2
 
+    # ── ★G4（v2.10）：reasoning_chain / divergence JSON 校验 ──────────
+    # 非法 JSON 拒收（与 gate_verdict 同级）；合法性（字段齐全性）只 WARN——
+    # 渐进接入：结构不全不阻断写入，但审计端可见。
+    reasoning_chain = None
+    if args.reasoning_chain:
+        try:
+            reasoning_chain = json.loads(args.reasoning_chain)
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] --reasoning-chain 不是合法 JSON: {e}", file=sys.stderr)
+            return 2
+        else:
+            missing = [k for k in ('decision', 'criteria_refs') if k not in reasoning_chain]
+            if missing:
+                print(f"[WARN] reasoning_chain 缺推荐字段 {missing}"
+                      f"（decision+criteria_refs 为最小集；渐进接入不阻断）", file=sys.stderr)
+    divergence = None
+    if args.divergence:
+        try:
+            divergence = json.loads(args.divergence)
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] --divergence 不是合法 JSON: {e}", file=sys.stderr)
+            return 2
+
     # ── outcome 归一化（2026-11-04 诊断 P0-1）────────────────────────────
     outcome, outcome_warn = normalize_outcome(args.outcome)
     if outcome_warn:
@@ -301,11 +337,14 @@ def main() -> int:
         # ── C2 新增三字段（相位级时延可计算的前提）────────────────────
         'phase': phase or None,
         'start': start_ts,
+        # ── ★G4（v2.10）：决策推理链与分歧记录（None 时 JSON 序列化为 null）──
+        'reasoning_chain': reasoning_chain,
+        'divergence': divergence,
     }
     if args.estimated:
         rec['estimated'] = True
     if env_parsed:
-        # 19 字段解析结果全量保留（含未平铺字段），trace 与信封单一事实源
+        # 21 字段解析结果全量保留（含未平铺字段），trace 与信封单一事实源
         rec['envelope'] = env_parsed
 
     # ── B2（2026-11-04）：时延字段强制 ──────────────────────────────────

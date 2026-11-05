@@ -3,6 +3,93 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] — 2026-11-05 升维批次：三级坍缩 + 节级审查 + 推理链信封 + 工具编排总表
+
+> 立项依据 = 第三轮升维诊断（`tb-writer/docs/smart-textbook-team-升维设计-2026-11-05.md`）G1–G7。
+> 本批 **不新增相位**（`PHASE_ORDER` 仍 23 相位），全部为「新增可选协议」——
+> 旧路径行为零破坏：坍缩不指定 scope 即章级、不派 review-section 即跳过节审、
+> 缺 reasoning_chain 仅 WARN。
+
+### ★G1 · 三级坍缩（章/节/块）—— team-generation v2.0.0 + generate_team.py 扩参
+
+- **病灶**：动态坍缩只到章级（`dynamic-members.yaml` 以 `chapter:` 为作用域键），
+  长章内异质主题（如一章含病毒病+细菌病+寄生虫病）被迫共用一套领域视角——
+  不满足「按主题/模块以章/节/更小单位动态坍缩」目标。
+- **变更**：
+  - 作用域三级化：`chapter`（默认，v1 行为）/ `section`（单节）/ `block`（知识块簇）；
+  - `generate_team.py` 新增 `--scope {chapter,section,block}` + `--section <节号>` + `--blocks KB-xx,...`
+    （scope 与参数互检 fail-fast：缺参/语义冲突 exit 2，不静默降级）；
+  - 节级域提取三级来源：§C「覆盖知识块」列反查 §A 锚 → 退化为 §C 行文本域名词匹配 → 空则报错不猜；
+  - 注册表 v2 `scopes:` 结构（v1 扁平 `members:` 兼容可读，等价 `scope: chapter`）；
+  - **闸门 per-scope**：章级确认 ≠ 节级确认；节级提案否决 ≤3 轮 → 停机报用户；
+  - **节级坍缩提示义务**：异质知识域 ≥2 且字数 >8000 → 主理人必须提示（用户跳过记 trace 放行）；
+  - 节级视角注入链：注册表 → writer 派单「本节领域视角」段 → examiner R2 同视角复核。
+- **实测**：正例（章级/节级 section 3/块级 KB-01,KB-03 全部正确产出提案）+
+  反例（KB-07 不存在 → exit 2；scope 缺参 → exit 2；语义冲突 → exit 2）全部通过。
+
+### ★G3 · 节级审查回路 —— task-router v1.3（16→17 类）+ pipeline §3.7
+
+- **病灶**：撰写已节级化（§3.6），但 VERIFY R1-R3 仍是整章审查——40 节大章 R2
+  一次性吞整章上下文，逐节深度核验靠 examiner 自觉。
+- **变更**：
+  - task-router 新增 `review-section`（波次收口检查，不新增相位）；
+  - pipeline 新增 §3.7：节净字数 **<800 字跳过节审**（防成本倒挂）；判据 = 章级 R2
+    四维矩阵节子集 + §C 节契约项（**判据源唯一，不新增判据**）；单节 verdict ≤2 轮；
+    同波多节可并行（verdict 落 `sections/{节号}.verdict.md`，路径互异）；
+  - **段级抽查**（R2 内嵌）：含数值段 100% / 纯定性段 30%（固定步长）查因果三段；
+  - member-contracts examiner 增可选产物 `sections/{节号}.verdict.md`。
+
+### ★G4 · 决策推理链结构化 —— harness v1.8.0 信封 19→21 字段
+
+- **病灶**：三类关键决策（四道门禁裁决 / examiner blocking 判定 / 介入根因判定）
+  无强制推理链字段，trace 的 gate_verdict 只有结论无依据链，事后审计靠翻报告。
+- **变更**：
+  - 信封新增 `reasoning_chain`（decision/criteria_refs/evidence_refs/computation/
+    alternatives_considered——criteria_refs 必指 SSOT 文件 §节）与 `divergence`
+    （parties/issue/resolution/rule_ref——裁决必引 harness §0 仲裁表条目）；
+  - `record_trace.py` 新增 `--reasoning-chain` / `--divergence`：非法 JSON 拒收（exit 2），
+    decision+criteria_refs 缺失 WARN（渐进接入）；`ENVELOPE_FIELDS` 19→21，
+    `ENVELOPE_FIELDS_PARSED=n/21`；
+  - `validate_envelope.py`、静态契约 F38d、harness §1 模板与 §6.1 字段表同步 21 字段口径。
+- **实测**：正向写入（reasoning_chain+divergence 全落 trace）+ 非法 JSON 拒收（exit 2）通过。
+
+### ★G5 · 工具编排总表 —— references/tool-orchestration.md（新建，SSOT）
+
+- **病灶**：工具降级链散落 5 处（scout 五层 / examiner R3 / harness §5 /
+  citation-verify 方法 1–4d / scientific-figure 数据四级），新增工具要改 5 处，
+  单点故障替补靠记忆。
+- **变更**：8 行编排总表（L1 本地检索 / L2 学术 / L3 引用核验 / L4 法规 / L5 数值触发词 /
+  L6 绘图数据 / L7 绘图执行 / L8 文献级定位）× 7 列（环节/P0/P1/P2/单点故障替补/消费成员）；
+  通用铁律 4 条（前缀禁写死/静默失败判定/失败留痕/兜底穷尽≠默认通过）；
+  scout/examiner MD 加「编排总表锚」引用行（总表与成员 MD 冲突时以总表为准并上报）。
+
+### ★G2 · R5 评分默认落盘路径 —— score_quality.py 双落盘 + 契约登记
+
+- **病灶**：R5 评分段依赖运行时 `--produce` 显式指定，漏传即静默无处落盘，
+  静态契约抓不到（复诊 R5 遗留）。
+- **变更**：`score_quality.py` 默认双落盘——运行态 SSOT（门禁 4.14 消费，不变）+
+  契约路径 `章节/{ch}/review/r5_score.json`（contract_check 必查）；
+  契约路径写失败不阻塞主产物但显式 WARN；member-contracts examiner must_produce 登记。
+
+### ★G6 · 学科标准 skill 挂接 —— Tier 0 第④形态
+
+- **变更**：scout Tier 0 增「std-skill」形态（ToolSearch 按「教材标准/教学标准/curriculum
+  standard」现查，命中与 ima 同级）；本地源锚第④形态 `[实]（std-skill:{skill名}:{条目}）`；
+  citation-verify v1.7.0 方法 4d 承接（三段齐全门槛；skill 不可用降 `[待核实]` 不阻塞检索）。
+
+### 一致性
+
+- 两份 plugin.json + install.sh VERSION → **2.10.0**（manifest 同步门禁 M 系覆盖）；
+- 版本升档：team-generation 1.0.0→**2.0.0**、task-router 1.2.0→**1.3.0**、
+  harness 1.7.0→**1.8.0**、citation-verify 1.6.0→**1.7.0**、pipeline 1.5.0→**1.6.0**；
+- ★G7 SSOT 收敛路线声明（维持三处对齐 + 机械检查现状，收敛随下次协议修订顺带做）。
+
+### 回归基线（本批收口实测）
+
+- `pytest tests/ -q`：**363 passed, 3 skipped**（改动后全绿）；
+- router eval：**17 类 / 47 用例 PASS**（枚举表 SSOT 派生自动跟随）；
+- 三级坍缩正反例 8 项、reasoning_chain 正反例 2 项全过。
+
 ## [2.9.0] — 2026-11-05 R3 遗留批次：习题位标记口径统一（L1a）+ 标签/漂移口径修正（L2/L4a）
 
 > 立项依据 = R3 真实节级跑批报告 §8「遗留发现 L1–L4」的逐条收口。

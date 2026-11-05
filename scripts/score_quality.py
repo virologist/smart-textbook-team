@@ -193,9 +193,23 @@ def main() -> int:
 
     out_dir = Path(args.work_root).expanduser() / "运行态"
     out_dir.mkdir(parents=True, exist_ok=True)
+    # ★G2（v2.10）：双落盘——运行态 SSOT（门禁 4.14 消费）+ 章节契约路径
+    # （member-contracts examiner must_produce 的默认路径；编排者漏传 --produce
+    #   时评分不再静默无处可寻，contract_check 按契约路径必查）。
     out_file = out_dir / "r5-score.json"
     out_file.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n",
                         encoding="utf-8")
+    contract_file = (Path(args.work_root).expanduser() / "章节" / args.chapter
+                     / "review" / "r5_score.json")
+    try:
+        contract_file.parent.mkdir(parents=True, exist_ok=True)
+        contract_file.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n",
+                                 encoding="utf-8")
+        print(f"OK  r5_score.json (契约路径) → {contract_file}")
+    except OSError as e:
+        # 契约路径写失败不阻塞主产物——主产物（运行态 SSOT）已成功；显式告警不静默
+        print(f"[WARN] 契约路径 r5_score.json 写入失败（不阻塞，主产物已落运行态）: {e}",
+              file=sys.stderr)
 
     print(f"OK  r5-score.json → {out_file}")
     print(f"R5_TOTAL={total}")

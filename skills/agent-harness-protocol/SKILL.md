@@ -1,7 +1,7 @@
 ---
 name: agent-harness-protocol
 description: "Execution-layer harness for multi-agent orchestration: message envelope schema, state blackboard spec, retry/timeout/budget/circuit-breaker rules, trace logging format, degradation chains, plus executable enforcement bodies for parallel scheduling, member contract checks, and split-merge verification. Load when dispatching agents, handling cross-agent state, or when a task stalls, retries, or times out. Trigger words: 任务卡住 / 成员超时 / 重试几次了 / 熔断 / 黑板怎么patch / 信封格式 / 预算耗尽 / 并发写冲突 / dispatch checklist / 并行度 / 成员契约 / 拆分合并."
-version: 1.7.0
+version: 1.8.0
 ---
 
 # agent-harness-protocol — 多代理编排执行层
@@ -99,13 +99,32 @@ writer 对单项 blocking 有异议时走信封申诉——**禁止正文口头�
   "context_refs": ["相对 WORK_ROOT 的路径"],
   "state_patch": {"phase": "...", "artifacts": {}, "blocking_open": []},
   "ts": "ISO8601",
-  "payload": {"core_output": "...", "evidence_or_basis": "...", "open_questions": []}
+  "payload": {"core_output": "...", "evidence_or_basis": "...", "open_questions": []},
+  "reasoning_chain": {
+    "decision": "<结论>",
+    "criteria_refs": ["<SSOT 文件 §节>"],
+    "evidence_refs": ["<相对路径>"],
+    "computation": "<可复述的计算/比对过程>",
+    "alternatives_considered": ["<被否决的替代项及理由>"]
+  },
+  "divergence": {
+    "parties": ["<成员A>", "<成员B>"],
+    "issue": "<分歧点>",
+    "resolution": "<裁决结论>",
+    "rule_ref": "<harness §0 仲裁表条目>"
+  }
 }
 ```
 
 > **6必填**（agent_id/task_id/phase/status/confidence/deliverable_summary）跨团队统一强制；
 > `msg_id`/`correlation_id`/`type`/`context_refs`/`state_patch` 为团队扩展字段（黑板与追踪用）。
 > `status` 取值 `success|partial|failed|blocked`（原 ACP UPPERCASE 已弃用）。
+> **★G4（v2.10）新增两字段**（信封 19→21）：
+> - `reasoning_chain`——**三类关键决策必附**：①主理人四道门禁裁决 ②examiner blocking 判定
+>   ③介入协议根因判定。`criteria_refs` 必须指向 SSOT 文件 §节（禁止行内自造判据）；
+>   缺失由 `record_trace.py` WARN（渐进接入，不拒收）。
+> - `divergence`——审查与写作有分歧（含申诉 #70）时必附；无分歧不传（或 null）。
+>   裁决结论必须引用 §0 冲突仲裁表条目，事后审计可按 `rule_ref` 复核裁决一致性。
 
 | 字段 | 用途 | 违规后果 |
 |------|------|---------|
@@ -119,15 +138,15 @@ writer 对单项 blocking 有异议时走信封申诉——**禁止正文口头�
 **`from`/`to` 落地说明（C14，2026-10-30）**：此前 §1 模板无此二字段，但 §安全对账与
 team-lead 调度段都把 `from` 当校验锚——成员按模板回传的信封**必然**被判 `SPOOFED_SENDER`
 （规则恒误杀）。现补入模板 8 扩展字段集；`record_trace.py --from-envelope` 从信封解析
-`from`/`to`/`task_id` 而非 CLI 自填，trace 与信封同源。**ADR-05 扩至 19 字段全解析**——
+`from`/`to`/`task_id` 而非 CLI 自填，trace 与信封同源。**ADR-05 扩至 19 字段；★G4（v2.10）扩至 21 字段全解析**——
 §1 模板的全部字段（agent_id…payload）均被抽取进 trace 的 `envelope` 子对象并打印
-`ENVELOPE_FIELDS_PARSED=n/19`，消除「trace 与信封两张皮」（A-09/A-26）。
+`ENVELOPE_FIELDS_PARSED=n/21`，消除「trace 与信封两张皮」（A-09/A-26）。
 
 **上下文传递纪律**：给路径，不给内容。确需内联时 ≤500 tokens（如返修的具体句子）。
 
 ### 1.1 信封校验执行体（2026-11-04 补，M3/M4 落地）
 
-此前 19 字段中只有 `from`/`to` 做拒收级校验，其余 17 字段缺失仅 WARN；且「6 必填」在代码层无任何执行。现由 `scripts/validate_envelope.py` 承担：
+此前只有 `from`/`to` 做拒收级校验，其余字段缺失仅 WARN；且「6 必填」在代码层无任何执行。现由 `scripts/validate_envelope.py` 承担：
 
 ```bash
 python3 scripts/validate_envelope.py --envelope path/to/envelope.json
@@ -473,7 +492,7 @@ python3 scripts/record_trace.py --work-root $WORK_ROOT \
 - `reject_key`（打回计数键 `<correlation_id>|<问题指纹>`——写入时累加 `运行态/reject-counts.json`,计数 ≥2 **自动触发介入协议**;读取入口 `progress.py rejects`。ADR-05 §5.2：打回计数从「人工判 2 轮」改为脚本值）
 - `blocking_open`（H15 缺口,H15 螺旋起点）
 - `tokens_in/out`（per-task 累加,§2 budget cap 实际开销）
-- `envelope`（`--from-envelope` 时附信封 **19 字段**全解析结果——ADR-05：5→19,消除「trace 与信封两张皮」;解析数打印 `ENVELOPE_FIELDS_PARSED=n/19`）
+- `envelope`（`--from-envelope` 时附信封 **21 字段**全解析结果——ADR-05：5→19，★G4 v2.10：19→21（reasoning_chain/divergence）,消除「trace 与信封两张皮」;解析数打印 `ENVELOPE_FIELDS_PARSED=n/21`）
 
 **写入机制**：fcntl flock 原子 append；多成员并发安全。
 

@@ -13,7 +13,7 @@
      门禁必须拦下（拦不下 = 该判据是假门禁）。
 
 负向样本用的是**修复前的真实文本**，不是臆造形态：
-  D1 「等 12 类」——修复前 team-lead.md 的原话（router §1 实为 16 类）
+  D1 「等 12 类」——修复前 team-lead.md 的原话（router §1 实为 17 类，★G3 v2.10 增 review-section）
   D2 「总分 <0.7」——修复前的 0-1 量纲写法（当前量纲 0-100）
   D3 两个「6.」——修复前 subject-writer.md 的原话
   D4 「.- R1 结构审查」——修复前 quality-examiner.md 的原话
@@ -103,7 +103,7 @@ def test_task_type_count_parsed_from_ssot():
     """D1 的 task_type 数必须来自 router §1 实解析，不得硬编码。"""
     mod = _load_gate(PKG_ROOT)
     count, types = mod.parse_task_type_count(PKG_ROOT)
-    assert count == 16, f"router §1 实解析 {count} 类：{types}"
+    assert count == 17, f"router §1 实解析 {count} 类：{types}"  # ★G3 v2.10：17 类
     assert "review-score" in types and "gap-retrieval" in types
     # B1-3（2026-11-04）：R4+R5 合并派工类型必须在内
     assert "review-proofread-score" in types
@@ -115,8 +115,8 @@ def test_d1_catches_wrong_task_type_count(sandbox_pkg):
     """D1：把「16 类」改回「12 类」必须被拦。"""
     p = sandbox_pkg / "agents" / "smart-textbook-team-team-lead.md"
     t = p.read_text(encoding="utf-8")
-    assert "等 16 类" in t, "前置条件：当前包应写 16 类"
-    p.write_text(t.replace("等 16 类", "等 12 类"), encoding="utf-8")
+    assert "等 17 类" in t, "前置条件：当前包应写 17 类（★G3 v2.10）"
+    p.write_text(t.replace("等 17 类", "等 12 类"), encoding="utf-8")
 
     failed, items = _run_gate(sandbox_pkg)
     assert "D1" in failed, "D1 未拦住 task_type 计数漂移"
@@ -211,8 +211,8 @@ def test_immune_files_are_skipped(sandbox_pkg):
     p = sandbox_pkg / "README.md"
     t = p.read_text(encoding="utf-8")
     # README 不是免疫文件 → 改它应被 D1 拦
-    assert "16 类 task_type" in t, "前置条件：README 应写 16 类 task_type"
-    p.write_text(t.replace("16 类 task_type", "12 类 task_type"), encoding="utf-8")
+    assert "17 类 task_type" in t, "前置条件：README 应写 17 类 task_type（★G3 v2.10）"
+    p.write_text(t.replace("17 类 task_type", "12 类 task_type"), encoding="utf-8")
     failed, _ = _run_gate(sandbox_pkg)
     assert "D1" in failed, "README 的计数漂移应被拦"
 

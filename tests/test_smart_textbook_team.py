@@ -1062,7 +1062,7 @@ def check_executability(ck, expert_dir):
 
     # F38d: record_trace 打回计数机械化 + 4 新字段 + 信封 19 字段
     _rt = read(os.path.join(expert_dir, "scripts", "record_trace.py"))
-    ck.check("F38d", "F", "record_trace 含 reject-key/4 新字段/信封 19 字段全解析",
+    ck.check("F38d", "F", "record_trace 含 reject-key/4 新字段/信封 21 字段全解析（★G4 v2.10）",
              all(s in _rt for s in ("--reject-key", "reject-counts.json",
                                     "--confidence", "--gate-verdict", "--issues",
                                     "--root-cause", "ENVELOPE_FIELDS_PARSED",

@@ -1,7 +1,7 @@
 ---
 name: textbook-pipeline-workflow
 description: "13-state textbook authoring pipeline workflow: state definitions, phase gates, error escalation (E1-E5), handoff contract, and anti-hallucination closed loop. Load when orchestrating a full chapter or when any pipeline state/gate decision is unclear. Trigger words: 编排章节 / 流程卡在哪个阶段 / 下一步该干嘛 / 13态 / 状态机 / 门禁 / 返修回哪 / handoff 字段."
-version: 1.5.0
+version: 1.6.0
 ---
 
 # textbook-pipeline-workflow — 13 态教材编写流水线
@@ -538,6 +538,42 @@ python3 scripts/contract_check.py --work-root "$WORK_ROOT" \
 
 **可观察判据**：大章节若只见整章 `draft.md` 而无 `sections/` 目录 → 门禁 3 advisory
 （记录「建议节级推进」）； Examiner R1 应能核到节级文件。
+
+### 3.7 ★G3 节级审查回路（v2.10，2026-11-05）
+
+> **缺口（第三轮诊断）**：§3.6 完成了**节级生产**，但 VERIFY 的 R1-R3 仍是整章审查——
+> 40 节大章的 R2 深度审查一次性吞整章上下文，逐节深度核验实际靠 examiner 自觉；
+> 「以单节为最小单位审查」的回路不存在。本节补齐：**审查粒度与生产粒度对齐**。
+
+**双层审查架构**：
+
+| 层 | 粒度 | task_type | 时机 | 判什么 |
+|---|---|---|---|---|
+| **节级审查**（本节新增） | 单节 | `review-section`（task-router v1.3） | 波次收口后、拼接前 | 该节 vs §C 对应节契约（Bloom 目标/标签/图表位/习题位/术语）+ 章级 R2 四维在节范围的子集 |
+| **章级审查**（既有） | 整章 | R1-R3 → R4+R5 | 拼接后（不变） | 结构/深度/引用/风格/评分 |
+| **段级抽查**（本节新增，R2 内嵌） | 单段 | — | R2 执行时 | 高风险段（含数值/机制/鉴别段）因果三段完整性 |
+
+**节级审查协议（五条硬规则）**：
+1. **不新增相位**：节级审查是 PRODUCE 与 VERIFY 之间的**波次收口检查**，`PHASE_ORDER` 23 相位不变；
+   progress 记在 `PRODUCE-R3` 行摘要（「节审 N/M pass」）。
+2. **成本门槛**：节净字数 **<800 字跳过**独立节审（并入章级 R1-R3）——防「拆了反而碎」的成本倒挂
+   （与 §3.3「单节 <2000 字拆了反而碎」同构判断）。
+3. **判据不新增**：节审 blocking 判据 = 章级 R2 四维矩阵（术语/因果/鉴别/学段）在节范围内的子集
+   + §C 该节契约项——**判据源唯一**（role-assembly §3 + chapter_design §C），防两套标准漂移。
+4. **上限**：单节 verdict ≤2 轮，超限转章级返修循环；打回计数跨 task_id 累计不重置。
+5. **并行安全**：同波多节可并行 spawn（每节独立 `must_produce=章节/{ch##}/sections/{节号}.verdict.md`，
+   路径互异，归属 examiner——已登记 member-contracts must_produce）。
+
+**派工**：`spawn quality-examiner --task_type=review-section --task_id={ch##}-PRODUCE-节审-{节号}`；
+verdict 格式与章级一致（`pass|fail` + blocking 证据清单），落 `sections/{节号}.verdict.md`。
+
+**段级抽查协议（R2 内嵌，不独立派工）**：R2 深度审查时——
+- 含数值段 **100%** 抽查因果三段（因→果→证据）；
+- 纯定性段抽 **30%**（固定步长抽样：每第 3 段）；
+- 抽查结果进 R2 报告「段级抽查」节；blocking 计入既有 R2 blocking 流转（不另立通道）。
+
+**与既有流程的关系**：节审是**提前拦截**（波次收口时拦语义级缺陷），章级 R1-R3 仍是**唯一权威裁决**
+（节审 pass ≠ 章级免审）；两者判据同源，节审拦截的缺陷不计入章级返修轮次（打回计数只按章级轮次累计）。
 
 ### 外部学科规范注入协议（B7，2026-10-30）
 

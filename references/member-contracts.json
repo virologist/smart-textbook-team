@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "updated": "2026-11-04",
+  "updated": "2026-11-05",
   "note": "成员产物契约 SSOT（M2 部分落盘判据 + §3.3.2 数据传递协议的具体化）。编排者 spawn 前注入本契约，收件时用 scripts/contract_check.py 比对 must_produce —— 缺项判 PARTIAL，不静默当合格。",
   "placeholders": {
     "{ch}": "章节号，如 ch03",
@@ -61,7 +61,9 @@
         "章节/{ch}/review/round2_report.md",
         "章节/{ch}/review/round3_report.md",
         "章节/{ch}/review/proofread.md",
-        "章节/{ch}/review/proofread_revisions.md"
+        "章节/{ch}/review/proofread_revisions.md",
+        "章节/{ch}/review/r5_score.json",
+        "章节/{ch}/sections/{节号}.verdict.md"
       ],
       "must_not_write": [
         "章节/{ch}/draft.md",
@@ -72,7 +74,7 @@
       "max_retry": 3,
       "on_partial": "BLOCK",
       "on_timeout": "TIMEOUT",
-      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套——现已登记 R1-R3 报告 + R4 校稿两件套；R5 评分落审查报告「质量评分」段（round3_report 或独立评分文件，编排者 --produce 显式指定）。R45 合并派工（task_type=review-proofread-score）时用 --produce 显式给出 proofread 两件套+评分段路径。"
+      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套——现已登记 R1-R3 报告 + R4 校稿两件套。★G2（v2.10）：r5_score.json 为 R5 评分默认落盘路径——score_quality.py 无 --out 时默认写此路径，编排者 --produce 显式指定的路径优先于默认值；contract_check 在 review-proofread-score task_type 下必查此文件，运行时漏传 --produce 不再静默丢失。★G3（v2.10）：sections/{节号}.verdict.md 为节级审查 verdict（可选产物，task_type=review-section 时必查；节净字数 <800 字跳过节审则不产出，契约按「按需产物」处理——只在出现时校验合法性）。R45 合并派工（task_type=review-proofread-score）时用 --produce 显式给出 proofread 两件套+评分段路径。"
     },
     "visual-instructional-designer": {
       "role": "图表设计",

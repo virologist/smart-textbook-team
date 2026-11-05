@@ -3,7 +3,7 @@
 
 问题背景
 ========
-harness §1 定义消息信封为**唯一 SSOT**，19 字段（6 必填 + 8 扩展 + payload）。
+harness §1 定义消息信封为**唯一 SSOT**，21 字段（★G4 v2.10：6 必填 + 扩展 + payload + reasoning_chain/divergence）。
 但在此版本之前：
 
   · record_trace.py --from-envelope 只对 `from` / `to` 两个字段做**拒收级**校验
