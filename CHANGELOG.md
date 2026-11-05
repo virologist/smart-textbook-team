@@ -3,6 +3,67 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] — 2026-11-05 R4 批次：存量章节 exports/imports 补声明（依赖图真激活）
+
+> 立项依据 = 实施后复诊报告 §3.4 残留 R4：「`exports`/`imports` 存量章节零声明
+> ⇒ 第 7 项只产 `WARN`，依赖图是空的。机制可用但**未被真实数据激活**」。
+> 口径 SSOT = `skills/textbook-pipeline-workflow/SKILL.md` §3F-1
+> 「存量章节渐进接入」。
+> **R4 不新增相位**：`PHASE_ORDER` 仍 23 相位。
+
+### 数据层：首批存量章节补声明（真实教材）
+
+- 教材工作区 `tb_禽病学-职业本科版` 的 `ch_01` / `ch_02` 补 YAML frontmatter：
+  - `ch_01` **exports** 6 项（`五维鉴别框架`/`六类临床表型分型`/
+    `实验室诊断标准操作规程`/`H9N2亚型禽流感`/`低致病性禽流感`/`新城疫`）
+    —— 每项都在正文有**定义性表述**（小节号已逐一取证）；
+  - `ch_02` **exports** 4 项 + **imports** 3 项（`H9N2亚型禽流感`/`新城疫`/
+    `低致病性禽流感`，均 `from: ch_01`）。
+- 顺带补齐两章的七项 frontmatter 元数据（原先**完全没有** frontmatter）。
+- **实测**：第 7 项 `WARN 2 → 0`、`declared_chapters` 非空、
+  `--affected-from ch_01` BFS 闭包命中 `['ch_02']`、`imports ⊆ exports` 零 FAIL。
+- **反向例**：删 `ch_01` 的 `新城疫` exports ⇒ `ch_02` 立即 FAIL
+  「已不在 ch_01 的 exports 里」；补回 ⇒ 翻绿。
+
+### 符号口径澄清（依赖图 vs 术语表，两套口径不可混用）
+
+- 依赖图的 `imports.term` 必须与上游 `exports` 项**逐字相同**（判据按精确匹配），
+  但**本章正文的书写形式可以不同**：上游导出「H9N2亚型禽流感」、下游正文写「H9N2」
+  ⇒ `imports.term` 仍写「H9N2亚型禽流感」。
+- `references/profiles/veterinary.md` §5.1 的「标准写法」是**内容门禁**
+  （术语别名检查）的口径；依赖图用的是**符号标识**口径。两者不可互相替代。
+
+### 顺带修复真实缺陷（`scripts/build_manuscript.py`）
+
+- **「draft 无 frontmatter」WARN 被静默吞掉**：原判据 `if not existing:`——
+  draft 只需带上**任何一个**键（如渐进接入的 `exports`/`imports`），`existing`
+  就非空 ⇒ 这条 WARN 整条消失，而七项其实仍靠推导兜底。
+  存量章节补依赖声明**正是**这个场景。
+- 改为**按缺项计数**：`draft frontmatter 缺 N 项元数据（[...]）→ 已按推导值补齐`。
+  「实际净字数」不计入缺失项（它由装配器实测得出，draft 侧本来就没有，
+  算作缺失会永远报一条假 WARN）。
+- 三态判据回归：① 无 frontmatter ⇒ 「draft 无 frontmatter」；
+  ② 只有 `exports` ⇒ 「缺 6 项元数据」并逐项列出；③ 七项齐全 ⇒ 无 frontmatter WARN。
+
+### 零污染自检（三条，均实测通过）
+
+- 交付稿 frontmatter **不含** `exports/imports`（装配器只重建七项）；
+- **净字数零变化**（`count_net_words.py` 剥离 frontmatter）：
+  `ch_01` 34093 → 34093、`ch_02` 4491 → 4491；
+- 「draft 无 frontmatter」的 WARN **不得被部分 frontmatter 静默吞掉**。
+
+### 回归与门禁
+
+- pytest 284 → **303 passed**（新增 `tests/test_chapter_deps_declaration.py`
+  19 例；带 `STT_REAL_ROOT` 环境变量时 22 例，真值对照另加 3 例）；
+- 新增包内自包含 fixture `tests/fixtures/chapter_deps/`（12 KB：
+  真实章节 frontmatter **逐字** + 「声明术语所在行 ± 1 上下文」正文窗口），
+  使「术语必须有正文实证」这条判据**可在包内独立验证**，不依赖外部仓；
+  fixture 与真实教材 frontmatter 的逐字一致性由 `T_R4_20` 守住（防快照过期）；
+- 静态门禁：doc-consistency 6/6；相位 23 相位 / 30 md / 385 字面量 / 0 不一致；
+  declaration `TECH_DEBT=0`；domain-neutral **FAIL 0 / WARN 0**
+  （本批次修掉了测试里硬编码的 `/Users/...` 绝对路径）。
+
 ## [2.6.0] — 2026-11-05 R2 批次：波次状态落盘与契约回写
 
 > 立项依据 = 实施后复诊报告 §3.4 残留 R2：「B4 的节级拓扑波次只 print 到 stdout，

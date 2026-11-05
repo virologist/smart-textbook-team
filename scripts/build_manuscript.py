@@ -186,8 +186,21 @@ def assemble_md(work_root: Path, chapter: str, textbook: str) -> Path:
         "版本": existing.get("版本") or "R3",
         "学科profile": existing.get("学科profile") or "veterinary",
     }
-    if not existing:
+    # R4（2026-11-05）：判据从「frontmatter 整体为空」改为「**draft 侧元数据缺几项**」。
+    # 原判据 `if not existing:` 有一个真实缺陷：draft 只需带上**任何一个**键
+    # （如渐进接入的 `exports`/`imports` 声明），existing 就非空 ⇒ 「draft 无 frontmatter」
+    # 这条 WARN 被静默吞掉，而七项其实仍靠推导兜底。存量章节补依赖声明正是这类场景。
+    # 改为按缺失项计数后，WARN 精确反映「哪些元数据是推导出来的」。
+    #
+    # 「实际净字数」不计入缺失项：它由装配器**实测**得出（net），draft 侧本来就没有，
+    # 把它算作缺失会永远报一条假 WARN。
+    _FM_DRAFT_SIDE = [k for k in fm if k != "实际净字数"]
+    _missing_fm = [k for k in _FM_DRAFT_SIDE if k not in existing]
+    if not fm_src.strip():
         log("draft 无 frontmatter → 已按推导值生成书稿元数据", "WARN")
+    elif _missing_fm:
+        log(f"draft frontmatter 缺 {len(_missing_fm)} 项元数据（{_missing_fm}）"
+            "→ 已按推导值补齐", "WARN")
     if fm["字数目标"] == "0":
         log("字数目标缺失（置 0）——请在 draft frontmatter 或设计文件中给出，"
             "否则门禁 4.7 无法判定字数达标", "WARN")
