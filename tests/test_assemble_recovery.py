@@ -195,3 +195,60 @@ class TestExistingBehaviorUnchanged:
         sec_dir.rmdir()
         r = run_assemble(work_root, '--skip-check')
         assert r.returncode == 0, r.stdout + r.stderr
+
+
+class TestSelfCheckScopeR3Fix:
+    """R3 真实跑批暴露的门禁口径缺陷（2026-11-05）回归。
+
+    缺陷：`self_check_section` 逐行判定时未剥离 YAML frontmatter、
+    也未跳过 Markdown 标题行 ⇒ frontmatter 元数据（如
+    `节标题: M2 急性死亡与高死亡率疾病群`）与节标题本身
+    被当成「正文陈述」→ 正文标签齐全仍被拦（exit 1）。
+    与门禁 3.1 原文「**正文中**凡含数值触发词的陈述」不符，
+    也与整章 C9 指标（句级匹配）的口径不同源（C-05 病灶）。
+    """
+
+    def test_T_R3_01_frontmatter_trigger_word_not_flagged(self, work_root):
+        ch = setup(work_root)
+        _write(ch / 'sections' / '1.2.md',
+               '---\n'
+               '节号: "1.2"\n'
+               '节标题: M2 急性死亡与高死亡率疾病群\n'
+               'exports: [新城疫]\n'
+               '---\n\n'
+               '# 第二节 M2 急性死亡与高死亡率疾病群\n\n'
+               '本节正文无触发词。\n')
+        r = run_assemble(work_root)
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_T_R3_02_heading_trigger_word_not_flagged(self, work_root):
+        ch = setup(work_root)
+        _write(ch / 'sections' / '1.2.md',
+               '# 第二节 M2 急性死亡与高死亡率疾病群\n\n'
+               '本节正文无触发词。\n')
+        r = run_assemble(work_root)
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_T_R3_03_body_trigger_word_still_flagged(self, work_root):
+        """反向例：正文真缺标签仍必须拦（不得因放宽口径而漏检）。"""
+        ch = setup(work_root)
+        _write(ch / 'sections' / '1.2.md',
+               '---\n节标题: 概述\n---\n\n'
+               '## 小节标题\n\n'
+               '本群发病率 12.5% 明显上升。\n')
+        r = run_assemble(work_root)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert '缺 [实]' in r.stderr
+
+    def test_T_R3_04_reverse_add_body_tag_makes_green(self, work_root):
+        ch = setup(work_root)
+        _write(ch / 'sections' / '1.2.md',
+               '---\n节标题: 概述\n---\n\n'
+               '## 小节标题\n\n'
+               '本群发病率 12.5% 明显上升。\n')
+        assert run_assemble(work_root).returncode == 1
+        _write(ch / 'sections' / '1.2.md',
+               '---\n节标题: 概述\n---\n\n'
+               '## 小节标题\n\n'
+               '本群发病率 12.5% [实](PMID: 12345678) 明显上升。\n')
+        assert run_assemble(work_root).returncode == 0

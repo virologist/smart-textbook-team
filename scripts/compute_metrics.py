@@ -302,14 +302,22 @@ def _product_quality(work_root: Path) -> dict | None:
         trigger = re.compile(
             rf'[^。！？\n]*(?:{"|".join(_alt_parts)})[^。！？\n]*[。！？]', re.I)
         label = re.compile(r'\[(?:实|估|引|待核实)[^\]]*\]')
-        sents = [s for s in trigger.findall(text + '。') if s]
-        # findall 返回 tuple（含捕获组），回原文找
-        sents = trigger.findall(text)
+        # 口径修正（R3 真实跑批暴露，2026-11-05）：标签写在**句末标点之后**
+        # （教材通用写法「……产蛋率93%。[实](PMID: 12345678)」）时，
+        # 句级正则只截到句号 ⇒ 标签落在匹配范围外 ⇒ 误判「未标注」。
+        # 实测同一份稿：行级口径 107/107 = 100%，句级口径仅 20/105 = 19%。
+        # 修法：命中句后再看**紧邻其后**的标签，若贴在该句之后则计入。
+        # 不放宽触发条件，只修标签归属判定——否则该指标长期误报 FAIL。
+        label_tail = re.compile(r'^[。！？\s]*\[(?:实|估|引|待核实)[^\]]*\]')
         n_trig = 0
         n_lab = 0
         for mt in trigger.finditer(text):
             n_trig += 1
             if label.search(mt.group(0)):
+                n_lab += 1
+                continue
+            tail = text[mt.end():mt.end() + 80].lstrip()
+            if label_tail.match(tail):
                 n_lab += 1
         n_label_total += n_trig
         n_label_ok += n_lab

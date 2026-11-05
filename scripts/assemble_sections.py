@@ -62,6 +62,20 @@ RE_FIG_SLOT = re.compile(r"\[图\s*\d+-\d+[：：]")
 # 学科触发词另从 profile §7 加载（B3，ADR-02）——旧实现把 11 个兽医指标写死，
 # 非兽医学科（计算机/法学）的数值陈述恒绿（C-05 病灶）。
 RE_PERCENT = re.compile(r"\d+(?:\.\d+)?\s*[%％]")
+RE_FRONTMATTER = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
+RE_HEADING_LINE = re.compile(r"^\s{0,3}#{1,6}\s")
+
+
+def strip_frontmatter(text: str) -> tuple[str, str]:
+    """拆出 (frontmatter, 正文)。无 frontmatter 时 frontmatter 为空串。
+
+    口径对齐 count_net_words.py 与 check_manuscript.py——三者必须同源，
+    否则「标签完整率」在不同工具里量的是不同的东西（C-05 病灶）。
+    """
+    m = RE_FRONTMATTER.match(text)
+    if not m:
+        return '', text
+    return m.group(1), text[m.end():]
 
 
 def log(msg: str, level: str = "INFO") -> None:
@@ -84,15 +98,28 @@ def parse_design_order(design_path: Path) -> list[str]:
 
 
 def self_check_section(path: Path, sec_no: str, triggers: list[str] | None = None) -> list[str]:
-    """节级自查（pipeline §3.6 步骤②：门禁 3.1/3.4 的节内子集）。返回问题列表。"""
+    """节级自查（pipeline §3.6 步骤②：门禁 3.1/3.4 的节内子集）。返回问题列表。
+
+    口径修正（R3 真实跑批暴露，2026-11-05）：
+      ① **只判正文**——剥离 YAML frontmatter 后再逐行判定。旧实现把
+         `节标题: M2 急性死亡与高死亡率疾病群` 这类 frontmatter 元数据行
+         当成「正文陈述」⇒ 明明正文标签齐全仍被拦（exit 1），
+         与门禁 3.1 原文「**正文中**凡含数值触发词的陈述」不符。
+      ② **跳过标题行**——`## 第二节 M2 急性死亡/高死亡率疾病群` 是小节标题，
+         不是陈述句；整章 C9 指标用句级匹配（要求句末标点）天然排除标题，
+         节级行级匹配必须显式对齐，否则两把尺量两件事。
+    """
     problems: list[str] = []
     text = path.read_text(encoding="utf-8")
     if not text.strip():
         return [f"{sec_no}: 空文件"]
+    _fm, body = strip_frontmatter(text)
     # 标签完整率：数值触发词陈述必须带标签（简化口径：触发词所在行无任一标签即报）。
     # 触发 = 学科触发词（profile §7）命中 或 通用百分比数值信号命中。
     triggers = triggers or []
-    for i, line in enumerate(text.splitlines(), 1):
+    for i, line in enumerate(body.splitlines(), 1):
+        if RE_HEADING_LINE.match(line):
+            continue  # 标题行不是陈述
         hit = any(t and t in line for t in triggers) or bool(RE_PERCENT.search(line))
         if hit and not RE_DATA_TAG.search(line):
             problems.append(f"{sec_no} 行{i}: 数值触发词陈述缺 [实]/[估]/[引]/[待核实] 标签")
