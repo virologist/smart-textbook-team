@@ -40,6 +40,7 @@ version: 1.7.0
 | `运行态/visual_drift_{ch##}.json` | smart-textbook-team-team-lead（由 `parallel_gate.py visual-drift` 生成，B3） | 写（含变更率决策与 `learn_signal`） | 只读 |
 | `运行态/section_recovery_{ch##}.json` | smart-textbook-team-team-lead（由 `assemble_sections.py` 生成，B4） | 写（含 `RECOVERABLE`/`NEVER_PRODUCED` 分类与 `baseline_status`） | 只读 |
 | `运行态/wave_{ch##}_w{n}.json` | smart-textbook-team-team-lead（R2：由 `scheduler.py plan --mode sections --write-wave-state` 生成波次计划；`contract_check.py --wave` 增量回写 `contract`/`net_words`/`reason`；`wave_verdict` 裁决由主理人落定） | 写（含波次计划 + 契约快照 + 净字数 + 主理人裁决） | 只读 |
+| `运行态/protocol_eval.json` | smart-textbook-team-team-lead（R1：由 `protocol_eval.py --save-eval` 落盘协议评测结果；供 `compute_metrics.py` 的 `protocol_eval_score` 指标消费） | 写（含总分 / 分组件得分 / 失败项清单 / 门槛） | 只读 |
 | `章节/{ch##}/draft.md` | subject-writer | 写/改（版本 R1→R2→R3 递增；由 sections/ 拼接） | 只读；**examiner/designer 均不得直接修改**（修正意见走回传清单，由编排者转 writer） |
 | `章节/{ch##}/review/round{N}_report.md` | quality-examiner | 写/改 | 只读 |
 | `章节/{ch##}/review/r3_verification_log.md` | quality-examiner | append | 只读 |

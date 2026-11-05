@@ -233,6 +233,11 @@ def compute(traces: list[dict], work_root: Path | None = None,
     # start/duration_ms。缺任一 → None + 说明，**不静默当 0**。
     wave_metrics = _compute_wave_metrics(work_root, traces)
 
+    # ── R1：协议评测分数（protocol_eval_score）──────────────────────────
+    # 数据源 = 协议评测结果落盘（运行态/protocol_eval.json）。
+    # 无落盘 ⇒ None + 说明，**不静默当 0**（0 分会被误读成「协议全挂」）。
+    protocol_eval = _read_protocol_eval(work_root)
+
     return {
         'total_traces': len(traces),
         'total_tasks': len(by_task),
@@ -266,7 +271,49 @@ def compute(traces: list[dict], work_root: Path | None = None,
         'wave_time_ms': (wave_metrics or {}).get('wave_time_ms'),
         'parallel_gain': (wave_metrics or {}).get('parallel_gain'),
         'wave_metrics': wave_metrics,
+        'protocol_eval_score': (protocol_eval or {}).get('score'),
+        'protocol_eval': protocol_eval,
     }
+
+
+def _read_protocol_eval(work_root: Path | None) -> dict | None:
+    """R1：协议评测分数（protocol_eval_score）。
+
+    数据源：`运行态/protocol_eval.json`——由 `scripts/protocol_eval.py --json`
+    的输出落盘（合入前的评测闸门会写这份文件）。
+
+    口径（复诊 §3.4 指标表）：
+      · **协议质量**：协议组件离线评测分数
+      · **计算式**：各组件 eval 通过项 / 总项（跨组件合并）
+      · **门槛**：≥0.80 方可合入；改前后对照
+
+    数据不足（未落盘 / 文件损坏）→ 返回 None + 说明，
+    **不静默当 0**——0 分会被误读成「协议全挂」，而真相是「没跑过」。
+    """
+    if not work_root:
+        return None
+    p = work_root / '运行态' / 'protocol_eval.json'
+    if not p.is_file():
+        return {'score': None, 'note': '未落盘协议评测结果（运行态/protocol_eval.json 不存在）'}
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+    except (OSError, UnicodeError, json.JSONDecodeError) as e:
+        return {'score': None, 'note': f'协议评测结果文件损坏: {e}'}
+    if not isinstance(data, dict) or 'score' not in data:
+        return {'score': None, 'note': '协议评测结果结构非法（缺 score 字段）'}
+    out = {
+        'score': data.get('score'),
+        'passed': data.get('passed'),
+        'total': data.get('total'),
+        'failed': data.get('failed'),
+        'threshold': data.get('threshold'),
+        'per_component': data.get('per_component'),
+    }
+    failures = data.get('failures')
+    if isinstance(failures, list):
+        out['failure_count'] = len(failures)
+        out['failures'] = failures[:10]
+    return out
 
 
 def _product_quality(work_root: Path) -> dict | None:
@@ -501,6 +548,31 @@ def render(m: dict) -> str:
         else:
             lines.append('      原因: 无 波次状态锚点（运行态/wave_{ch##}_w{n}.json）'
                          '——须先跑 scheduler.py --mode sections --write-wave-state')
+
+    # ── R1：协议评测分数 ────────────────────────────────────────────
+    lines.append('')
+    lines.append('[10] 协议评测分数 (R1 · protocol_eval_score · 门槛项·≥0.80 方可合入)')
+    pe = m.get('protocol_eval')
+    if pe and pe.get('score') is not None:
+        passed = pe.get('passed')
+        total = pe.get('total')
+        lines.append(f'    协议评测总分 = {pe.get("score")}   '
+                     f'通过 {passed}/{total}   门槛 = {pe.get("threshold")}')
+        lines.append('    口径：各组件 eval 通过项 ÷ 总项（跨组件合并）；'
+                     '合入前必须 ≥0.80，否则回滚该条改动')
+        for pc in (pe.get('per_component') or []):
+            lines.append(f'      {pc.get("component"):26s} {pc.get("passed")}/'
+                         f'{pc.get("total")} ({pc.get("score")})')
+        for f in (pe.get('failures') or [])[:5]:
+            lines.append(f'      ✗ [{f.get("id")}] {f.get("component")} / '
+                         f'{f.get("name")}: {f.get("detail")}')
+    else:
+        lines.append('    ⚠ 不可计算（不是「分数为 0」，是数据不足）')
+        if pe and pe.get('note'):
+            lines.append(f'      原因: {pe["note"]}')
+        else:
+            lines.append('      原因: 无协议评测落盘（运行态/protocol_eval.json）'
+                         '——须先跑 protocol_eval.py --json 并落盘')
 
     lines.append('=' * 60)
     return '\n'.join(lines)

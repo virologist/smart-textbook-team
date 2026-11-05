@@ -1,7 +1,7 @@
 ---
 name: learn-protocol
 description: "LEARN phase protocol v2 (learn_v2) for the textbook team: harvest signals from interventions.md / r3_verification_log / round reports AND from mechanical metric-baseline breaches, convert to minimal rule drafts, file into the candidate pool (学习/候补/), and merge into evolution rounds only after the metric review gate + protocol-eval regression. Trigger words: 经验沉淀 / LEARN 阶段 / 候补池 / 提取教训 / 本章学到了什么 / 指标越界 / 基线偏离 / metric breach / learn phase / post-mortem."
-version: 2.0.0
+version: 2.1.0
 ---
 
 # learn-protocol — LEARN 阶段协议（learn_v2）
@@ -12,6 +12,10 @@ version: 2.0.0
 > （指标偏离基线 >20% 或破红线 → 自动生成候补）、**指标评审门**、**protocol-eval 回归**
 > 与**基线重置**。原「≥3 候选或用户 ack」保留为**补充触发**，不再是唯一入口。
 > 完整回路：`指标 → 学习 → 协议修订 → 评测回归 → 新基线`。
+>
+> **v2.1 变化（2026-11-05 R1，补复诊 §3.2 R1）**：第 4 步「protocol-eval 回归」从
+> **文字承诺落地为执行体** `scripts/protocol_eval.py`（5 组件离线评测，门槛 ≥0.80，
+> 失败项清单可定位）。此前该步只写在流程里、零实现 ⇒ 闭环缺末环、改协议变成盲改。
 
 ## 何时使用
 
@@ -113,7 +117,31 @@ compare 返回 1 时，对**每一条告警**生成一条 `signal_type: metric_b
    （`test_router_eval` / `test_smart_textbook_team` / `test_vendor_core` / `test_manifest_sync`，
    全 exit 0 才可 commit + tag evo-N）
 4. **protocol-eval 回归（v2 新增）**：协议改动后必须复跑路由 eval 与相位一致性检查，
-   确认「改动没有让别的指标退化」；回归不通过 = 回滚该条改动，候补保持 OPEN
+   确认「改动没有让别的指标退化」；回归不通过 = 回滚该条改动，候补保持 OPEN。
+   **R1（2026-11-05）落地**：本步不再是文字承诺，执行体为 `scripts/protocol_eval.py`
+   （协议组件离线评测，5 组件：路由置信度阈值 / 熔断窗口 / 预算优先级 / 节级拓扑 / 恢复分类）。
+
+   ```bash
+   # 合入前的协议评测闸门（分数 <0.80 即拒绝合入，与 router eval 同门槛）
+   python3 scripts/protocol_eval.py                       # 人读格式：分数 + 失败项清单
+   python3 scripts/protocol_eval.py --json                # 机器可读
+   python3 scripts/protocol_eval.py --component circuit-breaker   # 只评某组件
+   ```
+
+   | 退出码 | 含义 | 动作 |
+   |---|---|---|
+   | 0 | 评测得分达标（0-1 量纲，≥0.80） | 允许进入第 5 步（基线重置） |
+   | 1 | 评测得分未达标（0-1 量纲，<0.80） | **拒绝协议合入**：回滚该条改动，候补保持 OPEN，不得基线重置 |
+   | 2 | 输入错误（用例集缺失） | 修输入后重跑 |
+   | 3 | 用例集结构损坏 | 修用例集后重跑 |
+
+   门槛口径：**评测得分 = 各组件 eval 通过项 / 总项**（跨组件合并计算），门槛 **≥0.80**。
+   ⚠️ 此处 0-1 量纲是**协议评测分数**（与路由置信度的 0-100 量纲不是同一回事）。
+   双闸判定：除总分门槛外，**每个组件**也须 ≥0.80——合并口径会稀释单组件失效
+   （实测熔断组件改坏后总分仍 0.882），组件级底线是防「坏协议被放行」的最后一道闸。
+   失败项清单必须逐条列出（含用例 ID + 实际行为 vs 期望行为），
+   便于定位是「协议写错」还是「执行体没实现」。
+   **边界纪律**：protocol-eval **只报分、不改协议**——协议修订权在主理人 + 管家节点评审门。
 5. **基线重置（v2 新增）**：合入且回归通过后，用 `metrics_baseline.py reset --reason "evo-N ..." --confirm`
    开新分段，**`--reason` 必须含 evo 编号与 protocol_version**，实现「协议版本号联动」。
    重置前旧基线必须已在 `list` 中可查（审计留痕）

@@ -12,6 +12,8 @@ name: harness-gate
 #   6) package_release.sh 打包冒烟（防导出 zip 长期过期）
 #   7) 书稿交付链冒烟（build_manuscript + check_manuscript；2026-10-30 新增）
 #   8) 相位一致性门禁         PHASE_ORDER 唯一权威，文档只许引用不许复述（ADR-04，2026-11-01）
+#   9) 协议组件评测门禁       protocol_eval.py 总分 >= 0.80 + 每组件 >= 0.80（R1，2026-11-05）
+#                          —— 闭环末环「评测回归」的执行体；此前只存在于文档文字、零实现
 on:
   push:
     branches: [master, main]
@@ -91,6 +93,28 @@ jobs:
 
       - name: Router 离线评测 (>= 0.80)
         run: python3 tests/test_router_eval.py
+
+      # 协议组件评测门禁（R1，2026-11-05）：闭环末环「评测回归」的执行体。
+      # 病史：首诊 §3.4.2 的五环闭环「指标→学习→协议修订→评测回归→新基线」，
+      #   「评测回归」只写在 skills/learn-protocol 的流程文字里、**零实现**
+      #   ⇒ 改协议变成盲改：改完没人知道有没有变好。
+      # 现由 scripts/protocol_eval.py 承担，评 5 个协议组件
+      #   （路由置信度阈值 / 熔断窗口 / 预算优先级 / 节级拓扑 / 恢复分类）。
+      # 门禁是**双闸**：总分 >= 0.80（复诊 §3.4 指标口径）**且**每组件 >= 0.80
+      #   ——实测合并口径会稀释单组件失效（熔断改坏后总分仍 0.882）。
+      # 负向验证：注入一个必失败的外部用例集，门禁必须 exit != 0。
+      - name: 协议组件评测门禁 (>= 0.80 · 双闸)
+        run: |
+          set -e
+          python3 scripts/protocol_eval.py
+          python3 -m pip install --quiet pytest
+          python3 -m pytest tests/test_protocol_eval.py -v
+          # 负向：把组件阈值抬到不可能达到 ⇒ 必须 exit != 0
+          if python3 scripts/protocol_eval.py --component-threshold 1.01 >/dev/null 2>&1; then
+            echo "::error::负向失败：组件底线不可达时门禁仍放行"
+            exit 1
+          fi
+          echo "[OK] 协议组件评测门禁正负双向通过"
 
       - name: 静态契约评测 (>= 0.99)
         run: |

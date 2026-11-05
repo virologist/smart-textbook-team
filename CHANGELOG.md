@@ -3,6 +3,87 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] — 2026-11-05 R1 批次：protocol-eval 组件评测集（闭环末环落地）
+
+> 立项依据 = 实施后复诊报告 §3.2 R1：「首诊 §3.4.2 的五环闭环里，
+> **评测回归**是唯一的**验证闸门**——它决定「协议改完到底有没有变好」。
+> 现在缺它，等于**改协议变成盲改**」。
+> 病灶实证 = `skills/learn-protocol/SKILL.md` 流程第 4 步「protocol-eval 回归」
+> **只存在于文字、零实现** ⇒ 首诊 §3.3 模块表承诺的 `L4 反馈 / ★protocol-eval`
+> 是「文档已承诺但零实现」。
+> **R1 不新增相位**：`PHASE_ORDER` 仍 23 相位。
+
+### 新增：协议组件评测执行体 `scripts/protocol_eval.py`
+
+- **首批 5 组件**（复诊 §3.2 R1 表）：
+  | 组件 | 评测维度 | 判据 |
+  |---|---|---|
+  | 路由置信度阈值 | `routing_confidence ≥70` 的升级/直派边界 | 阈值上下各 1 分的归属须翻转 |
+  | 熔断窗口 | E3 `CLOSED→OPEN→HALF_OPEN` 状态迁移 | 半开探测次数、恢复条件 |
+  | 预算优先级 | `budget_guard` 三档削减顺序 | 削减次序符合 protocol |
+  | 节级拓扑（B4） | `strong-dep` 必先行、同波无强依赖 | 波次划分确定且可复现 |
+  | 恢复分类（B4） | `RECOVERABLE`/`NEVER_PRODUCED` 判据 | 基线损坏 ⇒ 不判「从未产出」 |
+- **调用真实组件实现**（`importlib` 加载 `scripts/` 下真实模块），
+  **不造影子实现**——影子实现会与真实现漂移，评测就变成「自己判自己」（自证）。
+- **输出格式 = 分数 + 失败项清单**（与 `tests/test_router_eval.py` 同范式），
+  schema `stt.protocol_eval/1`。
+- **边界纪律**：**只报分、不改协议**——协议修订权在主理人 + 管家节点评审门。
+- `--component` 单组件评测 / `--threshold` 总分门槛 /
+  `--component-threshold` 组件级底线 / `--save-eval` 落盘 /
+  `--cases` 外部用例集；退出码 `0` 达标 / `1` 未达标 / `2` 输入错 / `3` 用例集损坏。
+
+### 门禁接入：双闸（总分 + 组件级底线）
+
+- 复诊 §3.4 指标表口径 = 「各组件 eval 通过项 / 总项」**跨组件合并**算总分。
+- ⚠️ **实测发现合并口径的稀释缺陷**：把熔断阈值改坏（熔断永不触发）后，
+  总分仅从 1.000 掉到 **0.882**，**仍 ≥0.80 门槛** ⇒ 门禁放行了一个已坏的协议。
+  这与「熔断是最后一道安全闸」的性质直接冲突。
+- ⇒ 门禁改为**双闸**：① 总分 ≥0.80；② **每组件 ≥0.80**，任一组件跌破即拒绝合入。
+- CI 接入（`harness-gate.yml` 第 9 道门禁），含**负向验证**
+  （组件阈值抬到不可达 ⇒ 必须 exit≠0）。
+
+### 顺带修复真实缺陷
+
+1. **熔断状态机缺 HALF_OPEN 态**（`scripts/e3_window.py`）：
+   协议（`skills/agent-harness-protocol/SKILL.md` §4）定义三态
+   `CLOSED→OPEN→HALF_OPEN→CLOSED`，但实现只有两态——
+   `HALF_OPEN` 与 `exit 2` **只写在 docstring 里、从未实现**。
+   现补齐三态迁移 + `--probe`（显式「用户已处置」标记）：
+   OPEN → HALF_OPEN（放行 1 个探测任务）→ 探测成功回 CLOSED / 探测失败回 OPEN。
+   「用户处置」必须显式 `--probe`——编排者不得自行把 OPEN 降级，
+   否则熔断就成了可绕过的软闸。
+2. **`--json` 输出被组件 stdout 污染**（`protocol_eval.py`）：
+   被测组件（`e3_window.record` 等）直接 print 到 stdout ⇒ JSON 不可解析、
+   机器读不了评测结果。现评测执行期间重定向 stdout。
+3. **`load_component` 不缓存导致反向注入失效**（`protocol_eval.py`）：
+   每次重新加载模块 ⇒ patch 的是旧实例、评测跑的是新实例 ⇒
+   反向用例假绿。现缓存已加载模块。
+
+### 指标接入：`protocol_eval_score`（`scripts/compute_metrics.py`）
+
+- 新增 `[10] 协议评测分数` 段：总分 / 通过数 / 分组件得分 / 失败项前 5。
+- 数据源 = `运行态/protocol_eval.json`（由 `protocol_eval.py --save-eval` 落盘）。
+- 数据不足 ⇒ **`None` + 说明，不静默当 0**——0 分会被误读成「协议全挂」，
+  而真相是「没跑过」。
+- `references/path-ownership.md` 补 `运行态/protocol_eval.json` 归属行。
+
+### 协议层
+
+- `skills/learn-protocol/SKILL.md` **v2.0.0 → v2.1.0**：
+  流程第 4 步「protocol-eval 回归」从**文字承诺落地为执行体**，
+  补命令、退出码表、双闸口径说明。
+
+### 回归
+
+- 新增 `tests/test_protocol_eval.py`：**23 例**（含 6 条**反向注入**）。
+- **核心纪律**：评测集全绿本身不能证明评测集有效（它可能什么都没测）。
+  故本文件的核心是**反向注入**——把真实组件行为改坏
+  （阈值、削减顺序、状态机、分波、分类判据），
+  评测集**必须**报 FAIL 且跌破门槛；注入后仍全绿 ⇒ 该组件用例是自证的。
+- 全量 pytest **304 → 330 passed**（3 skipped）；
+  doc-consistency 6/6；相位 23 相位 / 32 md / 386 字面量 / 0 不一致；
+  declaration `TECH_DEBT=0`；domain-neutral FAIL 0 / WARN 0。
+
 ## [2.7.0] — 2026-11-05 R4 批次：存量章节 exports/imports 补声明（依赖图真激活）
 
 > 立项依据 = 实施后复诊报告 §3.4 残留 R4：「`exports`/`imports` 存量章节零声明
