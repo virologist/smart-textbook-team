@@ -3,6 +3,34 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.3] — 2026-11-06 I-3 收口：两项残余观测缺口清零
+
+> 上轮（v2.10.2）登记的最后 2 项未落地观测增强。零协议语义变更。
+
+### ★I-3a 条件产物核对结论落 trace + [12] conditional_artifacts_coverage
+
+- **缺口**：H2 条件产物机制只有 contract_check 的 stdout 信息行，metrics 无法回答
+  「--task-type 激活率」——机制是否被真实使用不可观测。
+- **落地**：contract_check 常规/激活核对各落一行 STATUS 观测行
+  （notes=conditional-skip (N skipped) / conditional-checked: <task_type>，
+  附 conditional 子对象 {skipped, verdict}；fcntl flock 同源口径，写失败 WARN 不阻断）；
+  compute_metrics 增 [12] conditional_artifacts_coverage（激活占比；无数据 → None 不当 0）。
+- **端到端冒烟**：常规+激活各一次 → 2 观测行 → [12] = 0.50 正确。
+
+### ★I-3b 坍缩跳过机械锚（generate_team.py --declined-trace）
+
+- **缺口**：G1「用户跳过节级坍缩 → trace 记 section-collapse-declined」只是主理人手记义务，
+  无脚本入口 ⇒ 「提示义务是否履行」不可机械审计。
+- **落地**：generate_team.py 增 `--declined-trace WORK_ROOT` 快速通道——落一行
+  notes=section-collapse-declined 观测行后退出；与 --scope/--section/--blocks 互斥（exit 2）；
+  --design/--out 改为条件必填（declined 通道可省，常规路径缺参显式报错不静默）。
+- **冒烟 4 例**：正例落锚 / 互斥反例 exit 2 / 无 design 报错 / 常规提案回归 exit 0。
+
+### 回归
+
+pytest 364+3skip；router 47/47；protocol_eval 1.000（6 组件）；doc_consistency 7/7；
+manifest 33/33。版本 → **2.10.3**。
+
 ## [2.10.2] — 2026-11-06 第四轮深化：R7 核验器固化 + D7 门禁 + 推理链覆盖率指标
 
 > 立项依据 = 第四轮「声明 vs 实现」扫描（9 缺口，按「文档承诺 ≠ 实现存在」纪律）。

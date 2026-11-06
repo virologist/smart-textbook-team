@@ -1031,6 +1031,57 @@ def main() -> int:
                   f'（仅对应 task_type 派工时必查，用 --task-type 激活）：')
             for pth in r['conditional_skipped']:
                 print(f'  - {pth}')
+    # ── ★I-3（v2.10.3）：条件产物核对结论落 trace（指标数据源）──────
+    # compute_metrics [12] conditional_artifacts_coverage 依赖本行：
+    #   task_type=''-常规核对（trace.notes 标 conditional-skip）或
+    #   --task-type 激活核对（notes 标 conditional-checked）。
+    # 失败不阻塞契约结论本身（观测增强——写失败 WARN 不阻断）。
+    # 实现说明：record_trace.py 无可编程 record() 入口（只有 CLI main），
+    # 故此处按同源口径（trace_schema 字段 + fcntl flock append）直接追加，
+    # 字段集与 §6.1 契约对齐；phase 用既有合法相位 CONTRACT 归属（观测行）。
+    try:
+        import fcntl
+        from datetime import datetime, timezone
+        trace_file = wr / '运行态' / 'trace.jsonl'
+        trace_file.parent.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+        rec = {
+            'msg_id': f'{args.chapter}-contract-{args.member}-'
+                      f'{args.task_type or "default"}-{now}',
+            'task_id': f'{args.chapter}-contract-{args.member}'
+                       + (f'-{args.task_type}' if args.task_type else ''),
+            'correlation_id': args.chapter,
+            'from': 'contract_check', 'to': 'smart-textbook-team-team-lead',
+            'type': 'STATUS', 'outcome': 'OK' if r.get('ok') else 'PARTIAL',
+            'artifacts': [], 'blocking_open': [],
+            'task_type': args.task_type or None,
+            'notes': ('conditional-checked: ' + args.task_type if args.task_type
+                      else 'conditional-skip ('
+                           + str(len(r.get('conditional_skipped') or []))
+                           + ' skipped)'),
+            'phase': 'CONTRACT',
+            'start': now, 'ts': now,
+            'reasoning_chain': None, 'divergence': None,
+            'conditional': {
+                'skipped': r.get('conditional_skipped') or [],
+                'verdict': r.get('verdict'),
+            },
+        }
+        line = json.dumps(rec, ensure_ascii=False) + '\n'
+        with open(trace_file, 'a', encoding='utf-8') as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX)
+            except (OSError, AttributeError):
+                pass
+            f.write(line)
+            f.flush()
+            try:
+                fcntl.flock(f, fcntl.LOCK_UN)
+            except (OSError, AttributeError):
+                pass
+    except Exception as _e:  # noqa: BLE001 —— 观测增强失败 WARN 不阻断
+        print(f'[WARN] 契约核对 trace 写入失败（不影响核对结论）: {_e}',
+              file=sys.stderr)
     return _EXIT.get(r.get('verdict'), EXIT_INPUT_ERROR)
 
 

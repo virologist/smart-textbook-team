@@ -35,6 +35,7 @@ generate_team.py — 动态专家团队构成提案生成器（只出提案，�
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from datetime import datetime, timezone
@@ -189,12 +190,14 @@ def extract_block_domains(design_path: Path, block_ids: list[str]) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="动态专家团队构成提案生成器（只出提案）")
-    ap.add_argument("--design", required=True, help="chapter_design.md 路径")
+    ap.add_argument("--design", required=False, default=None,
+                    help="chapter_design.md 路径（--declined-trace 时可省）")
     ap.add_argument("--profile", default="veterinary",
                     help="学科 profile 名（默认 veterinary）")
     ap.add_argument("--expert-dir", default=None,
                     help="专家包根（默认按本脚本位置反推）")
-    ap.add_argument("--out", required=True, help="提案 yaml 输出路径")
+    ap.add_argument("--out", required=False, default=None,
+                    help="提案 yaml 输出路径（--declined-trace 时可省）")
     # ★G1（v2.10）：三级坍缩作用域
     ap.add_argument("--scope", choices=["chapter", "section", "block"],
                     default="chapter",
@@ -203,7 +206,67 @@ def main() -> int:
                     help="--scope section 时必填，节号（如 3 或 1.2）")
     ap.add_argument("--blocks", default=None,
                     help="--scope block 时必填，逗号分隔知识块 ID（如 KB-07,KB-08）")
+    # ★I-3b（v2.10.3）：坍缩跳过机械锚——用户明确跳过节级坍缩时，
+    # 主理人调本参数落一行 trace（notes=section-collapse-declined），
+    # 使「提示义务是否履行」可从 trace.jsonl 机械审计（此前只能手记，无归属点）。
+    ap.add_argument("--declined-trace", default=None, metavar="WORK_ROOT",
+                    help="★G1：用户跳过节级坍缩时传 WORK_ROOT——落一行 "
+                         "notes=section-collapse-declined 的 trace 观测行后退出（"
+                         "不产提案；与 --scope/--section/--blocks 互斥）")
     args = ap.parse_args()
+
+    # ── ★I-3b：declined-trace 快速通道 ──
+    if args.declined_trace:
+        if args.scope != "chapter" or args.section or args.blocks:
+            print("[ERROR] --declined-trace 与 --scope/--section/--blocks 互斥",
+                  file=sys.stderr)
+            return 2
+        wr = Path(args.declined_trace).expanduser().resolve()
+        if not wr.is_dir():
+            print(f"[ERROR] WORK_ROOT 不存在：{wr}", file=sys.stderr)
+            return 2
+        try:
+            import fcntl
+            trace_file = wr / "运行态" / "trace.jsonl"
+            trace_file.parent.mkdir(parents=True, exist_ok=True)
+            now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+            rec = {
+                "msg_id": f"{wr.name}-collapse-declined-{now}",
+                "task_id": "B0-collapse-declined",
+                "correlation_id": "B0",
+                "from": "smart-textbook-team-team-lead",
+                "to": "smart-textbook-team-team-lead",
+                "type": "STATUS", "outcome": "OK",
+                "artifacts": [], "blocking_open": [],
+                "task_type": None,
+                "notes": "section-collapse-declined",
+                "phase": "SPECIFY",
+                "start": now, "ts": now,
+                "reasoning_chain": None, "divergence": None,
+            }
+            line = json.dumps(rec, ensure_ascii=False) + "\n"
+            with open(trace_file, "a", encoding="utf-8") as f:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_EX)
+                except (OSError, AttributeError):
+                    pass
+                f.write(line)
+                f.flush()
+                try:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                except (OSError, AttributeError):
+                    pass
+            print(f"[OK] 坍缩跳过锚已落 trace（notes=section-collapse-declined）→ {trace_file}",
+                  file=sys.stderr)
+            return 0
+        except Exception as e:  # noqa: BLE001
+            print(f"[ERROR] trace 写入失败: {e}", file=sys.stderr)
+            return 2
+
+    if not args.design:
+        print("[ERROR] 常规提案须给 --design（或用 --declined-trace 落跳过锚）",
+              file=sys.stderr)
+        return 2
 
     design = Path(args.design).expanduser()
     if not design.is_file():
@@ -337,6 +400,9 @@ def main() -> int:
         "#   2. examines 分工是否符合预期？——含 [待校准] 维的成员须逐个确认",
         "#   3. 确认生效 or 修改 or 放弃？",
     ]
+    if not args.out:
+        print("[ERROR] 常规提案须给 --out（提案 yaml 输出路径）", file=sys.stderr)
+        return 2
     out = Path(args.out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")

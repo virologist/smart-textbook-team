@@ -252,6 +252,23 @@ def compute(traces: list[dict], work_root: Path | None = None,
         rc_cov = None
         rc_note = '无关键决策 trace 行（无 gate_verdict/root_cause）——不可计算'
 
+    # ── ★I-3（v2.10.3）：条件产物核对覆盖率（conditional_artifacts_coverage）──
+    # 数据源 = contract_check 落 trace 的观测行（notes 含 conditional-skip /
+    # conditional-checked，task_type 标记激活态）。口径 = 条件产物核对中
+    # 「--task-type 激活」的占比——衡量条件产物机制的真实使用率。
+    cond_rows = [t for t in traces
+                 if isinstance(t.get('notes'), str)
+                 and t['notes'].startswith('conditional-')]
+    cond_checked = [t for t in cond_rows
+                    if t['notes'].startswith('conditional-checked')]
+    if cond_rows:
+        cond_cov = len(cond_checked) / len(cond_rows)
+        cond_note = (f'{len(cond_checked)}/{len(cond_rows)} 条件产物核对被 '
+                     f'--task-type 激活（其余为常规核对跳过）')
+    else:
+        cond_cov = None
+        cond_note = '无 conditional-* 观测行——contract_check 尚未在工作区运行'
+
     return {
         'total_traces': len(traces),
         'total_tasks': len(by_task),
@@ -283,6 +300,8 @@ def compute(traces: list[dict], work_root: Path | None = None,
         'concurrency_note': concurrency.get('note'),
         'reasoning_chain_coverage': rc_cov,
         'reasoning_chain_note': rc_note,
+        'conditional_artifacts_coverage': cond_cov,
+        'conditional_artifacts_note': cond_note,
         'product_quality': product,
         'wave_time_ms': (wave_metrics or {}).get('wave_time_ms'),
         'parallel_gain': (wave_metrics or {}).get('parallel_gain'),
@@ -622,6 +641,16 @@ def render(m: dict) -> str:
                      '非空占比；「不支持（主题错配）」类语义判定不在本指标内')
     else:
         lines.append(f'    ⚠ 不可计算（{m.get("reasoning_chain_note")}）')
+
+    # ── [12] ★I-3（v2.10.3）：条件产物核对覆盖率（机制使用率）──
+    lines.append('[12] 条件产物核对覆盖率 (★H2/I-3 · conditional_artifacts_coverage · 观测项)')
+    cc = m.get('conditional_artifacts_coverage')
+    if cc is not None:
+        lines.append(f'    {m.get("conditional_artifacts_note")} = {cc:.2f}')
+        lines.append('    口径：conditional-* 观测行中 --task-type 激活占比；'
+                     '0.00 = 机制从未被激活（常规核对全部跳过条件产物）')
+    else:
+        lines.append(f'    ⚠ 不可计算（{m.get("conditional_artifacts_note")}）')
 
     lines.append('=' * 60)
     return '\n'.join(lines)
