@@ -238,6 +238,20 @@ def compute(traces: list[dict], work_root: Path | None = None,
     # 无落盘 ⇒ None + 说明，**不静默当 0**（0 分会被误读成「协议全挂」）。
     protocol_eval = _read_protocol_eval(work_root)
 
+    # ── ★I-2（v2.10.2）：决策推理链覆盖率（reasoning_chain_coverage）────
+    # G4 声明的可审计性指标：三类关键决策（门禁裁决/blocking/介入根因）
+    # 应附 reasoning_chain。判据 = 带 gate_verdict 或 root_cause 的 trace 行中
+    # reasoning_chain 非空的比例。数据不足 → None + 说明，不静默当 0。
+    key_rows = [t for t in traces
+                if t.get('gate_verdict') or t.get('root_cause')]
+    rc_rows = [t for t in key_rows if t.get('reasoning_chain')]
+    if key_rows:
+        rc_cov = len(rc_rows) / len(key_rows)
+        rc_note = f'{len(rc_rows)}/{len(key_rows)} 关键决策附推理链'
+    else:
+        rc_cov = None
+        rc_note = '无关键决策 trace 行（无 gate_verdict/root_cause）——不可计算'
+
     return {
         'total_traces': len(traces),
         'total_tasks': len(by_task),
@@ -267,6 +281,8 @@ def compute(traces: list[dict], work_root: Path | None = None,
         'concurrency_span_ms': concurrency.get('span_ms'),
         'concurrency_tasks': concurrency.get('task_count'),
         'concurrency_note': concurrency.get('note'),
+        'reasoning_chain_coverage': rc_cov,
+        'reasoning_chain_note': rc_note,
         'product_quality': product,
         'wave_time_ms': (wave_metrics or {}).get('wave_time_ms'),
         'parallel_gain': (wave_metrics or {}).get('parallel_gain'),
@@ -596,6 +612,16 @@ def render(m: dict) -> str:
         else:
             lines.append('      原因: 无协议评测落盘（运行态/protocol_eval.json）'
                          '——须先跑 protocol_eval.py --json 并落盘')
+
+    # ── [11] ★I-2（v2.10.2）：决策推理链覆盖率（可审计性）──
+    lines.append('[11] 决策推理链覆盖率 (★G4/I-2 · reasoning_chain_coverage · 观测项·渐进爬坡目标 100%)')
+    rc = m.get('reasoning_chain_coverage')
+    if rc is not None:
+        lines.append(f'    {m.get("reasoning_chain_note")} = {rc:.2f}')
+        lines.append('    口径：带 gate_verdict/root_cause 的关键决策行中 reasoning_chain '
+                     '非空占比；「不支持（主题错配）」类语义判定不在本指标内')
+    else:
+        lines.append(f'    ⚠ 不可计算（{m.get("reasoning_chain_note")}）')
 
     lines.append('=' * 60)
     return '\n'.join(lines)

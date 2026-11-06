@@ -361,6 +361,49 @@ def check(root: Path, verbose: bool = False):
         add("D6", "path-ownership 表内提及的资产扩展名均有归属行（无无主路径）",
             not notes_po, "; ".join(notes_po[:8]))
 
+    # ── D7：task_type_required 键 ⊆ router §1 枚举 + 工具总表锚计分（★I-2 v2.10.2）──
+    # 缺口（第四轮扫描实证）：H2 增的条件产物映射键若与 task-router §1 枚举漂移，
+    # contract_check --task-type 会静默判 UNKNOWN_TASK_TYPE（或漏判）⇒ 机械拦截。
+    # 另：G5 声明的「总表 vs 成员 MD 一致性计分」此前只在文档，本判据落地。
+    try:
+        bad_d7 = []
+        router_count, router_types = parse_task_type_count(root)
+        contracts_p = root / "references" / "member-contracts.json"
+        if not contracts_p.is_file():
+            bad_d7.append("references/member-contracts.json 不存在——判据失效")
+        else:
+            try:
+                cdata = json.loads(contracts_p.read_text(encoding="utf-8"))
+                for mname, mc in (cdata.get("members") or {}).items():
+                    for tt in (mc.get("task_type_required") or {}):
+                        if router_types and tt not in router_types:
+                            bad_d7.append(
+                                f"member {mname} 的 task_type_required 键 {tt!r} "
+                                f"不在 router §1 枚举内（{len(router_types)} 类）")
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                bad_d7.append(f"契约 JSON 解析失败: {e}")
+        # C-TOOL：工具编排总表锚——scout/examiner MD 必须含引用行
+        to = root / "references" / "tool-orchestration.md"
+        if not to.is_file():
+            bad_d7.append("references/tool-orchestration.md 缺失（G5 SSOT）")
+        else:
+            for member_rel, need in (
+                    ("agents/literature-scout.md", "L1"),
+                    ("agents/quality-examiner.md", "L3"),
+            ):
+                mp = root / member_rel
+                if mp.is_file():
+                    mt = mp.read_text(encoding="utf-8")
+                    if "tool-orchestration.md" not in mt:
+                        bad_d7.append(f"{member_rel} 缺工具编排总表锚引用行")
+                    elif need not in mt:
+                        bad_d7.append(f"{member_rel} 总表锚未含 {need} 行引用")
+        add("D7", "task_type_required ⊆ router 枚举 + 工具总表锚齐备（★I-2）",
+            not bad_d7, "; ".join(bad_d7[:8]))
+    except Exception as e:  # 判据自身崩 → 显式失败，不静默
+        add("D7", "task_type_required ⊆ router 枚举 + 工具总表锚齐备（★I-2）",
+            False, f"判据执行异常: {e}")
+
     failed = [i for i in items if not i[2]]
     return items, failed, notes
 

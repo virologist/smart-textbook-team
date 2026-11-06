@@ -3,6 +3,45 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.2] — 2026-11-06 第四轮深化：R7 核验器固化 + D7 门禁 + 推理链覆盖率指标
+
+> 立项依据 = 第四轮「声明 vs 实现」扫描（9 缺口，按「文档承诺 ≠ 实现存在」纪律）。
+> 本批零协议语义变更——全部是「把已声明但未落地的机制变成可执行体」。
+
+### ★I-1 R7 核验器固化入包（scripts/verify_citations_r7.py 新建）
+
+- **缺口**：v1–v5 迭代核验器一直活在 /tmp（会话临时区），清理即丢失——而 R7 复核是
+  「门禁 4.12d 只校验格式不校验真伪」的唯一补位手段，属主链路资产。
+- **固化**：合并 /tmp v5（分层判定+词表统一）与 v4（引用单元提取），逻辑零改动；
+  三处工程化调整（路径参数化 / 产物落 章节/{ch}/review/r7_result.json / --self-test 自检）。
+- **已知边界如实写入 docstring**：THEME 白名单有「主题错配」假阳性史（v4 实测 11 处误报）——
+  该判定须人工复核题名后采信；脚本输出自带此提醒行。
+- **双章真跑对照**：ch_02 支持 21/部分 3（与 /tmp v5 完全一致）；ch_01 判定与已知边界一致。
+- **self-test 4 断言**：多锚分句归属 / '80 %-100 %' 空格形态 / 区间+中文计数抽取 / 实体抽取。
+  修复合并遗漏的 UA/CTX 常量与 docstring 非法转义（SyntaxWarning 清零）。
+
+### ★I-1b protocol_eval 增第 6 组件 conditional-artifacts（4 用例）
+
+- H2 六探针的语义固化为离线评测：常规核对跳条件产物 / review-proofread-score 激活 r5_score /
+  review-section 占位清单 / 未知 task_type ⇒ None。
+- 修复两处新写代码缺陷：结果字段名 pass→ok（run_cases 消费 'ok'）；用例期望值改 {ch} 未展开口径。
+- 全组件 6 组件 1.000。
+
+### ★I-2 D7 门禁 + reasoning_chain_coverage + 段级抽查契约锚
+
+- **D7（check_doc_consistency 第 7 判据）**：契约 task_type_required 键 ⊆ router §1 枚举
+  （枚举漂移会静默 UNKNOWN_TASK_TYPE）+ G5 工具总表锚计分（scout L1/examiner L3 引用行必查）。
+  正反双向验证：负向例（混入 fake-task-xx）必拦；恢复后 7/7。
+- **compute_metrics [11] reasoning_chain_coverage**：带 gate_verdict/root_cause 的关键决策行中
+  reasoning_chain 非空占比（G4 声明的可审计性指标落地）；冒烟 1/2=0.50 正确。
+- **契约登记 review_duties.R2_paragraph_spot_check**：段级抽查义务（数值段 100%/定性段 30%
+  因果三段）此前只是 pipeline §3.7 文字声明，现入契约锚。
+
+### 回归
+
+- pytest **364 passed + 3 skipped**（+1 = D7 负向例测试）；router 47/47；protocol_eval 1.000（6 组件）；
+  doc_consistency 7/7；manifest 33/33。版本 → **2.10.2**。
+
 ## [2.10.0] — 2026-11-05 升维批次：三级坍缩 + 节级审查 + 推理链信封 + 工具编排总表
 
 > 立项依据 = 第三轮升维诊断（`tb-writer/docs/smart-textbook-team-升维设计-2026-11-05.md`）G1–G7。

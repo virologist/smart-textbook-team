@@ -659,7 +659,76 @@ def builtin_cases() -> list[dict]:
               {'kind': 'manifest_status', 'value': 'corrupt'}, {'mode': 'corrupt'}),
         _case('PE-R5-06', 'recovery-classification', '清单缺失 ⇒ status=missing',
               {'kind': 'manifest_status', 'value': 'missing'}, {'mode': 'missing'}),
+
+        # ── 组件 6：条件产物（★H2 v2.10.1 · contract_check --task-type）──
+        #   判据来源：H2 六探针实证语义（临时目录）→ 固化为离线用例
+        _case('PE-R6-01', 'conditional-artifacts', '常规核对跳过条件产物（不出现在 targets）',
+              {'kind': 'targets', 'value': ['章节/{ch}/review/round1_report.md',
+                                             '章节/{ch}/review/round2_report.md',
+                                             '章节/{ch}/review/round3_report.md',
+                                             '章节/{ch}/review/proofread.md',
+                                             '章节/{ch}/review/proofread_revisions.md']},
+              {'member': 'quality-examiner', 'task_type': '', 'chapter': 'ch03'}),
+        _case('PE-R6-02', 'conditional-artifacts', 'review-proofread-score 激活 r5_score 必查',
+              {'kind': 'targets', 'value': ['章节/{ch}/review/proofread.md',
+                                             '章节/{ch}/review/proofread_revisions.md',
+                                             '章节/{ch}/review/r5_score.json']},
+              {'member': 'quality-examiner', 'task_type': 'review-proofread-score', 'chapter': 'ch03'}),
+        _case('PE-R6-03', 'conditional-artifacts', 'review-section 清单含 {节号} 占位（由 --section 展开）',
+              {'kind': 'targets', 'value': ['章节/{ch}/sections/{节号}.verdict.md']},
+              {'member': 'quality-examiner', 'task_type': 'review-section', 'chapter': 'ch03'}),
+        _case('PE-R6-04', 'conditional-artifacts', '未知 task_type ⇒ UNKNOWN_TASK_TYPE',
+              {'kind': 'unknown_task_type', 'value': True},
+              {'member': 'quality-examiner', 'task_type': 'review-nonexist', 'chapter': 'ch03'}),
     ]
+
+
+# ── 执行引擎 ─────────────────────────────────────────────────────────
+def eval_conditional_artifacts(cases: list[dict]) -> list[dict]:
+    """★H2 v2.10.1：条件产物核对（contract_check.check_contract 的 task_type 分支）。
+
+    判据（H2 六探针固化的语义）：
+      · 无 task_type ⇒ targets = must_produce 平铺清单（条件产物不出现在 targets）；
+      · 有 task_type ⇒ targets = task_type_required[task_type]；
+      · 未知 task_type ⇒ verdict=UNKNOWN_TASK_TYPE。
+    """
+    import fnmatch
+    mod = load_component('contract_check')
+    results = []
+    for c in cases:
+        args = c['args']
+        try:
+            mc = mod.load_contracts(SCRIPT_DIR.parent)['members'][args['member']]
+            tt_required = mc.get('task_type_required') or {}
+            tt = args.get('task_type', '')
+            if tt:
+                if tt in tt_required:
+                    targets = list(tt_required[tt])
+                else:
+                    targets = None
+            else:
+                targets = list(mc.get('must_produce') or [])
+        except Exception as e:  # noqa: BLE001
+            results.append({'id': c['id'], 'component': c['component'],
+                            'name': c['name'], 'ok': False,
+                            'detail': f'契约加载失败: {e}'})
+            continue
+
+        expect = c['expect']
+        kind = expect.get('kind')
+        ok = False
+        if kind == 'targets':
+            # 契约里的 {ch} 是占位符（未展开形态），比对同口径
+            ok = targets is not None and [t for t in targets] == expect['value']
+            detail = f"targets={targets}"
+        elif kind == 'unknown_task_type':
+            ok = targets is None
+            detail = f"未知 task_type ⇒ targets=None（调用方应判 UNKNOWN_TASK_TYPE）: {targets}"
+        else:
+            detail = f"未知 kind: {kind}"
+        results.append({'id': c['id'], 'component': c['component'],
+                        'name': c['name'], 'ok': ok, 'detail': detail})
+    return results
 
 
 # ── 执行引擎 ─────────────────────────────────────────────────────────
@@ -669,6 +738,7 @@ EVALUATORS = {
     'budget-priority': eval_budget_priority,
     'section-topology': eval_section_topology,
     'recovery-classification': eval_recovery_classification,
+    'conditional-artifacts': eval_conditional_artifacts,
 }
 
 
@@ -709,12 +779,12 @@ def run_cases(cases: list[dict], only_component: str = '',
             continue
         for r in results:
             total += 1
-            if r['ok']:
+            if r.get('ok'):
                 passed += 1
             else:
                 failures.append({'id': r['id'], 'component': r['component'],
                                  'name': r['name'], 'detail': r['detail']})
-        comp_passed = sum(1 for r in results if r['ok'])
+        comp_passed = sum(1 for r in results if r.get('ok'))
         comp_total = len(results)
         comp_score = round(comp_passed / comp_total, 4) if comp_total else 0.0
         per_component.append({

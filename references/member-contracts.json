@@ -72,7 +72,7 @@
       "max_retry": 3,
       "on_partial": "BLOCK",
       "on_timeout": "TIMEOUT",
-      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套。★G2+v2.10.1（H2 修正）：r5_score.json 与 sections/{节号}.verdict.md 从 must_produce 平铺清单移入 task_type_required 条件产物映射——常规核对（无 --task-type）跳过条件产物，防止「本轮没派 R5/节审」被误判缺项（临时目录实证：四件套齐备被判 PARTIAL 的假阳性）；派 review-proofread-score / review-style / review-score / review-section 时用 --task-type 激活对应必查清单（review-section 须配合 --section 展开占位符）。score_quality.py 无 --out 时默认双落盘（运行态 SSOT + 契约路径 r5_score.json）。",
+      "note": "B1 补全（Q4）：must_produce 原只登记 round1，R2-R5 中途断轮的 PARTIAL 检测会漏 proofread 三件套。★G2+v2.10.1（H2 修正）：r5_score.json 与 sections/{节号}.verdict.md 从 must_produce 平铺清单移入 task_type_required 条件产物映射——常规核对（无 --task-type）跳过条件产物，防止「本轮没派 R5/节审」被误判缺项（临时目录实证：四件套齐备被判 PARTIAL 的假阳性）；派 review-proofread-score / review-style / review-score / review-section 时用 --task-type 激活对应必查清单（review-section 须配合 --section 展开占位符）。score_quality.py 无 --out 时默认双落盘（运行态 SSOT + 契约路径 r5_score.json）。 ★I-2（v2.10.2）：review_duties.R2_paragraph_spot_check 登记 R2 段级抽查义务（数值段 100%/定性段 30% 因果三段）——此前只是 pipeline §3.7 文字声明，无契约锚。",
       "task_type_required": {
         "review-proofread-score": [
           "章节/{ch}/review/proofread.md",
@@ -89,6 +89,14 @@
         "review-section": [
           "章节/{ch}/sections/{节号}.verdict.md"
         ]
+      },
+      "review_duties": {
+        "R2_paragraph_spot_check": {
+          "numeric_paragraphs": "100%（因果三段：因→果→证据，逐段核）",
+          "qualitative_paragraphs": "30%（固定步长抽样：每第 3 段）",
+          "output": "R2 报告『段级抽查』节；blocking 计入既有 R2 blocking 流转（不另立通道）",
+          "source": "skills/textbook-pipeline-workflow/SKILL.md §3.7（口径 SSOT）"
+        }
       }
     },
     "visual-instructional-designer": {

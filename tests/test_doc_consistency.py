@@ -92,11 +92,30 @@ def test_real_package_is_clean():
     assert not failed, f"真实包被误判，失败判据：{sorted(failed)}"
 
 
-def test_gate_has_six_criteria():
-    """门禁必须恰好有 6 条判据（少一条 = 有判据失效且无人知道）。"""
+def test_gate_has_seven_criteria():
+    """门禁必须恰好有 7 条判据（少一条 = 有判据失效且无人知道）。
+
+    ★I-2（v2.10.2）：D6 → D7 增补——task_type_required ⊆ router 枚举
+    + 工具编排总表锚计分（G5 声明的一致性计分落地）。"""
     _failed, items = _run_gate(PKG_ROOT)
     ids = {i[0] for i in items}
-    assert ids == {"D1", "D2", "D3", "D4", "D5", "D6"}, ids
+    assert ids == {"D1", "D2", "D3", "D4", "D5", "D6", "D7"}, ids
+
+
+def test_d7_catches_unknown_task_type_key():
+    """D7 负向例：契约 task_type_required 混入 router 外的键 ⇒ 必须被拦。"""
+    import json
+    contract = PKG_ROOT / "references" / "member-contracts.json"
+    original = contract.read_text(encoding="utf-8")
+    try:
+        d = json.loads(original)
+        d["members"]["quality-examiner"].setdefault("task_type_required", {})["fake-task-xx"] = [
+            "章节/{ch}/review/x.md"]
+        contract.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+        failed, _ = _run_gate(PKG_ROOT)
+        assert "D7" in failed, "D7 未拦截枚举外的 task_type_required 键（判据恒真）"
+    finally:
+        contract.write_text(original, encoding="utf-8")
 
 
 def test_task_type_count_parsed_from_ssot():
