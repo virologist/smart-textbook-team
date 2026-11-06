@@ -39,6 +39,18 @@ maxTurns: 100
    - R3 数据+引用核验：逐条核验 `[实]` 标签数据。调用团队 skill `citation-verify`，按**核验三要素**（标识符存在 + 主题匹配 + 数据点可定位）判生死。**`[引]` 同属本轮的核验对象**（P2-6，2026-11-01：此前 R3 只看 `[实]/[估]`，`[引]` 零核验 → 成绕过核验的后门标签）：`[引]` 按 `citation-verify` **方法 4c** 做结论级核验（来源可检索 + 原文确有该结论 + 未过度外推）；裸 `[引]` 无来源 → blocking，处置为「补来源」或改标 `[待核实·reason=...]`，**不得保留裸标签过关**。
      **编排总表锚（★G5 v2.10）**：R3 核验降级链全团唯一总表 = `references/tool-orchestration.md` L3（核验链）/ L8（文献级定位：全文 → 摘要级 → 题录级）行——摘要级文献的数值结论必须标注「摘要级（数值不能由摘要单独确证）」，不得按全文级结论口径放行。总表与本节不一致时**以总表为准并上报主理人**。
      **工具路径不写死**：首次使用 `ToolSearch` 按 `pubmed` / `crossref` 关键词检索当前环境可用 MCP 工具，2026-10-15 P0-3 裁决（不同 MCP 接入前缀差异极大：`mcp__pubmed__*` / `mcp__biomcp__*` / `mcp__paper_search_server__*` 等，硬编码即失效），`DeferExecuteTool` 加载 schema 后调用 → 失败降级 WebFetch `https://pubmed.ncbi.nlm.nih.gov/{PMID}/` → 再失败 CrossRef `https://api.crossref.org/works/{DOI}` → 全部失败标 `[待核实·reason=核验工具不可用]`，**不得默认通过**；`[估]` 标签查估算依据是否合理
+     **R7 批量复核器（★I-1 v2.10.2 固化 · v2.10.4 接线）**：整章 `[实]` 锚点 >10 条时，除逐条三要素外，**追加**运行包内固化核验器做全文级批量复核（补充手段，不替代 R3 逐条判定）：
+     ```bash
+     python3 {专家包根}/scripts/verify_citations_r7.py \
+         --work-root "$WORK_ROOT" --chapter {ch##}
+     # 产物：章节/{ch##}/review/r7_result.json（逐锚点 verdict+缺实体+缺数值）
+     # 自检：python3 scripts/verify_citations_r7.py --self-test（不联网）
+     ```
+     **判读纪律（known-bounds，脚本输出自带提醒行）**：①「部分支持（定量/定性未获支撑）」
+     = 内容返修线索（数值/实体在该文献全文或摘要中未出现——主题对但被引用的具体数据无源）；
+     ②「不支持（主题错配）」**须人工复核题名后方可判死刑**——THEME 白名单有假阳性史
+     （v4 实测 11 处误报被题名逐条证伪）；③ 摘要级文献的数值缺失只能记「摘要未出现」，
+     不得直接判「文献不支持」。复核结论并入 R3 报告「R7 批量复核」节。
    - R4 风格校稿（**PROOFREAD 态**，产出三件套）：AI 腔检测（套话/空洞总结/排比堆砌/「首先其次最后」机械结构）、术语一致性、学段语言适配——见 team-lead.md `Phase PROOFREAD` 派工触发条件
    - **R4+R5 合并派工（`task_type=review-proofread-score`，B1-3 2026-11-04）**：当主理人以 `review-proofread-score` 单次派工时，我**一次 spawn 内连续完成两轮**，产出四件套：`review/proofread.md`（校对后稿·修订标记版）+ `review/proofread_revisions.md`（修订记录+结论行）+ 审查报告「质量评分」段（五维分数 + 逐维证据 JSON）+ 双轮 verdict（R4 风格 / R5 评分）。
      **顺序硬约束**：先 R4 校稿 → 再 R5 **对校对后稿**评分（R5 评的是校对后稿，不是校对前稿——此前口径未定义，合并派工后以此为准）。

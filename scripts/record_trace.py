@@ -84,18 +84,31 @@ def normalize_outcome(raw: str) -> tuple[str, str | None]:
                  f"但下游按枚举比较，可能不被计入")
 
 
+# ★J4（v2.10.4）：观测相位白名单——非流水线业务相位的机械观测行专用。
+#   这些相位不进 progress.py PHASE_ORDER（不参与续跑/门禁推进），只作
+#   trace 观测归类（如 contract_check 的条件产物核对行、坍缩跳过锚）。
+#   加入白名单 = record_trace 不再对它们 WARN「未知相位」，
+#   compute_metrics 的 latency_by_phase 也按此桶归类（不落「无 phase 归属」）。
+OBSERVATION_PHASES = {'CONTRACT', 'COLLAPSE'}
+
+# 介入协议触发阈值（ADR-05 §5.2：同问题打回 ≥2 次；SSOT = pipeline §介入协议）
+REJECT_INTERVENTION_THRESHOLD = 2
+
+
 def _is_known_phase(phase: str) -> bool:
     """校验相位名是否落在 progress.py 的 PHASE_ORDER（含粗粒度别名）。
 
     相位 SSOT 唯一权威源 = scripts/progress.py 的 PHASE_ORDER；
     此处动态读取，避免在 record_trace.py 里复述一份（防双写漂移）。
     读取失败时保守返回 True（不误伤正常写入）。
+    ★J4：OBSERVATION_PHASES（CONTRACT/COLLAPSE 等观测相位）视同已知。
     """
+    if phase in OBSERVATION_PHASES:
+        return True
     try:
         import progress as _progress  # 同目录
         known = set(_progress.PHASE_ORDER)
         known |= set(getattr(_progress, 'PHASE_ALIAS', {}) or {})
-        known |= set(getattr(_progress, 'LEGACY_PHASE', {}) or {})
         known |= set(getattr(_progress, 'LEGACY_PHASE', {}) or {})
         return phase in known
     except Exception:

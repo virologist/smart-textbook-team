@@ -41,12 +41,12 @@ version: 2.1.0
 
 ### 3. 存入候补池
 
-写入 `学习/候补/{日期}_{ch##}_候补.yaml`，格式（**`signal_type` 枚举为 SSOT，7 值**：`反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach`——后两个是 2026-10-29 补入，此前 `agent-harness-protocol` §2 与 §7 分别引用了它们但本枚举未收录，导致候补池分类错乱）：
+写入 `学习/候补/{日期}_{ch##}_候补.yaml`，格式（**`signal_type` 枚举为 SSOT，8 值**：`反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach | citation_r7_flagged`——`metric_breach` 与 `token_overrun` 是 2026-10-29 补入；**`citation_r7_flagged` 是 ★J7 v2.10.4 补入**：R7 批量复核（scripts/verify_citations_r7.py）标记的「部分支持（定量/定性未获支撑）」锚点自动生成候补，供 L2/L3 内容返修批次消费——此前 R7 结果只落在 review/r7_result.json，无 learn 侧通路，返修批次容易漏掉这些锚点）：
 
 ```yaml
 - date: YYYY-MM-DD
   chapter: ch##        # 真实章节；self-evo 表示自我进化留档
-  signal_type: 反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach
+  signal_type: 反复打回点 | 介入命中 | 核验失败 | 红线命中 | 延迟超预算 | token_overrun | metric_breach | citation_r7_flagged
   observed_pattern: {具体描述，含证据文件与行号}
   proposed_rule: {一句可执行规则}
   target: {待修改的 agent ID 或 skill 名}

@@ -3,6 +3,55 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.4] — 2026-11-07 第五轮：R7 消费接线 + 疫情统计源 + 观测相位白名单
+
+> 第五轮「声明 vs 实现」扫描（J1-J9）。零协议语义变更——全部是消费端接线与判据补全。
+
+### ★J1 R7 核验器接线进 examiner MD（R3 追加手段）
+
+固化后的 verify_citations_r7.py 此前无消费端接线（成员 MD 不知道它存在）。
+examiner MD R3 段增「R7 批量复核」条款：整章 [实] 锚点 >10 条时追加运行，
+判读纪律三则（部分支持=返修线索 / 主题错配须人工复核题名 / 摘要级只记不判死）
+随派单注入生效。
+
+### ★J2 citation-verify 方法 4 增「疫情/流行病学统计源」行（v1.8.0）
+
+R7 ch_02 实证的病灶类型进判据表：病毒学/病原学综述支撑疫情统计数字 =
+「主题对、数据源错」→ 判「数值无源」，处置换专属统计源（WHO 区域办/FAO
+EMPRES-i/WOAH WAHIS/卫健委公报/CNKI 流行病学综述）或降级待核实。标签
+`[实·疫情统计]`。
+
+### ★J3 task-router review-section 纪律⑥：contract_check --task-type 验收
+
+主理人收节审产出后必须调 `--task-type review-section --section {节号}`
+激活条件产物必查（省略 = verdict 缺失核不到）。
+
+### ★J4 record_trace 观测相位白名单 OBSERVATION_PHASES = {CONTRACT, COLLAPSE}
+
+I-3 两机制用的观测相位此前会 WARN「未知相位」（不在 PHASE_ORDER）。
+入白名单后告警清零，latency_by_phase 按观测桶归类。
+
+### ★J7 learn-protocol signal_type 枚举 7→8 值：+citation_r7_flagged
+
+R7 标记的「部分支持」锚点自动生成候补（此前 R7 结果无 learn 侧通路，
+L2/L3 返修批次容易漏掉）。
+
+### ★J8 compute_metrics citation_pass 优先源 = R7 全文级结果
+
+r7_result.json 存在 → 用 R7 判定（支持/总数）并标 citation_pass_source=r7(全文级)；
+无 → 回退 R3 报告正则（标 r3）。真实工作区验证：ch_02 = 0.88 (r7, 21/24) ✓
+
+### ★J9 metrics_baseline 新指标覆盖验证（零改动）
+
+flatten_numbers 通用展平器自动覆盖 reasoning_chain_coverage /
+conditional_artifacts_coverage / product_quality.citation_pass_rate——
+实跑验证 conditional_artifacts_coverage 入快照 ✓（None 时正确跳过不造 0）。
+
+### 回归
+
+pytest 364+3skip；router 47/47；protocol_eval 1.000；doc 7/7；manifest 33/33。
+版本 → **2.10.4**。
+
 ## [2.10.3] — 2026-11-06 I-3 收口：两项残余观测缺口清零
 
 > 上轮（v2.10.2）登记的最后 2 项未落地观测增强。零协议语义变更。

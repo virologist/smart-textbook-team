@@ -1,7 +1,7 @@
 ---
 name: citation-verify
 description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify [引] quotation tags at conclusion level via method 4c (source retrievable + conclusion locatable + assertion strength not inflated), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准), plus law-domain precedents/judicial interpretations and CS-domain RFCs/dblp entries against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 引标签核验 / 结论有没有被原文支持 / 法规现行有效 / 判例核验 / 裁判文书 / RFC 现行状态 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
-version: 1.7.0
+version: 1.8.0
 ---
 
 # citation-verify — 引用核验（零容忍防幻觉）
@@ -76,6 +76,7 @@ WebFetch https://api.crossref.org/works/{DOI}
 | 兽药典 🐾 | `https://www.ivdc.org.cn/`（中国兽药信息网）→ 兽药典专栏 | 版次（2020 年版一部/二部/三部）+ 条目存在 | `[实·兽药典]` |
 | 官方技术指南 | 印发机构官网原文（如中国动物疫病预防控制中心 → mara.gov.cn） | **必须有可回访的原文 URL**，二手转载不算 | `[实·指南]` |
 | 国际组织（WOAH 等） | `https://www.woah.org/`（WAHIS） | 条款/名单与官网现行版一致 | `[实·机构]` |
+| **疫情/流行病学统计（v1.8.0 ★J2，2026-11-06）** | 官方统计源专属链：WHO 非洲/西太平洋区域办公室（`who.int`）→ FAO EMPRES-i（`fao.org`）→ WOAH WAHIS → 中国卫健委公报（`nhc.gov.cn`）→ CNKI 权威流行病学综述 | **引用的疫情数字（感染数/死亡数/波次）必须在被引原文中逐字可定位**——病毒学/病原学综述**通常不含**人感染疫情统计，用其支撑统计数字 = **主题对、数据源错**（R7 ch_02 实证：`32135031` H5 综述全文 0 次命中 H7N9 五波 1568/615）→ 判「数值无源」，处置为换专属统计源或降级 `[待核实·reason=疫情统计需专属来源]` | `[实·疫情统计]` |
 
 **中文源核验三要素**（与方法 1–3 的三要素同构）：
 ① **源真实**——在权威入口可检索到该文件（转发稿/自媒体转述不算）；

@@ -58,7 +58,13 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 > ③ 判据 = 章级 R2 四维矩阵在节范围内的子集 + chapter_design §C 该节契约项，
 >    **不新增判据源**（防两套标准漂移）；
 > ④ 单节 verdict 上限 2 轮，超限转章级返修循环（打回计数跨 task_id 累计不重置）；
-> ⑤ 同波多节可并行 spawn（每节独立 `must_produce=sections/{节号}.verdict.md`，路径互异）。
+> ⑤ 同波多节可并行 spawn（每节独立 `must_produce=sections/{节号}.verdict.md`，路径互异）；
+> ⑥ **验收**（★J3 v2.10.4）：主理人收产出后调
+>    `contract_check.py --work-root $WORK_ROOT --member quality-examiner \
+>     --chapter {ch##} --task-type review-section --section {节号}`
+>    激活条件产物必查（该 task_type 的 verdict 路径在契约
+>    `task_type_required` 映射内）——省略 `--task-type` 的常规核对会跳过
+>    条件产物（静默 = verdict 缺失核不到）。
 
 > **B1-3 合并派工说明（2026-11-04）**：`review-style` 与 `review-score` 保留在枚举中（单轮问法仍可能只求其一），
 > 但 **PROOFREAD 态的标准派工改用 `review-proofread-score`**——单次 spawn 双产出，省一次派工与一次全稿重读。

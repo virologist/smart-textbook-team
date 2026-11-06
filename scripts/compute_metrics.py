@@ -445,13 +445,26 @@ def _product_quality(work_root: Path) -> dict | None:
         if n_trig_nodata:
             entry['labels_no_value'] = f'触发词命中但无数值 {n_trig_nodata} 句（不计入分母）'
 
-        # ③ 引用核验通过率：从 R3 审查报告抓核验汇总（无报告 → N/A）
+        # ③ 引用核验通过率：优先 R7 批量复核结果（★J8 v2.10.4——全文级，精度高于
+        #    R3 报告的正则汇总）；无 r7_result.json → 回退 R3 报告；都无 → N/A。
         pass_rate = None
-        for rep in sorted((ch / 'review').glob('round*_report.md')) if (ch / 'review').is_dir() else []:
-            rt = rep.read_text(encoding='utf-8')
-            m = re.search(r'核验\s*(\d+)\s*条\s*\|?\s*通过\s*(\d+)', rt)
-            if m and int(m.group(1)) > 0:
-                pass_rate = int(m.group(2)) / int(m.group(1))
+        r7_path = ch / 'review' / 'r7_result.json'
+        if r7_path.is_file():
+            try:
+                r7 = json.loads(r7_path.read_text(encoding='utf-8'))
+                if isinstance(r7, list) and r7:
+                    sup = sum(1 for r in r7 if r.get('verdict') == '支持')
+                    pass_rate = sup / len(r7)
+                    entry['citation_pass_source'] = 'r7(全文级)'
+            except (json.JSONDecodeError, OSError):
+                pass  # 损坏 → 回退 R3
+        if pass_rate is None:
+            for rep in sorted((ch / 'review').glob('round*_report.md')) if (ch / 'review').is_dir() else []:
+                rt = rep.read_text(encoding='utf-8')
+                m = re.search(r'核验\s*(\d+)\s*条\s*\|?\s*通过\s*(\d+)', rt)
+                if m and int(m.group(1)) > 0:
+                    pass_rate = int(m.group(2)) / int(m.group(1))
+                    entry['citation_pass_source'] = 'r3(报告正则)'
         if pass_rate is not None:
             entry['citation_pass'] = f'{pass_rate:.2f}'
         else:
