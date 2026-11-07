@@ -85,3 +85,18 @@ version: 1.0.0
 
 - number_triggers: 诉讼时效、除斥期间、法定刑、罚金数额、赔偿数额、举证期限、上诉期、追诉时效
 - conflict_metrics: 诉讼时效、追诉时效、法定刑
+
+### §7b. R7 核验实体词典（verify_citations_r7 判据层学科化 · v2.10.5 ★K）
+
+> 法学域中英实体映射（R7 判据层学科化）。
+> 未声明（无本节或为空）→ 核验器回落内置默认（兽医域）并 WARN——非兽医学科必须配置本节，
+> 否则实体命中判据恒不适用（R7 判「全部缺实体」的假阳性源）。
+
+- entity_map（中文名 → 英文候选，竖线分隔，命中任一即算实体覆盖）：
+  - 合同: contract|agreement
+  - 侵权: tort
+  - 诉讼时效: limitation period
+  - 故意犯罪: intent|mens rea
+  - 行政处罚: administrative penalty
+  （示例条目——完整配置按教材实际知识域扩充；核验器按行解析 `中文名: 候选|候选` 格式）
+- theme_entities（文献核心对象白名单）：合同, 侵权, 刑法, 民法, 行政法, 诉讼, 证据, 立法

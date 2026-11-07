@@ -42,9 +42,11 @@ maxTurns: 100
      **R7 批量复核器（★I-1 v2.10.2 固化 · v2.10.4 接线）**：整章 `[实]` 锚点 >10 条时，除逐条三要素外，**追加**运行包内固化核验器做全文级批量复核（补充手段，不替代 R3 逐条判定）：
      ```bash
      python3 {专家包根}/scripts/verify_citations_r7.py \
-         --work-root "$WORK_ROOT" --chapter {ch##}
+         --work-root "$WORK_ROOT" --chapter {ch##} --profile {discipline}
      # 产物：章节/{ch##}/review/r7_result.json（逐锚点 verdict+缺实体+缺数值）
-     # 自检：python3 scripts/verify_citations_r7.py --self-test（不联网）
+     # 自检：python3 scripts/verify_citations_r7.py --self-test（不联网，含学科中立断言）
+     # ★K：--profile 必给（非兽医学科缺省 = 实体/主题判据系统性假阳性；
+     #   profile §7b 未配置该学科词典时核验器会显式 WARN 并声明结果仅供参考）
      ```
      **判读纪律（known-bounds，脚本输出自带提醒行）**：①「部分支持（定量/定性未获支撑）」
      = 内容返修线索（数值/实体在该文献全文或摘要中未出现——主题对但被引用的具体数据无源）；

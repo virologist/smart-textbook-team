@@ -32,16 +32,10 @@ import subprocess
 import sys
 import tempfile
 
-_PKG_NAME = "smart-textbook-team"
-# 安装根解析（N-2，2026-11-01）：EXPERT_DIR 环境变量 > 两个宿主根兜底
-# （WorkBuddy=.workbuddy / CodeBuddy=.codebuddy）> 仓库自身（见 DEFAULT_EXPERT_DIR）。
-_INSTALL_CANDIDATES = [
-    os.path.join(os.path.expanduser("~"), host, "plugins", "marketplaces",
-                 "my-experts", "plugins", _PKG_NAME)
-    for host in (".workbuddy", ".codebuddy")
-]
-_INSTALL_DIR = os.environ.get("EXPERT_DIR") or next(
-    (p for p in _INSTALL_CANDIDATES if os.path.isdir(p)), _INSTALL_CANDIDATES[0])
+_PKG_NAME = "triz-invention-team"
+_INSTALL_DIR = os.path.expanduser(
+    "~/.workbuddy/plugins/marketplaces/my-experts/plugins/" + _PKG_NAME
+)
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 与包内主测试同策略：CI/纯 clone 态回落到仓库自身
 DEFAULT_EXPERT_DIR = (
@@ -198,7 +192,7 @@ def main():
                          ensure_ascii=False, indent=2))
     else:
         print("=" * 62)
-        print("shared-core 分发与防漂移门禁（smart-textbook-team）")
+        print("shared-core 分发与防漂移门禁（triz-invention-team）")
         print("=" * 62)
         for cid, desc, status, detail in r.items:
             mark = {"PASS": "✓", "FAIL": "✗", "SKIP": "-"}[status]

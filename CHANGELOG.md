@@ -3,6 +3,39 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.5] — 2026-11-07 第六轮：R7 核验器判据层学科化（K 批次）
+
+> 第六轮扫描（K1-K5）确认唯一结构性缺口：verify_citations_r7 的三词典
+> （ENTITY_MAP 120 词条 / GENERIC_ENTITIES / THEME_ENTITIES 74 对象）100% 兽医域
+> 硬编码且不读 profile——「任意专业」目标的直接障碍（与 B3 已完成的判据层学科化同构违规）。
+
+### ★K R7 词典下沉 profile §7b
+
+- **profile 侧**：三 profile（veterinary/computer-science/law）各增 §7b
+  「R7 核验实体词典」扩展位——`entity_map`（中文名: 英文候选|候选）+
+  `theme_entities`（文献核心对象白名单，顿号/逗号分隔兼容）。
+  veterinary 配置为与内置同源的 74 对象全量；CS/law 各配 8 对象示例
+  （真实教材按知识域扩充）。
+- **核验器侧**：`--profile` 参数 + `load_profile_entities()` / `apply_profile()`——
+  §7b 有配置则**覆盖**内置兽医默认；profile 缺失显式 WARN；veterinary 无 §7b
+  静默回落（内置即兽医域，语义等价）；非兽医学科缺 §7b → WARN「系统性假阳性」。
+- **examiner MD**：R7 命令模板补 `--profile {discipline}` 必给项。
+- **self-test 扩学科中立断言**（第 5 组）：veterinary 无 WARN / CS §7b 解析
+  （哈希表→hash）/ law 可解析 / 无 profile 静默。
+
+### 修复过程自愈（如实记录）
+
+- §7b 标题正则首版漏「句点+空格」形态 → 兼容 `[.．]?\s*`；
+- veterinary §7b theme 首配 9 对象示例 → **端到端回归当场抓出 6 处主题错配假阳性**
+  （野鸟界面/类器官等不命中）→ 扩为 74 对象全量 + 顿号分隔兼容后判定分布恢复 21/3。
+  此事故即 K 批次的价值证明：示例配置当全量用会被回归探针抓住。
+
+### 回归
+
+pytest 364+3skip（单独复跑确认此前 1 error 为并发资源抖动非代码问题）；
+ch_02 + profile=veterinary 端到端 **21/3 与基线完全一致（零回归）**；
+self-test 5 组断言全过。版本 → **2.10.5**。
+
 ## [2.10.4] — 2026-11-07 第五轮：R7 消费接线 + 疫情统计源 + 观测相位白名单
 
 > 第五轮「声明 vs 实现」扫描（J1-J9）。零协议语义变更——全部是消费端接线与判据补全。

@@ -1,6 +1,6 @@
 {
   "name": "smart-textbook-team",
-  "version": "2.10.4",
+  "version": "2.10.5",
   "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members. v2.1: task-router routing + trace/progress observability. v2.6: section-level wave state persistence + contract write-back + lead verdict gate. v2.9: exercise-marker canonical form. v2.10: three-level team collapse (chapter/section/block) + section-level review loop (review-section) + reasoning-chain envelope fields (21) + tool orchestration SSOT table + std-skill local anchor form ④.",
   "author": {
     "name": "TZUVet",

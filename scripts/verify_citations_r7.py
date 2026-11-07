@@ -410,6 +410,70 @@ THEME_ENTITIES = {
     "禽→牛→人→禽", "禽→牛→人",
 }
 
+# ── ★K（v2.10.5）：判据层学科化——profile §7b 覆盖内置默认 ──────────────
+# 病灶（第六轮扫描 K1-K5）：三词典 100% 兽医域硬编码（120 词条 0 跨学科词）且不读
+# profile——非兽医教材跑 R7 时实体命中恒不适用（判「全部缺实体」假阳性），
+# 与 B3 已完成的判据层学科化（数值触发词/指标正则下沉 profile §7）同构违规。
+# 修法与 B3 同源：profile `§7b` 声明 `entity_map`（中文名: 英文候选|候选）与
+# `theme_entities`（白名单）——profile 有配置则**覆盖**内置默认；无则回落 + WARN。
+_PKG_ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_profile_entities(profile: str | None):
+    """读 profile §7b → (entity_map 增补/覆盖 dict, theme_entities set, warn|None)。
+
+    解析格式（§7b 列表行）：
+      - 中文名: 候选|候选|候选          → entity_map 条目
+      - theme_entities（…）：A, B, C   → 主题白名单整组替换
+    profile 未给 → (None, None, WARN 文本)；§7b 缺失但 profile 是 veterinary →
+    静默回落（内置默认即兽医域，语义等价）；非兽医学科缺 §7b → 显式 WARN
+    （判据恒不适用，结果可能全是假阳性——不得静默）。
+    """
+    if not profile:
+        return None, None, None
+    p = _PKG_ROOT / 'references' / 'profiles' / f'{profile}.md'
+    if not p.is_file():
+        return None, None, f'profile 不存在：{p}（回落内置兽医默认，判定可能失真）'
+    text = p.read_text(encoding='utf-8')
+    m = re.search(r'###\s*§?7b[\.．]?\s*R7 核验实体词典(.*?)(?=###|\Z)', text, re.S)
+    if not m:
+        if profile == 'veterinary':
+            return None, None, None  # 内置默认即兽医域，语义等价，静默
+        return (None, None,
+                f'profile {profile} 缺 §7b 实体词典——实体/主题判据回落兽医默认，'
+                f'非兽医学科将产生系统性假阳性（请补 §7b）')
+    seg = m.group(1)
+    emap: dict[str, list[str]] = {}
+    themes: set[str] | None = None
+    for line in seg.splitlines():
+        s = line.strip()
+        if s.startswith('-') and ':' in s and not s.startswith('- theme_entities'):
+            body = s.lstrip('- ').strip()
+            zh, _, cand = body.partition(':')
+            zh, cand = zh.strip(), cand.strip()
+            if zh and cand:
+                emap[zh] = [c.strip() for c in cand.split('|') if c.strip()]
+        elif s.startswith('- theme_entities'):
+            after = s.split('：', 1)[-1] if '：' in s else ''
+            if after:
+                # 分隔符兼容：顿号（、）/逗号（, ,）/分号
+                parts = re.split(r'[、,，;；]', after)
+                themes = {x.strip() for x in parts if x.strip()}
+    return emap or None, themes, None
+
+
+def apply_profile(profile: str | None):
+    """把 §7b 配置应用到全局词典（进程内一次）。返回 WARN 或 None。"""
+    global ENTITY_MAP, THEME_ENTITIES
+    emap, themes, warn = load_profile_entities(profile)
+    if emap:
+        merged = dict(ENTITY_MAP)
+        merged.update(emap)
+        ENTITY_MAP = merged
+    if themes:
+        THEME_ENTITIES = themes
+    return warn
+
 
 def evaluate(claim, title, abstract, body, source):
     """分层判定：返回 dict
@@ -525,6 +589,26 @@ def self_test() -> int:
     zh, _ = entities_in("鸡舍氨气浓度达到 100 ppm 时出现角膜溃疡")
     if "氨气" not in zh:
         print(f"  ✗ 实体抽取失败: {zh}"); ok = False
+    # 5) ★K（v2.10.5）学科中立：profile §7b 加载与覆盖
+    emap_v, th_v, w_v = load_profile_entities("veterinary")
+    if w_v is not None:
+        print(f"  ✗ veterinary 加载异常: {w_v}"); ok = False
+    emap_c, th_c, w_c = load_profile_entities("computer-science")
+    if not emap_c or not th_c:
+        print(f"  ✗ computer-science §7b 未解析出词典: emap={bool(emap_c)} theme={bool(th_c)} warn={w_c}")
+        ok = False
+    else:
+        if "哈希表" not in emap_c or "hash" not in emap_c["哈希表"][0].lower():
+            print(f"  ✗ CS entity_map 词条解析错: {emap_c.get('哈希表')}"); ok = False
+        if not ({"算法", "并发"} <= th_c):
+            print(f"  ✗ CS theme_entities 解析错: {sorted(th_c)[:6]}"); ok = False
+        print(f"  ✓ CS §7b 词典: entity_map {len(emap_c)} 词条 / theme {len(th_c)} 对象")
+    _, _, w_missing = load_profile_entities("law")
+    if w_missing is not None:
+        print(f"  ✗ law §7b 应可解析（得到 warn={w_missing!r}）"); ok = False
+    _, _, w_none = load_profile_entities(None)
+    if w_none is not None:
+        print("  ✗ 无 profile 应静默回落"); ok = False
     print("✓ self-test 通过" if ok else "✗ self-test 失败")
     return 0 if ok else 1
 
@@ -533,6 +617,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="R7 全文级引用核验器（包内固化版）")
     ap.add_argument("--work-root", help="WORK_ROOT")
     ap.add_argument("--chapter", default="ch_01", help="章号，如 ch_01")
+    ap.add_argument("--profile", default=None,
+                    help="★K v2.10.5：学科 profile 名（读其 §7b 实体词典覆盖内置兽医默认；"
+                         "非兽医学科必须给，否则实体/主题判据产生系统性假阳性）")
     ap.add_argument("--out", default=None,
                     help="结果 JSON 路径（默认 章节/{ch}/review/r7_result.json）")
     ap.add_argument("--self-test", action="store_true",
@@ -552,6 +639,12 @@ def main() -> int:
 
     global CHAPTER
     CHAPTER = args.chapter
+    # ★K：profile 词典应用（§7b 有配置则覆盖内置；非兽医学科缺配置显式 WARN）
+    pw = apply_profile(args.profile)
+    if pw:
+        print(f"[WARN] {pw}", file=sys.stderr)
+        print("[WARN] 继续运行——但实体/主题判定可能全是假阳性，结果仅供参考",
+              file=sys.stderr)
     claims = extract_all(draft.read_text(encoding="utf-8"))
     uniq = sorted({c["pmid"] for c in claims})
     if not uniq:
