@@ -3,6 +3,63 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.0] — 2026-11-08 第七轮：架构审计（loop+graph/耦合度）+ WIP 双升级
+
+> 第七轮 = 架构审计员视角验证性审计（六项全覆盖：A 假边/B 五要素/C 车道/D 学习边/
+> E 可插拔/F 生命周期）+ WIP=2 升级落地。零协议语义变更；PHASE_ORDER 23 相位不变。
+
+### 审计结论（详见对话审计报告 GATE 1）
+
+- **A 假边**：未发现（PROOFREAD→CONSOLIDATION 由 append_proofread_conclusion 实消费；
+  B4/R2 边 scheduler×compute_metrics 双向命中；门禁 3 与节级自查是「子集 vs 全集」非重复）。
+- **B 五要素**：四要素齐备；SCOPE 语义存在（「只回改对应节/禁改 draft/唯一归属」三处散落）
+  但未字段化 → 候补段。
+- **D 学习边**：manuscript-delivery v1.4.0 合并真实改进 SSOT+执行体（非空转）；
+  发现 SKILL_CHANGELOG 登记漂移（task-router 1.3.0 与 v2.10.x 全漏）→ **本批回填修复**。
+- **E2 依赖方向**：全包仅 4 条 skill 间引用，全部契约引用，零结构耦合。
+- **F 生命周期**：立项→大纲→批量→统稿→交付全有协议；F1（check_book 零测试）/
+  F2（无样章协议）/F3（无出版社挂载点）→ F3 由本批 WIP-1 解决，F1/F2 入候补段。
+
+### ★WIP-1 自定义/标准类判据 skill 挂载规范（解锁外部标准 skill 生态）
+
+- `references/skill-mounting.md`（新建 SSOT）：目录约定（`学科标准/external/` +
+  external-skills.yaml 唯一登记）/ frontmatter 六必填（purpose 只许「判据」）/
+  namespace 命名隔离（与包内 10 skill 零撞名）/ 卸载无残留双向判据 /
+  B7 铁律继承（判据≠内容源；优先级 profile>用户文档>overrides>外部 skill）/ 
+  隐性依赖附表（E4 实测：WebFetch/ToolSearch/ima/Obsidian/markitdown 六项）。
+- `scripts/check_external_skills.py`（新建执行体）：四项机械校验（清单/撞名/
+  frontmatter/双向一致），退出码 0/1/2。
+- 七探针实测：无挂载 N/A / 正常挂载 / 撞名 FAIL / 卸载残留 FAIL /
+  内容源拒载 FAIL / 挂载残留 FAIL / 双挂载共存 PASS。
+- 过程自愈（如实记录）：清单解析 YAML 双形态（`- name: x` vs `- x`）首版漏 → 
+  相对目录解析 bug → frontmatter 列表键（criteria_refs 值空）误判 → 空清单提前返回
+  跳过反向残留扫描——四处全由探针抓出后修复。
+
+### ★WIP-2 裁决车道分级 + 进化安全规范
+
+- `references/decision-lanes.md`（新建 SSOT）：绿/黄/红三车道定义 + 11 个运行时
+  裁决点逐一归道（判道公式：可逆性×影响面×判据机械化程度）；进化红道全链
+  （diff 预览→实现→反向例测试→CI→changelog→版本→release-check→推送）/
+  黄道/禁改项（信封字段集/归属表/PHASE_ORDER/脚本只报不 spawn/生成者审查者分离）。
+  **只定义分级，不改任何现有门禁阈值**。
+
+### D 项回填（顺手修）
+
+SKILL_CHANGELOG 补登记：task-router v1.3.0、agent-harness-protocol v1.8.0、
+citation-verify v1.7/1.8、pipeline v1.6.0、team-generation v2.0.0、
+learn-protocol 枚举扩容、book-orchestration 新增（此前漏登记）、本批两规范。
+
+### 候补段（登记不丢弃）
+
+F1 check_book 门禁测试、F2 样章验证协议、B SCOPE 字段化、E4 dependencies 声明、
+J5 std-skill 双挂 scientific-figure、R7 THEME 白名单 profile 化、metrics 消费
+conditional_skipped。
+
+### 回归
+
+pytest 364+3skip；router 47/47；protocol_eval 1.000；doc 7/7；manifest 33/33。
+版本 → **2.11.0**。
+
 ## [2.10.5] — 2026-11-07 第六轮：R7 核验器判据层学科化（K 批次）
 
 > 第六轮扫描（K1-K5）确认唯一结构性缺口：verify_citations_r7 的三词典

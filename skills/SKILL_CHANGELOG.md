@@ -224,3 +224,47 @@ legacy 形式被 4.8b 判 FAIL；存量书稿需迁移（迁移规则 = 设计�
 | P0（已完成） | G1 reducer 规则（实际由 evo-7 落地，patch 语义表）/ G3 token budget / G6 boundary filter | evo-13 |
 | P1 | G2 L2 Supervisor 自动触发 / G5 Termination keyword 兜底 / G7 OpenTelemetry 标准化 / 新增 error-recovery skill | evo-13 报告第七节 |
 | P2 | 新增 human-approval skill / state-patch-protocol skill / init_skill.py + validate_skill.py 模板工具 / 跨章节并发架构 | 远期 |
+
+---
+
+## task-router（任务路由，v2.10.1 批次漏登记 · 本次回填）
+
+### v1.2.0 → v1.3.0（★G3 v2.10.1，2026-11-06）
+
+**变更**：task_type 枚举 16→17 类（新增 `review-section` 节级审查——波次收口检查，
+不新增相位）；影子实现（test_router_eval.py）同步分支 + 2 正样例 + 2 不截胡反例。
+**纪律⑥（v2.10.4 J3 补）**：review-section 验收须 `contract_check --task-type review-section
+--section {节号}` 激活条件产物必查。
+
+---
+
+## v2.10.x 系列（第六、七轮升维批次 · 各 skill 版本位已升但本登记漏 → 回填）
+
+### agent-harness-protocol v1.7.0 → v1.8.0（★G4 v2.10.1）
+信封 19→21 字段：`reasoning_chain`（decision/criteria_refs/evidence_refs/computation/
+alternatives_considered）+ `divergence`（parties/issue/resolution/rule_ref）；
+record_trace 增同名参数（非法 JSON exit 2，缺失 WARN 渐进）。
+
+### citation-verify v1.6.0 → v1.7.0 → v1.8.0
+- v1.7.0（★G6）：方法 4d 第④锚形态 `[实]（std-skill:{skill名}:{条目}）`；
+- v1.8.0（★J2 v2.10.4）：方法 4 增「疫情/流行病学统计源」行（主题对数据源错=数值无源；
+  R7 ch_02 32135031 实证病灶进判据表；标签 `[实·疫情统计]`）。
+
+### textbook-pipeline-workflow v1.5.0 → v1.6.0（★G3 v2.10.1）
+§3.7 节级审查回路（review-section <800 字跳过 / 判据不新增 / ≤2 轮 / 段级抽查
+100% 数值段 + 30% 定性段）。
+
+### team-generation v1.0.0 → v2.0.0（★G1 v2.10.1）
+三级坍缩（chapter/section/block）；--scope/--section/--blocks 互检 fail-fast；
+per-scope 闸门；节级坍缩提示义务；v2.10.3 补 `--declined-trace` 机械锚。
+
+### learn-protocol（signal_type 枚举 7→8，★J7 v2.10.4）
++`citation_r7_flagged`：R7「部分支持」锚点 → 候补池通路。
+
+### 新增 skill：book-orchestration（全书编排，B5 批次，此前漏登记）
+BOOK_* 5 相位消费协议；§6.1 章内节级调度。
+
+### 新增参考规范（references/，v2.11.0 ★E1/C 本批）
+- `skill-mounting.md`：自定义/标准类判据 skill 挂载规范（目录/frontmatter/命名隔离/
+  卸载无残留/B7 铁律继承/隐性依赖附表）；
+- `decision-lanes.md`：裁决车道分级（绿/黄/红）+ 进化安全规范（红道全链/黄道/禁改项）。
