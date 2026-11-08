@@ -142,11 +142,13 @@ jobs:
       # 书稿交付链依赖（pandoc / python-docx）：ubuntu-latest 默认不带。
       # 脚本在硬依赖缺失时 exit 3 硬失败（不静默降级成"没有 docx 也算过"），
       # 因此 CI 必须先装。与本机装法（brew install pandoc && pip install python-docx）等价。
-      - name: 安装书稿链依赖（pandoc / python-docx）
+      - name: 安装书稿链依赖（pandoc / python-docx / PyYAML）
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq pandoc
-          python3 -m pip install --quiet python-docx
+          python3 -m pip install --quiet python-docx pyyaml
+        # ★M1b v2.11.3：补 PyYAML —— 5.4 第 7 项（术语依赖图）解析 exports/imports
+        # frontmatter 需要 yaml；runner 镜像不带，缺了按「不静默」纪律升 FAIL（实测抓出）
 
       # 书稿交付链冒烟（2026-10-30 第 7 道门禁；v2.3.0 扩展：修订态往返回归）：
       # md→docx 构建 + 门禁 4 校验 + 修订标记→Word 真修订（--revisions）+ 回流（--apply-revisions）。
