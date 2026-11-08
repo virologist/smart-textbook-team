@@ -686,6 +686,27 @@ jobs:
       # M1 破坏样本矩阵（B6 横切验收口径，GATE2 §6）：每个判据族一个最小破坏样本，
       # 断言校验器必须拦住——FAIL 级判据 → --strict exit≠0；advisory 级（4.9 存在性）
       # → 该项必须被标记。此前负向实验只覆盖 4/14 族（4.10/4.11/4.12/4.13），本轮扩到 15/15（含 4.14）。
+      # ★M2 v2.11.3：4.12d 第④锚 std-skill 认锚正负双向（G6 缺口落地回归）
+      - name: 门禁4负向实验（4.12d std-skill 第④锚正负双向）
+        run: |
+          set -e
+          python3 - <<'PY'
+          import importlib.util as ilu
+          spec = ilu.spec_from_file_location("cm", "scripts/check_manuscript.py")
+          cm = ilu.module_from_spec(spec); spec.loader.exec_module(cm)
+          pos = ["[实]（std-skill:出版社规范:交稿格式）", "[实]（std-skill:gb:图表规范#表2）"]
+          neg = ["[实]（std-skill::条目）", "[实]（std-skill:名）", "裸 [实]"]
+          for s in pos:
+              assert cm._has_retrievable_anchor(s), f"④锚应认: {s}"
+          for s in neg:
+              assert not cm._has_retrievable_anchor(s), f"④残缺应拒: {s}"
+          # 回归：既有 ①②③ 形态判定不变
+          assert cm._has_retrievable_anchor("[实]（本地:a.md#L3）")
+          assert not cm._has_retrievable_anchor("[实]（本地:a.md）")
+          assert cm._has_retrievable_anchor("[实]（ima:kb1:doc）")
+          print("[OK] 4.12d std-skill 第④锚正负双向通过（含三形态回归）")
+          PY
+
       - name: 门禁4负向实验扩容（M1 破坏样本 15/15 判据族）
         run: |
           set -e
@@ -969,12 +990,18 @@ jobs:
             python3 scripts/build_manuscript.py --work-root "$WR" --chapter "$ch" --assemble >/dev/null
           done
           # ④ 正向：check_book --strict 必须 exit 0
+          # ★M1 v2.11.3：⑤ 装配后再补跑一次全量 —— 此前 docx 在 check 之后才生成，
+          # 5.5 三项（可开/图数一致/字数达标）在端到端里永远走 N/A 短路，「5.1–5.5 全过」
+          # 是假命题；现在合稿产物落盘后二次 check 让 5.5 真正执行
           python3 scripts/check_book.py --work-root "$WR" --strict
-          echo "[OK] check_book 正向 exit 0（5.1–5.5 全过）"
+          echo "[OK] check_book 正向 exit 0（5.1–5.5 全过，5.5 此时 N/A 属装配前预期）"
           # ⑤ 全书装配：合稿 md + docx（TOC 域 / 连续页码 / 参考文献合并 / 图号全书序）
           python3 scripts/build_book.py --work-root "$WR" --report "$WR/book_report.json"
           test -f "$WR/交付/测试教材_合稿.md"
           test -f "$WR/交付/测试教材.docx"
+          # ⑤b ★M1：装配后全量复检 —— 5.5 三项首次真正执行（docx 在位不再 N/A）
+          python3 scripts/check_book.py --work-root "$WR" --strict
+          echo "[OK] 装配后 check_book 复检 exit 0（5.5 可开/图数/字数实跑通过）"
           # ⑥ 合稿四要素：可开 + TOC 域 + 单节页码 + 参考文献去重合并（三章同 PMID → 仅 1 条）
           WR="$WR" python3 - <<'PY'
           import os, re, zipfile

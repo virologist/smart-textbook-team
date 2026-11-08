@@ -3,6 +3,33 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.3] — 2026-11-08 ★M 批次：候补池高优 2 项落地（F 项三缺口收口 2/3）
+
+> 管家节点批准候补池 8 项全做；按文件族纪律拆 3 批，本批 = 高优 2 项。
+
+### ★M1 5.4 补第 7 项 + 端到端 5.5 实跑（候补 1）
+
+- `check_book.py` 补调 `check_term_dependency_graph`（术语 imports ⊆ 上游 exports
+  依赖闭包）——七项口径与 book-orchestration SKILL.md 对齐，六/七项漂移收口；
+  docstring/注释同步「跨章七项」。
+- CI 三章成书端到端：装配（build_book）后新增 ⑤b 全量复检步骤——docx 落盘后
+  5.5 三项（可开/图数一致/字数达标）首次在端到端真正执行（此前永远 N/A 短路，
+  「5.1–5.5 全过」是假命题）。
+- 本地实证：三章夹具装配后 check_book 0 FAIL（5.5 三项实跑通过）+ 坏 zip 反向例
+  strict exit 1。
+
+### ★M2 std-skill 第④锚机械认锚（候补 2）
+
+- `check_manuscript.py` 增 `RE_STD_SKILL` + `_has_retrievable_anchor` 认第④形态
+  `std-skill:{skill名}:{条目}`（三段齐全即认锚，与 citation-verify §4d 逐字对齐；
+  skill 可用性仍走 ToolSearch 成员协议，不在静态门禁范围）。
+- 正负双向 10 例本地全过（④齐全/④带子锚/缺名/缺段 + ①②③ 形态回归不变形）。
+- CI 新增「4.12d std-skill 第④锚正负双向」步骤（steps 24→25）。
+
+### 回归
+
+pytest 375+3skip 全绿；快速子集 69 passed。版本 → **2.11.3**。
+
 ## [2.11.2] — 2026-11-08 ★L 批次：CI 红灯修复（学科中立门禁回潮）+ 八轮审计增量收口
 
 > 第七轮增量审计（v2.10.5→v2.11.1 delta 复核 + 三路独立只读审计交叉验证）确认的唯一

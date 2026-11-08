@@ -5,11 +5,11 @@ check_book.py — 全书层门禁（5.1–5.5，ADR-01 批次 B5）
 
 ==============================================================================
 为什么需要：单章流程（check_manuscript 门禁 4）只看【本章】，
-跨章六项（check_cross_chapter）只看【章与章之间】，两者都覆盖不到【整本书】：
+跨章七项（check_cross_chapter）只看【章与章之间】，两者都覆盖不到【整本书】：
   5.1 章清单完整 + 全书字数总和与用户目标偏差 ≤5%
   5.2 每章有知识域 + 依赖序无环
   5.3 每章 check_manuscript --strict 通过
-  5.4 跨章六项（术语/数据矛盾/重复/难度递进/字数分配/图号连续）
+  5.4 跨章七项（术语/数据矛盾/重复/难度递进/字数分配/图号连续/术语依赖图 ★M1）
   5.5 合稿 docx 可开 + 图数一致 + 字数达标
 
 用法
@@ -36,6 +36,7 @@ from check_cross_chapter import (
     load_chapters, load_book_spec,
     check_terms, check_data_conflicts, check_duplication,
     check_difficulty_progression, check_word_budget, check_figure_continuity,
+    check_term_dependency_graph,
 )
 from _profile_loader import read_discipline, load_section7, load_term_table
 
@@ -187,19 +188,25 @@ def check_5_3_per_chapter(work_root: Path, chapters: list[str]) -> list[dict]:
     return issues
 
 
-# ── 5.4 跨章六项 ──────────────────────────────────────────────────────────
+# ── 5.4 跨章七项（★M1 v2.11.3：补第 7 项，口径对齐 book-orchestration SKILL.md）──
 def check_5_4_cross_chapter(work_root: Path, chapters: dict[str, str]) -> list[dict]:
-    """跨章六项（复用 check_cross_chapter 的 6 个检查函数，判据共源）。"""
+    """跨章七项（复用 check_cross_chapter 的 7 个检查函数，判据共源）。
+
+    ★M1 修复：此前只调 6 项，漏 check_term_dependency_graph（术语 imports ⊆ 上游
+    exports 依赖闭包）——与 book-orchestration/SKILL.md「5.4 跨章七项」声明漂移。
+    """
     _disc = read_discipline(work_root)
     _metrics = load_section7(work_root, _disc, "conflict_metrics")
     _terms = load_term_table(work_root, _disc)
     _spec = load_book_spec(work_root)
+    dep_issues, _meta = check_term_dependency_graph(chapters)
     return (check_terms(chapters, _terms)
             + check_data_conflicts(chapters, _metrics)
             + check_duplication(chapters)
             + check_difficulty_progression(_spec)
             + check_word_budget(work_root, _spec, chapters)
-            + check_figure_continuity(chapters))
+            + check_figure_continuity(chapters)
+            + dep_issues)
 
 
 # ── 5.5 合稿可开 + 图数一致 + 字数达标 ────────────────────────────────────

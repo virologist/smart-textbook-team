@@ -114,15 +114,21 @@ RE_PROOFREAD_VERDICT = re.compile(r"^\s*[-*]?\s*\**\s*结论\**[:：]\s*(\S+)", 
 RE_DATA_FIG_HINT = re.compile(r"数据来源\s*[:：=]\s*(?!纯示意)")
 
 # ── ADR-03 反幻觉加固（2026-11-01 批次 B2）──────────────────────────────
-# 本地知识源三形态的可检索锚（Tier 0 与 PMID/DOI 同等可核验地位，
+# 本地知识源四形态的可检索锚（Tier 0 与 PMID/DOI 同等可核验地位，
 # 见 literature-scout「五层降级」Tier 0 / citation-verify §4d）：
 #   ① Obsidian 双链  [[笔记名]] 或 [[路径#小节]]
 #   ② 本地文件     本地:相对路径#小节（或 #L行号）
 #   ③ ima 知识库   ima:{kb_id}:{doc_title}
+#   ④ std-skill    std-skill:{skill名}:{条目}（★M2 v2.11.3 落地 G6 缺口）
 RE_OBSIDIAN = re.compile(r"\[\[([^\]\n]+)\]\]")
 # 第一组用贪婪匹配到 # 前（排除 # 与中英文右括号/逗号），# 后为锚（排除右括号防粘连）
 RE_LOCAL_FILE = re.compile(r"本地[:：]\s*([^\s\]\)，,#]+)(?:#([^\s\]\)，,）]+))?")
 RE_IMA = re.compile(r"ima[:：]\s*([^:\s，,]+):([^\s\]\)，,]+)")
+# ④ std-skill 锚（★M2 v2.11.3 落地 G6 缺口）：[实]（std-skill:{skill名}:{条目}）
+# 形态契约 = citation-verify §4d 第④行「三段齐全（skill名 + 条目）」；机械层只认
+# 形态完整性（skill 名非空 + 条目非空），skill 可用性由 ToolSearch 现查（成员协议，
+# 不可静态核验）→ 不可用时按 §4d 降级 [待核实·reason=std-skill 不可用]
+RE_STD_SKILL = re.compile(r"std-skill[:：]\s*([^:\s\]\)，,]+):([^\s\]\)，,）]+)")
 # 4.13a 的显式放行标签：整段/整章新增须声明，不能靠「全局单侧」计数巧合放行
 RE_WHOLE_NEW = re.compile(r"\[整段新增\]")
 # 「## …新增」小节标题（4.13a 放行条件 c：新增章节区）
@@ -140,6 +146,9 @@ def _has_retrievable_anchor(s: str) -> bool:
     if RE_IMA.search(s):
         return True
     if RE_OBSIDIAN.search(s):
+        return True
+    m = RE_STD_SKILL.search(s)    # ④ std-skill:skill名:条目 三段齐全即认锚（★M2）
+    if m and m.group(1) and m.group(2):
         return True
     m = RE_LOCAL_FILE.search(s)
     if m and m.group(2):          # 本地:路径 必须带 #锚，否则不可检索

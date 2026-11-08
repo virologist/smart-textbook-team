@@ -283,3 +283,13 @@ r7-entities-veterinary.json（schema r7-entities/v1）；脚本只留加载/判�
 其 R7 执行体（scripts/verify_citations_r7.py）的实体/主题/单位判据改由
 profile 数据文件承载；§7b 覆盖链（★K v2.10.5）语义不变：profile 有配置则覆盖
 默认数据，无则回落 + WARN。
+
+
+---
+
+## v2.11.3 系列（★M 批次，2026-11-08）
+
+### manuscript-delivery v1.4.0（门禁 4.12d 执行体变更说明 · 判据载体 citation-verify §4d）
+第④锚 `std-skill:{skill名}:{条目}` 在 check_manuscript.py `_has_retrievable_anchor`
+机械落地（RE_STD_SKILL 三段齐全即认锚）——补齐 G6（v2.10）文档声称与机械实现的
+缺口；①②③ 形态判定不变（10 例正负双向回归锁定）。
