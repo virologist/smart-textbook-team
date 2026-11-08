@@ -3,6 +3,32 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.5] — 2026-11-09 ★N 批次：续跑收尾——测试欠账补齐 + 副本同步义务履行
+
+> 断点续跑复核发现候补 1 的「5.3/5.4/5.5 测试补齐」子句未做（M1 只做了第 7 项
+> 与端到端顺序），另发现 workflow:1086 同步义务长期欠账（tb-writer 侧副本停留
+> evo-11 快照）→ 本批收口，随后 2.11.4 冻结。
+
+### ★N1 全书门禁测试补齐（候补 1 尾巴）
+
+- 5.3 单章门禁：assemble 正向（最小合格稿 strict 零 issue）+ 删交付 md
+  frontmatter 负向（判据不静默）——夹具用「交付态实测回写字数目标」手法
+  （4.7 的 target = 交付 md frontmatter，非 book-spec，实测两轮才定位）。
+- 5.4 组装层接线锁：第 7 项必须在 5.4 输出产生「术语依赖图」行（M1 漏调
+  病灶的永久回归锁）+ 依赖环 FAIL 断言。
+- 5.5 子判据：图数不一致 FAIL / 图数一致 PASS / 字数达标 FAIL / 全要素齐 PASS
+  （zip media 计数 IO 夹具）。
+- test_check_book.py 11→19 用例；docstring「六项」旧口径同步七项。
+- 回归：pytest 383+3skip（+8）。
+
+### ★N2 tb-writer 副本同步（workflow:1086 同步义务）
+
+- 主仓 tests/test_smart_textbook_team.py = evo-11(2026-09-01) 快照（214 项/
+  旧权重 A-E），包内已演进 282 项（21/21/16/16/26 权重 A-D-F）——同步义务
+  SSOT 在包内（workflow 注释原文），欠账近两个半月。
+- 处置：包内新版覆盖主仓副本（--expert-dir 适配器形态，行为兼容）；
+  主仓提交通知（非本包 CHANGELOG 语义，仅同步义务履行）。
+
 ## [2.11.4] — 2026-11-08 ★M3/M4/M5/M6/M7/M8 批次：候补池中低优 6 项全清（8/8 收口）
 
 ### ★M3 挂载执行体接 CI + 三目标分发（候补 3）
