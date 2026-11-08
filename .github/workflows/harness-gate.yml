@@ -587,10 +587,14 @@ jobs:
            "ts": "2026-11-01T12:00:00+00:00",
            "payload": {"core_output": "verdict: pass", "evidence_or_basis": "r3 log", "open_questions": []}}
           JSON
+          # ★L5 v2.11.2：B2 时延门禁（97545b7）后，缺 --phase/--start 会 exit 2 拒写。
+          # 旧样例信封（ts=2026-11-01）不含时延字段 → 补显式 --phase/--start 走合规路径；
+          # 2>/dev/null 吞掉 stderr + 管道无 pipefail 曾让失败静默成「绿步」（本地复现 rc=2 但 pipeline rc=0）
           python3 scripts/record_trace.py --work-root "$WR" --from-envelope /tmp/stt-envelope.json \
             --task-id ch01-VERIFY-R2 --from quality-examiner --to team-lead --type RESULT \
-            2>/dev/null | tee /tmp/stt-env-out.txt
-          grep -q "ENVELOPE_FIELDS_PARSED=19/19" /tmp/stt-env-out.txt
+            --phase VERIFY --start 2026-11-01T11:58:00+00:00 \
+            2>&1 | tee /tmp/stt-env-out.txt
+          grep -q "ENVELOPE_FIELDS_PARSED=19/21" /tmp/stt-env-out.txt
           python3 - <<'PY'
           import json
           lines = open("/tmp/stt-r5/运行态/trace.jsonl", encoding="utf-8").read().splitlines()
