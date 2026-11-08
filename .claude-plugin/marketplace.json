@@ -7,13 +7,13 @@
   },
   "metadata": {
     "description": "Single-plugin marketplace for smart-textbook-team",
-    "version": "2.11.0"
+    "version": "2.11.1"
   },
   "plugins": [
     {
       "name": "smart-textbook-team",
       "source": "./",
-      "version": "2.11.0",
+      "version": "2.11.1",
       "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members. v2.1: task-router 15-type routing + trace/progress observability. v2.6: section-level wave state persistence + contract write-back + lead verdict gate. v2.9: exercise-marker canonical form unified ([习题 {章}-{序}]); legacy form now FAILs 4.8b.",
       "license": "MIT",
       "category": "writing",

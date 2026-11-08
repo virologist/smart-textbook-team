@@ -8,7 +8,13 @@
 
 set -euo pipefail
 
-VERSION="2.11.0"
+# ── 运行时依赖（★E4 v2.11.1 显式声明；完整附表见 references/skill-mounting.md §7）──
+# 硬依赖：python3 >= 3.10（全部 scripts/*.py 与 CI）
+# 测试依赖：pytest（tests/ 全量；python3 -m pip install pytest）
+# 打包依赖：zip / unzip（package_release.sh）
+# 环境隐性依赖（成员协议引用，缺失按行内降级链）：WebFetch / ToolSearch+DeferExecuteTool /
+#   ima 知识库 / Obsidian $TB_VAULT_PATH / markitdown——均为可选增强，缺失不阻塞安装
+VERSION="2.11.1"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0

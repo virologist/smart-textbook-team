@@ -3,6 +3,49 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.1] — 2026-11-08 候补项全清（七项核销）
+
+> 第七轮候补段 7 项逐项处理完毕：5 项本轮落地，2 项经核验为登记滞后（此前批次已做）→ 核销。
+
+### ★F1 全书门禁测试（新增 tests/test_check_book.py，11 用例）
+
+5.1 章清单（齐备 PASS / 缺章 / 孤儿章 / 字数偏差 >5% FAIL）×4；
+5.2 知识域（未执行 N/A / 缺 domain FAIL / 依赖环 FAIL / 无环 PASS）×4；
+5.5 合稿（无 docx N/A / 坏 zip FAIL）×2；CLI 无 book-spec exit 2 ×1。
+—— check_book.py 门禁从零测试到 11 用例覆盖（判据共源：5.3 复用 check_manuscript、
+5.4 复用 check_cross_chapter 已有测试，不重复测）。
+
+### ★F2 样章验证→批量放大协议（book-orchestration §2 步骤③b）
+
+CHAPTER_SCHEDULE 首批只跑样章（依赖序第一层 = B4 Kahn 第一波）；样章合格判据
+三条（strict 全绿 / 字数 ±5% / 形态可作模板）；合格记 `notes=sample-chapter-approved`
+后放大；不合格返修样章本身禁止放大。
+
+### ★B SCOPE 字段化（pipeline §介入协议 增五要素模板）
+
+【单元|判定|原因|证据|SCOPE】模板——SCOPE 的既有等价约束（返修粒度=节/examiner
+禁改 draft/path-ownership 归属）字段化，不新增语义；G3 verdict/R5 报告天然携带
+前四要素，主理人转派工单补 SCOPE 行即可。
+
+### ★E4 运行时依赖显式声明（install.sh 头部）
+
+硬依赖 python3>=3.10 / pytest / zip-unzip + 环境隐性依赖六项（指挂载规范 §7 附表）。
+不虚构平台 dependencies 字段（WorkBuddy plugin.json 无该键——[待核实] 平台文档）。
+
+### ★J5 std-skill 锚补进 scientific-figure
+
+cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用（判据不作内容源）。
+
+### 核销 2 项（登记滞后，此前批次已实现）
+
+R7 THEME 白名单 profile 化（= K 批次 v2.10.5 theme_entities）；metrics 消费
+conditional_skipped（= I-3a v2.10.3 [12] 指标）。
+
+### 回归
+
+pytest **375+3skip**（+11 = F1 新用例）；router 47/47；protocol_eval 1.000；
+doc 7/7；manifest 33/33。版本 → **2.11.1**。候补池清零。
+
 ## [2.11.0] — 2026-11-08 第七轮：架构审计（loop+graph/耦合度）+ WIP 双升级
 
 > 第七轮 = 架构审计员视角验证性审计（六项全覆盖：A 假边/B 五要素/C 车道/D 学习边/

@@ -45,6 +45,16 @@ python3 scripts/progress.py --work-root "$WORK_ROOT" book-status
 python3 scripts/progress.py --work-root "$WORK_ROOT" update \
     --phase DELIVER --status DONE --summary "ch01 过 strict"
 
+# ③b 样章验证→批量放大（★F2 v2.11.1，审计项 F 落地）：
+#    CHAPTER_SCHEDULE 不许直接全量开跑——首批只跑 1 章（样章），样章须完整走完
+#    W1 全链（SPECIFY→DELIVER 五门禁 + check_manuscript --strict）并由主理人
+#    判定「样章合格」（判据：① strict 全绿；② 交付 md 字数在 book-spec 预算 ±5%；
+#    ③ 角色团/图表位/习题位形态可作后续章模板）。样章合格 → progress 记
+#    CHAPTER_SCHEDULE notes=sample-chapter-approved → 放大批量（余章并行）；
+#    样章不合格 → 返修样章本身，禁止放大（缺陷会被逐章复制放大）。
+#    依赖序非平凡（chapter-map 有依赖边）时：样章 = 依赖序第一层全部章
+#    （B4 Kahn 第一波），这些章之间无相互依赖、可并行，共同构成模板基准。
+
 # ⑤ 全书门禁（5.1–5.5；--strict 任一 FAIL 即 exit 1）
 python3 scripts/check_book.py --work-root "$WORK_ROOT" --strict
 
