@@ -1,0 +1,681 @@
+{
+  "schema": "r7-entities/v1",
+  "profile": "veterinary",
+  "entity_map": {
+    "曲霉菌病": [
+      "aspergillosis",
+      "aspergillus"
+    ],
+    "曲霉菌": [
+      "aspergillus"
+    ],
+    "曲霉菌结节": [
+      "aspergillus granuloma",
+      "fungal granuloma",
+      "caseous granuloma"
+    ],
+    "氨气": [
+      "ammonia"
+    ],
+    "新城疫": [
+      "newcastle disease",
+      "newcastle disease virus",
+      "ndv"
+    ],
+    "NDV": [
+      "newcastle disease",
+      "ndv"
+    ],
+    "禽流感": [
+      "avian influenza",
+      "influenza a"
+    ],
+    "高致病性禽流感": [
+      "highly pathogenic avian influenza",
+      "h5n1",
+      "hpaiv"
+    ],
+    "低致病性禽流感": [
+      "low pathogenic",
+      "h9n2"
+    ],
+    "H9N2": [
+      "h9n2"
+    ],
+    "H5Nx": [
+      "h5nx"
+    ],
+    "H5N1": [
+      "h5n1"
+    ],
+    "H7N9": [
+      "h7n9"
+    ],
+    "H5N6": [
+      "h5n6"
+    ],
+    "H5N8": [
+      "h5n8"
+    ],
+    "H7N3": [
+      "h7n3"
+    ],
+    "2.3.4.4b": [
+      "2.3.4.4b",
+      "clade 2.3.4.4b"
+    ],
+    "clade 2.3.4.4b": [
+      "clade 2.3.4.4b",
+      "genotype d1.1"
+    ],
+    "基因型 D1.1": [
+      "genotype d1.1",
+      "d1.1"
+    ],
+    "传染性支气管炎": [
+      "infectious bronchitis",
+      "ibv"
+    ],
+    "IBV": [
+      "infectious bronchitis",
+      "ibv"
+    ],
+    "QX-like": [
+      "qx-like",
+      "gi-19"
+    ],
+    "LDT3": [
+      "ldt3"
+    ],
+    "H120": [
+      "h120"
+    ],
+    "鸡毒支原体": [
+      "mycoplasma gallisepticum",
+      "mycoplasma gallisepticum"
+    ],
+    "滑液支原体": [
+      "mycoplasma synoviae"
+    ],
+    "支原体": [
+      "mycoplasma"
+    ],
+    "MG": [
+      "mycoplasma gallisepticum",
+      "mycoplasma"
+    ],
+    "大肠杆菌": [
+      "escherichia coli",
+      "colibacillus",
+      "apec"
+    ],
+    "APEC": [
+      "apec",
+      "avian pathogenic escherichia coli",
+      "escherichia coli"
+    ],
+    "传染性法氏囊病": [
+      "infectious bursal disease"
+    ],
+    "传染性鼻炎": [
+      "infectious rhinitis",
+      "haemophilus"
+    ],
+    "ILTV": [
+      "infectious laryngotracheitis",
+      "iltv"
+    ],
+    "传染性喉气管炎": [
+      "infectious laryngotracheitis",
+      "iltv"
+    ],
+    "维生素A": [
+      "vitamin a",
+      "retinol",
+      "beta-carotene",
+      "β-carotene"
+    ],
+    "维生素E": [
+      "vitamin e",
+      "tocopherol",
+      "selenium"
+    ],
+    "剖检": [
+      "necropsy",
+      "postmortem",
+      "gross pathology",
+      "lesion",
+      "gross lesion"
+    ],
+    "剖检病变": [
+      "lesion",
+      "gross lesion",
+      "postmortem"
+    ],
+    "腺胃": [
+      "proventriculus"
+    ],
+    "胰腺": [
+      "pancreas",
+      "pancreatic"
+    ],
+    "肌胃": [
+      "gizzard"
+    ],
+    "气囊": [
+      "air sac"
+    ],
+    "法氏囊": [
+      "bursa of fabricius",
+      "bursa"
+    ],
+    "心包炎": [
+      "pericarditis"
+    ],
+    "肝周炎": [
+      "perihepatitis"
+    ],
+    "腹膜炎": [
+      "peritonitis"
+    ],
+    "鼻窦": [
+      "sinus",
+      "infraorbital sinus"
+    ],
+    "神经症状": [
+      "neuro",
+      "nervous sign"
+    ],
+    "粪便": [
+      "feces",
+      "faecal",
+      "faeces"
+    ],
+    "出血": [
+      "hemorrhage",
+      "haemorrhage",
+      "bleeding"
+    ],
+    "坏死": [
+      "necrosis",
+      "necrotic"
+    ],
+    "结节": [
+      "nodule",
+      "granuloma"
+    ],
+    "纤维素": [
+      "fibrin",
+      "fibrinous"
+    ],
+    "干酪样": [
+      "caseous",
+      "caseation"
+    ],
+    "温和": [
+      "mild",
+      "slight"
+    ],
+    "继发": [
+      "secondary",
+      "secondary infection"
+    ],
+    "脐带": [
+      "umbilical",
+      "navel"
+    ],
+    "产蛋率": [
+      "egg production",
+      "lay rate",
+      "egg laying"
+    ],
+    "免疫程序": [
+      "vaccination schedule",
+      "vaccine schedule",
+      "vaccination program"
+    ],
+    "宿主范围": [
+      "host range",
+      "host spectrum",
+      "host restriction",
+      "susceptible host"
+    ],
+    "活禽市场": [
+      "live poultry market",
+      "live bird market",
+      "wet market"
+    ],
+    "垂直传播": [
+      "vertical transmission",
+      "transovarian",
+      "egg transmission"
+    ],
+    "野鸟": [
+      "wild bird",
+      "wildfowl",
+      "wild birds"
+    ],
+    "水禽": [
+      "waterfowl",
+      "duck",
+      "waterfowl infection"
+    ],
+    "鸡": [
+      "chicken",
+      "chickens",
+      "broiler",
+      "layer"
+    ],
+    "鸭": [
+      "duck",
+      "ducks"
+    ],
+    "鹅": [
+      "goose",
+      "geese",
+      "gosling"
+    ],
+    "鹌鹑": [
+      "quail",
+      "quails"
+    ],
+    "鸽": [
+      "pigeon",
+      "pigeons"
+    ],
+    "雉鸡": [
+      "pheasant",
+      "pheasants"
+    ],
+    "孔雀": [
+      "peacock",
+      "peafowl"
+    ],
+    "猫": [
+      "cat",
+      "feline",
+      "cats"
+    ],
+    "奶牛": [
+      "dairy cattle",
+      "cattle",
+      "herd"
+    ],
+    "人源": [
+      "human"
+    ],
+    "禽→牛→人": [
+      "spillover",
+      "cross-species",
+      "cattle to human"
+    ],
+    "禽→牛→人→禽": [
+      "spillover",
+      "cross-species",
+      "cattle to human"
+    ],
+    "野鸟—家禽界面": [
+      "wild bird-poultry interface",
+      "interface between wild birds and poultry"
+    ],
+    "迁徙": [
+      "migration",
+      "migratory",
+      "flyway"
+    ],
+    "候鸟迁徙": [
+      "migratory birds",
+      "migration",
+      "flyway"
+    ],
+    "水体暴露": [
+      "water",
+      "wetland",
+      "pond",
+      "lagoon"
+    ],
+    "外环境监测": [
+      "environmental surveillance",
+      "environmental sampling",
+      "environment"
+    ],
+    "混合": [
+      "mixed",
+      "mixed infection",
+      "co-infection"
+    ],
+    "重组": [
+      "reassortment",
+      "reassortant"
+    ],
+    "重配": [
+      "reassortment",
+      "reassortant"
+    ],
+    "外源": [
+      "exogenous",
+      "environmental"
+    ],
+    "HI": [
+      "haemagglutination inhibition",
+      "hemagglutination inhibition",
+      "hi antibody"
+    ],
+    "微量中和": [
+      "micro-neutralization",
+      "neutralizing antibody",
+      "neutralization"
+    ],
+    "死亡率保护": [
+      "mortality protection",
+      "protection",
+      "mortality"
+    ],
+    "商品疫苗": [
+      "commercial vaccine",
+      "commercial vaccines"
+    ],
+    "疫苗种毒": [
+      "vaccine strain",
+      "seed strain",
+      "vaccine seed"
+    ],
+    "遗传距离": [
+      "genetic distance",
+      "genetic relatedness",
+      "genetic"
+    ],
+    "耐药": [
+      "antimicrobial resistance",
+      "resistance"
+    ],
+    "青霉素": [
+      "penicillin",
+      "ampicillin"
+    ],
+    "血凝抑制": [
+      "haemagglutination inhibition",
+      "hemagglutination inhibition"
+    ],
+    "血凝": [
+      "haemagglutination",
+      "hemagglutination"
+    ],
+    "琼脂": [
+      "agar",
+      "gel immunoprecipitation",
+      "gpt"
+    ],
+    "荧光": [
+      "fluorescence",
+      "fa",
+      "fluorescent"
+    ],
+    "PCR": [
+      "pcr",
+      "rt-pcr",
+      "polymerase chain reaction"
+    ],
+    "分离": [
+      "isolation",
+      "isolated",
+      "isolate"
+    ],
+    "致病力": [
+      "pathogenicity",
+      "virulence",
+      "pathogenic"
+    ],
+    "毒力": [
+      "virulence"
+    ],
+    "F蛋白": [
+      "fusion protein",
+      "f protein",
+      "f gene"
+    ],
+    "F基因": [
+      "fusion gene",
+      "f gene",
+      "fusion protein"
+    ],
+    "F蛋白裂解位点": [
+      "cleavage site",
+      "cleavage motif",
+      "polybasic"
+    ],
+    "裂解位点": [
+      "cleavage site",
+      "cleavage motif",
+      "polybasic"
+    ],
+    "类器官": [
+      "organoid"
+    ],
+    "中和抗体": [
+      "neutralizing antibody",
+      "neutralizing antibodies",
+      "neutralisation"
+    ],
+    "神经氨酸酶": [
+      "neuraminidase"
+    ],
+    "白细胞总数": [
+      "leukocyte",
+      "white blood cell"
+    ],
+    "病死率": [
+      "case fatality",
+      "mortality rate",
+      "fatality"
+    ],
+    "病死禽": [
+      "dead poultry",
+      "cull",
+      "infected birds"
+    ],
+    "无害化处理": [
+      "disposal",
+      "safe disposal",
+      "culling"
+    ],
+    "职业暴露": [
+      "occupational exposure"
+    ],
+    "生物安全": [
+      "biosecurity"
+    ],
+    "生物安全柜": [
+      "biosafety cabinet"
+    ],
+    "防护": [
+      "personal protective equipment",
+      "ppe",
+      "protective"
+    ],
+    "PPE": [
+      "ppe",
+      "personal protective equipment"
+    ],
+    "消毒": [
+      "disinfection",
+      "disinfectant"
+    ],
+    "洗手": [
+      "hand hygiene",
+      "hand washing",
+      "wash hands"
+    ],
+    "无害化": [
+      "safe disposal",
+      "disposal"
+    ]
+  },
+  "generic_entities": [
+    "PCR",
+    "产蛋率",
+    "人源",
+    "免疫程序",
+    "出血",
+    "分离",
+    "剖检",
+    "剖检病变",
+    "坏死",
+    "奶牛",
+    "孔雀",
+    "无害化",
+    "洗手",
+    "消毒",
+    "混合",
+    "温和",
+    "猫",
+    "生物安全",
+    "病死禽",
+    "禽→牛→人",
+    "禽→牛→人→禽",
+    "粪便",
+    "继发",
+    "职业暴露",
+    "腹泻",
+    "防护",
+    "雉鸡",
+    "鸡",
+    "鸭",
+    "鸽",
+    "鹅",
+    "鹌鹑"
+  ],
+  "theme_entities": [
+    "2.3.4.4b",
+    "APEC",
+    "F基因",
+    "F蛋白",
+    "F蛋白裂解位点",
+    "H120",
+    "H5N1",
+    "H5N6",
+    "H5N8",
+    "H5Nx",
+    "H7N3",
+    "H7N9",
+    "H9N2",
+    "HI",
+    "IBV",
+    "ILTV",
+    "LDT3",
+    "MG",
+    "NDV",
+    "QX-like",
+    "clade 2.3.4.4b",
+    "中和抗体",
+    "传染性喉气管炎",
+    "传染性支气管炎",
+    "传染性法氏囊病",
+    "传染性鼻炎",
+    "低致病性禽流感",
+    "候鸟迁徙",
+    "商品疫苗",
+    "垂直传播",
+    "基因型 D1.1",
+    "外源",
+    "外环境监测",
+    "大肠杆菌",
+    "宿主范围",
+    "微量中和",
+    "支原体",
+    "新城疫",
+    "曲霉菌",
+    "曲霉菌病",
+    "曲霉菌结节",
+    "死亡率保护",
+    "毒力",
+    "氨气",
+    "水体暴露",
+    "水禽",
+    "活禽市场",
+    "滑液支原体",
+    "琼脂",
+    "疫苗种毒",
+    "病死率",
+    "白细胞总数",
+    "神经氨酸酶",
+    "禽→牛→人",
+    "禽→牛→人→禽",
+    "禽流感",
+    "类器官",
+    "维生素A",
+    "维生素E",
+    "耐药",
+    "致病力",
+    "荧光",
+    "血凝",
+    "血凝抑制",
+    "裂解位点",
+    "迁徙",
+    "遗传距离",
+    "重组",
+    "重配",
+    "野鸟",
+    "野鸟—家禽界面",
+    "高致病性禽流感",
+    "鸡毒支原体"
+  ],
+  "num_units": {
+    "NUM_RE": [
+      "ppm",
+      "mg/m3",
+      "%",
+      "周",
+      "天",
+      "小时",
+      "log2",
+      "倍",
+      "日龄",
+      "羽",
+      "例",
+      "℃",
+      "人",
+      "次",
+      "株"
+    ],
+    "NUM_TIGHT": [
+      "ppm",
+      "mg/m3",
+      "log2",
+      "周",
+      "天",
+      "小时",
+      "倍",
+      "日龄",
+      "℃"
+    ],
+    "NUM_CN": [
+      "例",
+      "人",
+      "羽",
+      "株",
+      "次",
+      "万",
+      "亿"
+    ],
+    "num_hit": [
+      "ppm",
+      "mg/m3",
+      "%",
+      "log2",
+      "周",
+      "天",
+      "小时",
+      "倍",
+      "日龄",
+      "℃",
+      "例",
+      "人",
+      "羽",
+      "株",
+      "次",
+      "万",
+      "亿"
+    ]
+  }
+}

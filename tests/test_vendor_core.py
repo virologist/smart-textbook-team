@@ -33,9 +33,14 @@ import sys
 import tempfile
 
 _PKG_NAME = "triz-invention-team"
-_INSTALL_DIR = os.path.expanduser(
-    "~/.workbuddy/plugins/marketplaces/my-experts/plugins/" + _PKG_NAME
+# 联邦真源安装根：显式 env 优先；回落按 $HOME 展开拼装
+# （路径中立性 N-2：源码不得出现 ~/ 字面量，★L v2.11.2 修复，行为等价）
+_PLUGINS_ROOT = os.environ.get(
+    "WB_PLUGINS_ROOT",
+    os.path.join(os.path.expanduser("~"), ".workbuddy", "plugins",
+                 "marketplaces", "my-experts", "plugins"),
 )
+_INSTALL_DIR = os.path.join(_PLUGINS_ROOT, _PKG_NAME)
 _REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 与包内主测试同策略：CI/纯 clone 态回落到仓库自身
 DEFAULT_EXPERT_DIR = (

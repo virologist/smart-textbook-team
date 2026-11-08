@@ -3,6 +3,72 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.2] — 2026-11-08 ★L 批次：CI 红灯修复（学科中立门禁回潮）+ 八轮审计增量收口
+
+> 第七轮增量审计（v2.10.5→v2.11.1 delta 复核 + 三路独立只读审计交叉验证）确认的唯一
+> P0 = **CI harness-gate step 7「学科中立性门禁」自 2026-11-04 起连续红灯**（~15 次），
+> 与 CHANGELOG 各批次「CI 23 步全绿」声明矛盾（该声明从未被机械核验——两本 changelog
+> 是 check_doc_consistency 免检文件，见 audit 交叉验证根因族）。
+
+### ★L1 R7 判据数据外置（通用层零学科常量，ADR-02 收口）
+
+- 病灶：v2.10.2 固化 R7 时三词典（ENTITY_MAP 120 / GENERIC 32 / THEME 73）+ 数值
+  单位表写死 `scripts/verify_citations_r7.py` → 门禁 22 处 HARD 命中。v2.10.5 ★K
+  只下沉 §7b 样例（5 词条），主体词典未动。
+- 修法：完整判据数据外置 → `references/profiles/r7-entities-veterinary.json`
+  （schema r7-entities/v1；entity_map/generic_entities/theme_entities/num_units 四键）；
+  脚本只留加载与判定逻辑（`load_entity_data()`，坏文件显式 raise 不静默）。
+- 等价性：三条数值正则 pattern 与外置前逐字比对通过；120/32/73 词典逐键相等；
+  v5 迭代史三处实证样本（'80 %-100 %' 空格 / 25~50 区间 / 1568 例中文计数）回归通过。
+- 门禁终态：`check_domain_neutral.py --root .` → **FAIL 0 | WARN 5**（HARD 0 / 路径 0），
+  CI step 7 正向恢复绿。
+
+### ★L2 路径中立性回潮修复（N-2，2 处）
+
+- `tests/test_vendor_core.py:37`：`~/` 字面量 → `$WB_PLUGINS_ROOT` env 优先 +
+  `$HOME` 展开拼装（行为等价，V1–V6 六项门禁重跑全过）。
+- `references/skill-mounting.md:27`：平台路径写法改 `$HOME` 点目录描述，并把该处
+  【待核实】升级为【已核验 2026-11-08】（平台依赖声明机制 = plugin.json
+  `dependencies.mcpServers`/`connectors` 或根目录 `.mcp.json` 兜底——来源：开放平台
+  官方文档 open.workbuddy.cn/docs/expert，联网核验完成）。
+
+### ★L3 新增回归测试（tests/test_r7_entities_externalized.py，16 检查项）
+
+T1 数据文件在位/schema/四键/规模 + 坏文件反向例（ValueError/FileNotFoundError 必抛）；
+T2 判定行为不变（v5 三实证 + §7b 覆盖链 + pattern 字面等价）；
+T3 门禁 0 HARD/0 路径/exit 0。
+
+### 审计增量结论（本批登记，详见对话审计报告）
+
+- **A 假边**：v2.11.0「未发现」措辞不严谨——`append_proofread_conclusion` 消费点
+  在 ASSEMBLE（build_manuscript.py:814/:613），不在 CONSOLIDATION；CONSOLIDATION
+  checklist（pipeline SKILL.md:681-692）不读 PROOFREAD 三件套 → 边名与消费点错位，
+  按严格定义是弱/名义边（无协议语义变更，仅登记事实）。
+- **E3/F3 断点坐实 [实]**：G6 第④锚 `std-skill:{skill}:{条目}` 在
+  check_manuscript.py `_has_retrievable_anchor()`（:132-147）未实现——文档声称
+  「4.12d 认锚」与机械实现不同源，标准 skill 挂载后判据无法被门禁消费。
+- **机械护栏缺失根因族 [实]**：两本 changelog 为 check_doc_consistency
+  IMMUNE_FILES（:61-62,:107）→ `CHANGELOG.md:62`「零结构耦合」失实（实测 ≥20 条
+  引用/≥11 条结构耦合）与 SKILL_CHANGELOG 对 2.11.1 零登记均不被 CI 抓；
+  E2 章节号引用（口径 SSOT=另一 skill §X）无机械拦截。
+- **F 项三缺口 [实]**：5.4 文档称七项、check_book.py 只跑六项（漏
+  check_term_dependency_graph）；5.5 在 CI 端到端先 check 后 build，docx 未生成
+  时 N/A 短路整条；F2 样章协议零执行体（progress.py 无 notes 落点）。
+
+### 候补池（本轮审计新增，按严重度排序，未实施）
+
+1. 5.4 补跑第 7 项 + 5.5/5.3/5.4 测试补齐 + CI 端到端改「build→check」顺序（高）
+2. std-skill 第④锚机械认锚（4.12d 增 RE_STD_SKILL）（高）
+3. check_external_skills.py 接入 CI + 挂载消费闭环（中）
+4. F2 样章批准态机械落盘（progress.py notes 字段）（中）
+5. 章节号跨 skill 引用一致性拦截（中）
+6. SKILL_CHANGELOG 对 2.11.1/2.11.2 补登记（低，纯登记）
+
+### 回归
+
+pytest 全量（含新 16 项）；相位一致 23/0 不一致；文档一致 7/7；manifest 33/33；
+domain_neutral FAIL 0；vendor V1-V6 全过；R7 self-test 通过。版本 → **2.11.2**。
+
 ## [2.11.1] — 2026-11-08 候补项全清（七项核销）
 
 > 第七轮候补段 7 项逐项处理完毕：5 项本轮落地，2 项经核验为登记滞后（此前批次已做）→ 核销。

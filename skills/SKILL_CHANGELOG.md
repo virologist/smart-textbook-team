@@ -268,3 +268,18 @@ BOOK_* 5 相位消费协议；§6.1 章内节级调度。
 - `skill-mounting.md`：自定义/标准类判据 skill 挂载规范（目录/frontmatter/命名隔离/
   卸载无残留/B7 铁律继承/隐性依赖附表）；
 - `decision-lanes.md`：裁决车道分级（绿/黄/红）+ 进化安全规范（红道全链/黄道/禁改项）。
+
+---
+
+## v2.11.2 系列（★L 批次，2026-11-08 · audit 后补登记修正）
+
+### verify_citations_r7 v1.0.0 → v1.1.0（★L1）
+判据数据外置：三词典（120/32/73）+ 数值单位表 → references/profiles/
+r7-entities-veterinary.json（schema r7-entities/v1）；脚本只留加载/判定逻辑，
+坏文件显式 raise。判定行为零漂移（16 检查项回归锁定）。修复 CI 学科中立门禁
+自 2026-11-04 的 22 处 HARD 回潮红灯。判据载体的版本从此随 profile 数据文件走。
+
+### citation-verify v1.8.0（判据载体变更说明）
+其 R7 执行体（scripts/verify_citations_r7.py）的实体/主题/单位判据改由
+profile 数据文件承载；§7b 覆盖链（★K v2.10.5）语义不变：profile 有配置则覆盖
+默认数据，无则回落 + WARN。

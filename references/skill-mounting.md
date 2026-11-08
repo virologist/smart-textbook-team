@@ -24,12 +24,16 @@
         └── （判据附表等资产文件）
 ```
 
-- 平台对齐说明：WorkBuddy 用户级 skill 目录（`~/.workbuddy/skills/`）与项目级
-  （`{workspace}/.workbuddy/skills/`）是**平台侧**挂载点；本规范管的是**团队侧**
-  判据 skill 的登记与消费。两者并存：平台 skill 由装配器按平台机制注入任务包；
-  团队侧判据 skill 经本规范登记后被 examiner/designer 按需读取。
-  【待核实】平台侧 skill 数组的动态注入字段约定——核验方法：查 WorkBuddy
-  开放平台文档 plugin.json schema；本仓侧不做平台字段虚构。
+- 平台对齐说明：WorkBuddy 用户级 skill 目录（`$HOME` 下 `.workbuddy/skills/`，
+  即用户主目录的点目录）与项目级（`{workspace}/.workbuddy/skills/`）是**平台侧**
+  挂载点；本规范管的是**团队侧**判据 skill 的登记与消费。两者并存：平台 skill
+  由装配器按平台机制注入任务包；团队侧判据 skill 经本规范登记后被
+  examiner/designer 按需读取。
+  【已核验 2026-11-08】平台依赖声明机制 = plugin.json `dependencies.mcpServers`/
+  `dependencies.connectors`，或插件根目录 `.mcp.json` 兜底（未声明时自动读取；
+  每个server 可附 `x-workbuddy` 展示与鉴权元信息）；简单专家无需声明——来源：
+  开放平台官方文档 open.workbuddy.cn/docs/expert「内置 MCP 与连接器依赖（可选）」。
+  本包判据 skill 走本规范登记，不依赖该机制。
 
 ## 3. SKILL.md frontmatter 必填项（缺一 = 挂载校验 FAIL）
 

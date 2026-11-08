@@ -14,7 +14,7 @@ set -euo pipefail
 # 打包依赖：zip / unzip（package_release.sh）
 # 环境隐性依赖（成员协议引用，缺失按行内降级链）：WebFetch / ToolSearch+DeferExecuteTool /
 #   ima 知识库 / Obsidian $TB_VAULT_PATH / markitdown——均为可选增强，缺失不阻塞安装
-VERSION="2.11.1"
+VERSION="2.11.2"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0

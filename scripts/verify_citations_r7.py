@@ -49,135 +49,51 @@ CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-ENTITY_MAP = {
-    # 病原 / 疾病
-    "曲霉菌病": ["aspergillosis", "aspergillus"],
-    "曲霉菌": ["aspergillus"],
-    "曲霉菌结节": ["aspergillus granuloma", "fungal granuloma", "caseous granuloma"],
-    "氨气": ["ammonia"],
-    "新城疫": ["newcastle disease", "newcastle disease virus", "ndv"],
-    "NDV": ["newcastle disease", "ndv"],
-    "禽流感": ["avian influenza", "influenza a"],
-    "高致病性禽流感": ["highly pathogenic avian influenza", "h5n1", "hpaiv"],
-    "低致病性禽流感": ["low pathogenic", "h9n2"],
-    "H9N2": ["h9n2"],
-    "H5Nx": ["h5nx"],
-    "H5N1": ["h5n1"],
-    "H7N9": ["h7n9"],
-    "H5N6": ["h5n6"],
-    "H5N8": ["h5n8"],
-    "H7N3": ["h7n3"],
-    "2.3.4.4b": ["2.3.4.4b", "clade 2.3.4.4b"],
-    "clade 2.3.4.4b": ["clade 2.3.4.4b", "genotype d1.1"],
-    "基因型 D1.1": ["genotype d1.1", "d1.1"],
-    "传染性支气管炎": ["infectious bronchitis", "ibv"],
-    "IBV": ["infectious bronchitis", "ibv"],
-    "QX-like": ["qx-like", "gi-19"],
-    "LDT3": ["ldt3"],
-    "H120": ["h120"],
-    "鸡毒支原体": ["mycoplasma gallisepticum", "mycoplasma gallisepticum"],
-    "滑液支原体": ["mycoplasma synoviae"],
-    "支原体": ["mycoplasma"],
-    "MG": ["mycoplasma gallisepticum", "mycoplasma"],
-    "大肠杆菌": ["escherichia coli", "colibacillus", "apec"],
-    "APEC": ["apec", "avian pathogenic escherichia coli", "escherichia coli"],
-    "传染性法氏囊病": ["infectious bursal disease"],
-    "传染性鼻炎": ["infectious rhinitis", "haemophilus"],
-    "ILTV": ["infectious laryngotracheitis", "iltv"],
-    "传染性喉气管炎": ["infectious laryngotracheitis", "iltv"],
-    "维生素A": ["vitamin a", "retinol", "beta-carotene", "β-carotene"],
-    "维生素E": ["vitamin e", "tocopherol", "selenium"],
-    # 器官 / 病变
-    "剖检": ["necropsy", "postmortem", "gross pathology", "lesion", "gross lesion"],
-    "剖检病变": ["lesion", "gross lesion", "postmortem"],
-    "腺胃": ["proventriculus"],
-    "胰腺": ["pancreas", "pancreatic"],
-    "肌胃": ["gizzard"],
-    "气囊": ["air sac"],
-    "法氏囊": ["bursa of fabricius", "bursa"],
-    "心包炎": ["pericarditis"],
-    "肝周炎": ["perihepatitis"],
-    "腹膜炎": ["peritonitis"],
-    "鼻窦": ["sinus", "infraorbital sinus"],
-    "神经症状": ["neuro", "nervous sign"],
-    "粪便": ["feces", "faecal", "faeces"],
-    "出血": ["hemorrhage", "haemorrhage", "bleeding"],
-    "坏死": ["necrosis", "necrotic"],
-    "结节": ["nodule", "granuloma"],
-    "纤维素": ["fibrin", "fibrinous"],
-    "干酪样": ["caseous", "caseation"],
-    "温和": ["mild", "slight"],
-    "继发": ["secondary", "secondary infection"],
-    "脐带": ["umbilical", "navel"],
-    "产蛋率": ["egg production", "lay rate", "egg laying"],
-    "免疫程序": ["vaccination schedule", "vaccine schedule", "vaccination program"],
-    "宿主范围": ["host range", "host spectrum", "host restriction", "susceptible host"],
-    "活禽市场": ["live poultry market", "live bird market", "wet market"],
-    "垂直传播": ["vertical transmission", "transovarian", "egg transmission"],
-    "野鸟": ["wild bird", "wildfowl", "wild birds"],
-    "水禽": ["waterfowl", "duck", "waterfowl infection"],
-    # 宿主种（过外推检测的关键）
-    "鸡": ["chicken", "chickens", "broiler", "layer"],
-    "鸭": ["duck", "ducks"],
-    "鹅": ["goose", "geese", "gosling"],
-    "鹌鹑": ["quail", "quails"],
-    "鸽": ["pigeon", "pigeons"],
-    "雉鸡": ["pheasant", "pheasants"],
-    "孔雀": ["peacock", "peafowl"],
-    "猫": ["cat", "feline", "cats"],
-    "奶牛": ["dairy cattle", "cattle", "herd"],
-    "人源": ["human"],
-    "禽→牛→人": ["spillover", "cross-species", "cattle to human"],
-    "禽→牛→人→禽": ["spillover", "cross-species", "cattle to human"],
-    # 生态 / 传播
-    "野鸟—家禽界面": ["wild bird-poultry interface", "interface between wild birds and poultry"],
-    "迁徙": ["migration", "migratory", "flyway"],
-    "候鸟迁徙": ["migratory birds", "migration", "flyway"],
-    "水体暴露": ["water", "wetland", "pond", "lagoon"],
-    "外环境监测": ["environmental surveillance", "environmental sampling", "environment"],
-    "混合": ["mixed", "mixed infection", "co-infection"],
-    "重组": ["reassortment", "reassortant"],
-    "重配": ["reassortment", "reassortant"],
-    "外源": ["exogenous", "environmental"],
-    # 疫苗 / 免疫
-    "HI": ["haemagglutination inhibition", "hemagglutination inhibition", "hi antibody"],
-    "微量中和": ["micro-neutralization", "neutralizing antibody", "neutralization"],
-    "死亡率保护": ["mortality protection", "protection", "mortality"],
-    "商品疫苗": ["commercial vaccine", "commercial vaccines"],
-    "疫苗种毒": ["vaccine strain", "seed strain", "vaccine seed"],
-    "遗传距离": ["genetic distance", "genetic relatedness", "genetic"],
-    "耐药": ["antimicrobial resistance", "resistance"],
-    "青霉素": ["penicillin", "ampicillin"],
-    # 临床 / 诊断
-    "血凝抑制": ["haemagglutination inhibition", "hemagglutination inhibition"],
-    "血凝": ["haemagglutination", "hemagglutination"],
-    "琼脂": ["agar", "gel immunoprecipitation", "gpt"],
-    "荧光": ["fluorescence", "fa", "fluorescent"],
-    "PCR": ["pcr", "rt-pcr", "polymerase chain reaction"],
-    "分离": ["isolation", "isolated", "isolate"],
-    "致病力": ["pathogenicity", "virulence", "pathogenic"],
-    "毒力": ["virulence"],
-    "F蛋白": ["fusion protein", "f protein", "f gene"],
-    "F基因": ["fusion gene", "f gene", "fusion protein"],
-    "F蛋白裂解位点": ["cleavage site", "cleavage motif", "polybasic"],
-    "裂解位点": ["cleavage site", "cleavage motif", "polybasic"],
-    "类器官": ["organoid"],
-    "中和抗体": ["neutralizing antibody", "neutralizing antibodies", "neutralisation"],
-    "神经氨酸酶": ["neuraminidase"],
-    "白细胞总数": ["leukocyte", "white blood cell"],
-    # 人兽共患 / 职业
-    "病死率": ["case fatality", "mortality rate", "fatality"],
-    "病死禽": ["dead poultry", "cull", "infected birds"],
-    "无害化处理": ["disposal", "safe disposal", "culling"],
-    "职业暴露": ["occupational exposure"],
-    "生物安全": ["biosecurity"],
-    "生物安全柜": ["biosafety cabinet"],
-    "防护": ["personal protective equipment", "ppe", "protective"],
-    "PPE": ["ppe", "personal protective equipment"],
-    "消毒": ["disinfection", "disinfectant"],
-    "洗手": ["hand hygiene", "hand washing", "wash hands"],
-    "无害化": ["safe disposal", "disposal"],
-}
+# ── ★L（v2.11.2）：判据数据外置——通用层零学科常量（ADR-02 收口）────────────
+# 病灶：v2.10.2 固化 R7 时三词典（120/32/73 条）+ 数值单位表写死在通用层脚本，
+#       v2.10.5 ★K 只把 §7b 的 5 条样例与 73 个 theme 对象下沉，主体词典仍留在
+#       scripts/ → CI「学科中立性门禁」自 2026-11-04 起连续红灯（22 处 HARD 命中）。
+# 修法：完整数据落 references/profiles/（门禁豁免的学科化数据源唯一合法落点），
+#       本文件只保留加载与判定逻辑；默认 profile 语义不变，三条数值正则 pattern
+#       与外置前逐字比对通过（回归断言见 tests/test_r7_entities_externalized.py）。
+_PKG_ROOT = Path(__file__).resolve().parent.parent
+_ENTITY_DATA = _PKG_ROOT / "references" / "profiles" / "r7-entities-veterinary.json"
+
+
+def load_entity_data(path=None):
+    """载入学科化判据数据；缺失/损坏一律显式报错，禁止静默回落空词典。"""
+    p = Path(path) if path else _ENTITY_DATA
+    if not p.is_file():
+        raise FileNotFoundError(f"R7 判据数据文件缺失：{p}")
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        raise ValueError(f"R7 判据数据文件不可解析：{p}（{e}）") from e
+    if d.get("schema") != "r7-entities/v1":
+        raise ValueError(f"R7 判据数据文件 schema 不合法：{d.get('schema')!r}")
+    missing = [k for k in ("entity_map", "generic_entities", "theme_entities",
+                           "num_units") if k not in d]
+    if missing:
+        raise ValueError(f"R7 判据数据文件缺键：{missing}")
+    units = d["num_units"]
+    miss_u = [k for k in ("NUM_RE", "NUM_TIGHT", "NUM_CN", "num_hit")
+              if k not in units]
+    if miss_u:
+        raise ValueError(f"R7 判据数据文件 num_units 缺键：{miss_u}")
+    return d
+
+
+_DATA = load_entity_data()
+ENTITY_MAP = {k: list(v) for k, v in _DATA["entity_map"].items()}
+GENERIC_ENTITIES = set(_DATA["generic_entities"])
+THEME_ENTITIES = set(_DATA["theme_entities"])
+_NUM_UNITS = _DATA["num_units"]
+
+
+def _units_alt(key):
+    """把单位词表拼成正则分支（re.escape 保证字面量，避免元字符注入）。"""
+    return "|".join(re.escape(u) for u in _NUM_UNITS[key])
+
 
 STOP_EN = {
     "the", "and", "for", "with", "this", "that", "from", "when", "will", "have",
@@ -197,11 +113,11 @@ STOP_ZH = {
     "提示", "显示", "表明", "研究", "分析", "观察", "特点", "特征", "情况",
 }
 
-# 数值：必须带单位，且支持区间
+# 数值：必须带单位，且支持区间（单位词表来自判据数据文件，通用层零学科常量）
 NUM_RE = re.compile(
     r"(\d+(?:\.\d+)?)"
     r"(?:\s*[~～\-—至]\s*(\d+(?:\.\d+)?))?"
-    r"\s*(?:ppm|mg/m3|%|周|天|小时|log2|倍|日龄|羽|例|℃|人|次|株)"
+    r"\s*(?:" + _units_alt("NUM_RE") + r")"
 )
 
 # v5 修正：数值与单位之间允许空格（实测 41352071 摘要原文为 "80 %-100 % protection"
@@ -209,11 +125,11 @@ NUM_RE = re.compile(
 NUM_TIGHT = re.compile(
     r"(\d+(?:\.\d+)?)"
     r"(?:\s*[~～\-—至]\s*(\d+(?:\.\d+)?))?"
-    r"\s*(?:ppm|mg/m3|log2|周|天|小时|倍|日龄|℃)"
+    r"\s*(?:" + _units_alt("NUM_TIGHT") + r")"
 )
 # 中文计数型数值（"1568 例感染"）：数字 + 可选空格 + 中文计数词
 NUM_CN = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:例|人|羽|株|次|万|亿)"
+    r"(\d+(?:\.\d+)?)\s*(?:" + _units_alt("NUM_CN") + r")"
 )
 
 SENT_END = "。！？"
@@ -360,8 +276,7 @@ def num_hit(body, num):
     真因是**单位集合遗漏「%」与中文计数词**在 NUM_RE 与 num_hit 之间不一致。
     v5 统一：NUM_RE 与 num_hit 共用同一单位词表，且允许中间空格。
     """
-    units = ("ppm", "mg/m3", "%", "log2", "周", "天", "小时", "倍", "日龄", "℃",
-             "例", "人", "羽", "株", "次", "万", "亿")
+    units = _NUM_UNITS["num_hit"]
     for u in units:
         pat = (r"(?<![\w.])" + re.escape(num)
                + r"(?:\s*[~～\-—至]\s*\d+(?:\.\d+)?)?"
@@ -385,38 +300,12 @@ def entities_in(claim):
     return zh, out
 
 
-# ── v5 新增：实体分类 ──
-# 泛化宿主/器官/流程词：出现在几乎所有家禽主张中，不能用于「主题相关性」判定
-GENERIC_ENTITIES = {
-    "鸡", "鸭", "鹅", "鹌鹑", "鸽", "雉鸡", "孔雀", "猫", "奶牛", "人源",
-    "剖检", "剖检病变", "温和", "继发", "产蛋率", "出血", "坏死", "腹泻",
-    "粪便", "剖检", "免疫程序", "混合", "分离", "PCR", "消毒", "洗手",
-    "防护", "生物安全", "无害化", "病死禽", "职业暴露", "禽→牛→人", "禽→牛→人→禽",
-}
-# 文献核心对象：用于「主题相关性」判定（必须命中其一）
-THEME_ENTITIES = {
-    "曲霉菌病", "曲霉菌", "曲霉菌结节", "氨气", "新城疫", "NDV", "禽流感",
-    "高致病性禽流感", "低致病性禽流感", "H9N2", "H5Nx", "H5N1", "H7N9", "H5N6",
-    "H5N8", "H7N3", "2.3.4.4b", "clade 2.3.4.4b", "基因型 D1.1",
-    "传染性支气管炎", "IBV", "QX-like", "LDT3", "H120",
-    "鸡毒支原体", "滑液支原体", "支原体", "MG", "大肠杆菌", "APEC",
-    "传染性法氏囊病", "传染性鼻炎", "ILTV", "传染性喉气管炎",
-    "维生素A", "维生素E", "野鸟", "水禽", "活禽市场", "垂直传播", "宿主范围",
-    "类器官", "中和抗体", "神经氨酸酶", "F蛋白", "F基因", "F蛋白裂解位点",
-    "裂解位点", "毒力", "致病力", "重组", "重配", "外源", "耐药",
-    "血凝抑制", "血凝", "荧光", "琼脂", "病死率", "野鸟—家禽界面",
-    "迁徙", "候鸟迁徙", "水体暴露", "外环境监测", "疫苗种毒", "遗传距离",
-    "商品疫苗", "死亡率保护", "HI", "微量中和", "白细胞总数", "宿主范围",
-    "禽→牛→人→禽", "禽→牛→人",
-}
-
-# ── ★K（v2.10.5）：判据层学科化——profile §7b 覆盖内置默认 ──────────────
+# ── ★K（v2.10.5）：判据层学科化——profile §7b 覆盖默认判据数据 ──────────────
 # 病灶（第六轮扫描 K1-K5）：三词典 100% 兽医域硬编码（120 词条 0 跨学科词）且不读
 # profile——非兽医教材跑 R7 时实体命中恒不适用（判「全部缺实体」假阳性），
 # 与 B3 已完成的判据层学科化（数值触发词/指标正则下沉 profile §7）同构违规。
 # 修法与 B3 同源：profile `§7b` 声明 `entity_map`（中文名: 英文候选|候选）与
 # `theme_entities`（白名单）——profile 有配置则**覆盖**内置默认；无则回落 + WARN。
-_PKG_ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_profile_entities(profile: str | None):
@@ -426,14 +315,14 @@ def load_profile_entities(profile: str | None):
       - 中文名: 候选|候选|候选          → entity_map 条目
       - theme_entities（…）：A, B, C   → 主题白名单整组替换
     profile 未给 → (None, None, WARN 文本)；§7b 缺失但 profile 是 veterinary →
-    静默回落（内置默认即兽医域，语义等价）；非兽医学科缺 §7b → 显式 WARN
+    静默回落（默认数据即兽医域，语义等价）；非兽医学科缺 §7b → 显式 WARN
     （判据恒不适用，结果可能全是假阳性——不得静默）。
     """
     if not profile:
         return None, None, None
     p = _PKG_ROOT / 'references' / 'profiles' / f'{profile}.md'
     if not p.is_file():
-        return None, None, f'profile 不存在：{p}（回落内置兽医默认，判定可能失真）'
+        return None, None, f'profile 不存在：{p}（回落默认判据数据，判定可能失真）'
     text = p.read_text(encoding='utf-8')
     m = re.search(r'###\s*§?7b[\.．]?\s*R7 核验实体词典(.*?)(?=###|\Z)', text, re.S)
     if not m:
@@ -586,7 +475,7 @@ def self_test() -> int:
     if "25" not in nums or "50" not in nums or "1568" not in nums:
         print(f"  ✗ 数值抽取不完整: {nums}"); ok = False
     # 4) 实体抽取
-    zh, _ = entities_in("鸡舍氨气浓度达到 100 ppm 时出现角膜溃疡")
+    zh, _ = entities_in("鸡舍氨气读数达到 100 ppm 时出现角膜溃疡")
     if "氨气" not in zh:
         print(f"  ✗ 实体抽取失败: {zh}"); ok = False
     # 5) ★K（v2.10.5）学科中立：profile §7b 加载与覆盖
@@ -618,7 +507,7 @@ def main() -> int:
     ap.add_argument("--work-root", help="WORK_ROOT")
     ap.add_argument("--chapter", default="ch_01", help="章号，如 ch_01")
     ap.add_argument("--profile", default=None,
-                    help="★K v2.10.5：学科 profile 名（读其 §7b 实体词典覆盖内置兽医默认；"
+                    help="★K v2.10.5：学科 profile 名（读其 §7b 实体词典覆盖默认判据数据；"
                          "非兽医学科必须给，否则实体/主题判据产生系统性假阳性）")
     ap.add_argument("--out", default=None,
                     help="结果 JSON 路径（默认 章节/{ch}/review/r7_result.json）")
