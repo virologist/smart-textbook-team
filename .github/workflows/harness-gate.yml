@@ -562,11 +562,14 @@ jobs:
           print("正向⑦ PASS: 缺 r5-score.json → 4.14 N/A 不阻塞")
           PY
           # 打回计数：同一 reject-key 两次 → 计数达 2，介入协议自动触发
+          # ★L5 v2.11.2：B2 时延门禁后须补 --phase/--start（同 step10 信封段根因）
           for i in 1 2; do
             python3 scripts/record_trace.py --work-root "$WR" \
               --task-id "ch01-VERIFY-R2-$i" --from quality-examiner --to team-lead \
               --type BLOCK --outcome BLOCKED \
-              --reject-key "ch01|术语不一致" 2>/tmp/stt-reject-err.txt | tee /tmp/stt-reject-out.txt
+              --reject-key "ch01|术语不一致" \
+              --phase VERIFY --start 2026-11-01T11:50:00+00:00 \
+              2>/tmp/stt-reject-err.txt | tee /tmp/stt-reject-out.txt
           done
           grep -q "REJECT_COUNT=2" /tmp/stt-reject-out.txt
           grep -q "INTERVENTION_TRIGGERED=1" /tmp/stt-reject-out.txt
@@ -638,7 +641,9 @@ jobs:
             python3 scripts/record_trace.py --work-root "$WR" \
               --task-id "ch01-VERIFY-R2-appeal-$i" --from subject-writer --to team-lead \
               --type RESULT --outcome OK --issues "APPEAL:术语不一致" \
-              --reject-key "appeal|ch01|术语不一致" 2>/tmp/stt-appeal-err.txt | tee /tmp/stt-appeal-out.txt
+              --reject-key "appeal|ch01|术语不一致" \
+              --phase VERIFY --start 2026-11-01T11:40:00+00:00 \
+              2>/tmp/stt-appeal-err.txt | tee /tmp/stt-appeal-out.txt
           done
           # appeal 键达 2 不得触发介入协议（INTERVENTION_TRIGGERED 缺席 = 隔离生效）
           if grep -q "INTERVENTION_TRIGGERED=1" /tmp/stt-appeal-out.txt /tmp/stt-appeal-err.txt; then
@@ -668,7 +673,9 @@ jobs:
             python3 scripts/record_trace.py --work-root "$WR" \
               --task-id "ch01-VERIFY-R2-reject-$i" --from quality-examiner --to team-lead \
               --type BLOCK --outcome BLOCKED \
-              --reject-key "ch01|术语不一致" 2>/dev/null | tee /tmp/stt-reject2-out.txt
+              --reject-key "ch01|术语不一致" \
+              --phase VERIFY --start 2026-11-01T11:45:00+00:00 \
+              2>/dev/null | tee /tmp/stt-reject2-out.txt
           done
           grep -q "INTERVENTION_TRIGGERED=1" /tmp/stt-reject2-out.txt
           python3 scripts/progress.py --work-root "$WR" rejects | tee /tmp/stt-reject2-rejects.txt
