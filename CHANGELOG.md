@@ -3,6 +3,53 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.4] — 2026-11-08 ★M3/M4/M5/M6/M7/M8 批次：候补池中低优 6 项全清（8/8 收口）
+
+### ★M3 挂载执行体接 CI + 三目标分发（候补 3）
+
+- CI 新增步骤：`check_external_skills.py`（无挂载 N/A exit 0 也照跑——防脚本腐化）。
+- install.sh：claude-desktop/cursor 两目标补 `_harness-scripts/` 分发
+  （skill-mounting.md SSOT + check_external_skills.py）；头部声明补 PyYAML
+  （5.4 第 7 项 exports/imports 解析的可选依赖，缺失按「不静默」升 FAIL）。
+
+### ★M4 F2 样章批准态机械落盘（候补 4，F 项三缺口收口 3/3）
+
+- `progress.py update` 增 `--notes`：非空时段内 upsert
+  `- notes[{phase}]: {notes}` 行（BOOK_ 域与章域同构）；空串删除（幂等）。
+- book-orchestration §2 步骤③b 文档同步：`notes=sample-chapter-approved`
+  自此有机械落点（CLI→progress.md→show 反查闭环，此前零执行体）。
+- 回归：tests/test_m_batch_gates.py M4.0–M4.5（落盘/反查/清空）全过。
+
+### ★M5 跨文件 §引用一致性拦截（候补 5）
+
+- 新增 `scripts/check_cross_refs.py`：扫 skills/agents/references 的
+  「`skills/{x}/SKILL.md` §节名/编号」引用（21 条），死链 exit 1。
+- 判据经两轮实测收紧：括注剥离（「§搭接并行协议（升级 C）」）+ 编号段
+  精确匹配（「1.」vs「1」）+ 节名剥括注整段比对（子串匹配会漏判改名——
+  反向例真改节名抓出后修正）。
+- CI 同步接入（含负向实验：改节名必拦）；回归 M5.1–M5.3 全过。
+
+### ★M6 SKILL_CHANGELOG 2.11.1 补登记（候补 6）
+
+五要素模板/样章协议/std-skill 锚三项 SKILL.md 正文改动追认登记——
+D 项「登记漂移」病灶的存量清零。
+
+### ★M7 静态契约纳入常规回归（候补 7）
+
+新增 `tests/run_all.py` 本地回归统一入口（五机械门禁 + 静态契约 + pytest
+全量，判据同源 CI）；--fast 模式跳过 pytest。本地绿 = CI 绿的同一扇门。
+
+### ★M8 workflow 吞错盲区清理（候补 8）
+
+`2>/dev/null` 14 处分类处置：负向实验 if-探针保留（判据本身）；--json 采集
+2 处改 2>&1（stderr 不再吞诊断）；score_quality/record_trace 探针 stderr
+落盘备查（此前的静默失败链在 L5 批次已实证）。
+
+### 回归
+
+pytest 375+3skip 全绿；M 批次门禁 10/10；run_all --fast 6/6；
+静态契约 282/282（本地复跑）。版本 → **2.11.4**。候补池 8 项全部核销。
+
 ## [2.11.3] — 2026-11-08 ★M 批次：候补池高优 2 项落地（F 项三缺口收口 2/3）
 
 > 管家节点批准候补池 8 项全做；按文件族纪律拆 3 批，本批 = 高优 2 项。

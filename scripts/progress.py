@@ -350,8 +350,28 @@ def book_status(work_root: Path) -> int:
     return 0
 
 
-def _upsert_book_phase(text: str, phase: str, status: str, summary: str, ts: str) -> str | None:
-    """在「Progress · 全书」段的阶段进度表里 upsert 一个 BOOK_* 行；无全书段返回 None。"""
+def _upsert_notes_line(body: str, phase: str, notes: str) -> str:
+    """★M4：段内 upsert「- notes[{phase}]: {notes}」行；notes 空 → 删除该相位 notes 行。
+
+    落盘形态（book-orchestration §2 步骤③b 反查依据）：
+      - notes[CHAPTER_SCHEDULE]: sample-chapter-approved
+    """
+    if not notes:
+        # 显式清空：删除该相位的 notes 行（幂等）
+        return re.sub(rf'^- notes\[{re.escape(phase)}\]: .*?\n?', '', body, flags=re.M)
+    pat = re.compile(rf'^- notes\[{re.escape(phase)}\]: .*?$', re.M)
+    line = f'- notes[{phase}]: {notes}'
+    if pat.search(body):
+        return pat.sub(line, body)
+    return body.rstrip('\n') + '\n' + line + '\n'
+
+
+def _upsert_book_phase(text: str, phase: str, status: str, summary: str, ts: str,
+                       notes: str = '') -> str | None:
+    """在「Progress · 全书」段的阶段进度表里 upsert 一个 BOOK_* 行；无全书段返回 None。
+
+    ★M4 v2.11.4：notes 非空时同步 upsert notes 行（F2 样章批准态机械落点）。
+    """
     m = re.search(r'(^# Progress · 全书\s*\n)(.*?)(?=^# Progress · |\Z)', text, re.S | re.M)
     if not m:
         return None
@@ -366,6 +386,7 @@ def _upsert_book_phase(text: str, phase: str, status: str, summary: str, ts: str
             body = body[:m2.start()] + '\n' + new_row + body[m2.start():]
         else:
             body = body.rstrip('\n') + '\n' + new_row + '\n'
+    body = _upsert_notes_line(body, phase, notes)
     return head + body
 
 
@@ -394,8 +415,12 @@ def _chapter_section_span(text: str, chapter: str) -> tuple[int, int]:
 
 
 def _upsert_chapter_phase(text: str, chapter: str, phase: str,
-                          status: str, summary: str, ts: str) -> str:
-    """在「# Progress · {chapter}」段内 upsert 该 phase 行（段内定位，不越段）。"""
+                          status: str, summary: str, ts: str,
+                          notes: str = '') -> str:
+    """在「# Progress · {chapter}」段内 upsert 该 phase 行（段内定位，不越段）。
+
+    ★M4：notes 非空时段内同步 upsert notes 行（与 BOOK_ 域同构）。
+    """
     start, end = _chapter_section_span(text, chapter)
     seg = text[start:end]
     pattern = re.compile(
@@ -415,11 +440,12 @@ def _upsert_chapter_phase(text: str, chapter: str, phase: str,
             seg = seg[:pos] + '\n' + new_row + seg[pos:]
         else:
             seg = seg.rstrip('\n') + f'\n{new_row}\n'
+    seg = _upsert_notes_line(seg, phase, notes)
     return text[:start] + seg + text[end:]
 
 
 def update_phase(work_root: Path, phase: str, status: str, summary: str,
-                 chapter: str = '') -> Path:
+                 chapter: str = '', notes: str = '') -> Path:
     # ADR-04：旧名先拦（不静默映射），再解析粗粒度别名
     if phase in LEGACY_PHASE:
         raise LegacyPhaseError(phase, LEGACY_PHASE[phase])
@@ -438,7 +464,8 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str,
         # 全书域：写到「Progress · 全书」段
         with _file_lock(p):
             text = p.read_text(encoding='utf-8')
-            new_text = _upsert_book_phase(text, phase, status, summary, ts)
+            new_text = _upsert_book_phase(text, phase, status, summary, ts,
+                                          notes=notes)
             if new_text is None:
                 raise FileNotFoundError(f'progress.md 无「Progress · 全书」段: {p}; 请先 book init')
             _atomic_write(p, new_text)
@@ -447,13 +474,15 @@ def update_phase(work_root: Path, phase: str, status: str, summary: str,
         with _file_lock(p):
             text = p.read_text(encoding='utf-8')
             if chapter:
-                new_text = _upsert_chapter_phase(text, chapter, phase, status, summary, ts)
+                new_text = _upsert_chapter_phase(text, chapter, phase, status, summary, ts,
+                                         notes=notes)
             else:
                 # 未指定 --chapter：向后兼容单章模式，但**必须唯一命中一个章段**，
                 # 否则会静默写错章（旧实现正是这样造成三章互相覆盖）。
                 spans = _all_chapter_spans(text)
                 if len(spans) == 1:
-                    new_text = _upsert_chapter_phase(text, spans[0], phase, status, summary, ts)
+                    new_text = _upsert_chapter_phase(text, spans[0], phase, status, summary, ts,
+                                          notes=notes)
                 elif not spans:
                     raise ValueError(
                         'progress.md 无任何「# Progress · {chapter}」段——请先 init')
@@ -641,6 +670,9 @@ def main() -> int:
     p_up.add_argument('--status', required=True, choices=[
         'DONE', 'IN_PROGRESS', 'BLOCKED', 'BLOCKED_RESOLVED', 'SKIPPED'])
     p_up.add_argument('--summary', required=True)
+    p_up.add_argument('--notes', default='',
+                      help='★M4 v2.11.4：notes 附加行（如 sample-chapter-approved，'
+                           'F2 样章批准态机械落点）；空串删除该相位 notes 行')
     p_up.add_argument('--chapter', default='',
                       help='目标章（如 ch03）。多章工作区**必须**显式指定——'
                            '否则无法定位写入章段（此前无参调用会写进第一章段，'
@@ -696,7 +728,7 @@ def main() -> int:
         # 结构化失败出口：旧名/未知名一律 stderr + 退出码 2，不抛裸 traceback
         try:
             update_phase(wr, args.phase, args.status, args.summary,
-                         chapter=args.chapter)
+                         chapter=args.chapter, notes=args.notes)
         except (FileNotFoundError, ValueError) as e:  # LegacyPhaseError 是 ValueError 子类
             print(f'ERROR  {e}', file=sys.stderr)
             return 2

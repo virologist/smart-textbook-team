@@ -293,3 +293,22 @@ profile 数据文件承载；§7b 覆盖链（★K v2.10.5）语义不变：prof
 第④锚 `std-skill:{skill名}:{条目}` 在 check_manuscript.py `_has_retrievable_anchor`
 机械落地（RE_STD_SKILL 三段齐全即认锚）——补齐 G6（v2.10）文档声称与机械实现的
 缺口；①②③ 形态判定不变（10 例正负双向回归锁定）。
+
+---
+
+## v2.11.1 补登记（★M6 追认，2026-11-08 · 此前批次漏登记）
+
+> 本节为八轮审计 D 项「登记漂移复发」的补丁：2.11.1 七项核销中改动了 SKILL.md
+> 正文的项，按 decision-lanes §3.1 红道纪律在此追认登记。
+
+### textbook-pipeline-workflow v1.6.0（★B v2.11.1）
+§介入协议末尾新增「打回包五要素模板」（【单元|判定|原因|证据|SCOPE】）——
+SCOPE 的三条散落等价约束字段化，不新增语义；覆盖全部 5 条退回路径。
+
+### book-orchestration（★F2 v2.11.1）
+§2 步骤③b：样章验证→批量放大协议（CHAPTER_SCHEDULE 首批只跑样章；合格三判据；
+`notes=sample-chapter-approved` 后放大；不合格禁放大——notes CLI 落点 v2.11.4 ★M4 补齐）。
+
+### scientific-figure（★J5 v2.11.1）
+cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用（判据不作内容源）；
+该锚的机械认锚于 v2.11.3 ★M2 在 check_manuscript.py 落地。

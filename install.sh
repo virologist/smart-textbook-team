@@ -14,7 +14,10 @@ set -euo pipefail
 # 打包依赖：zip / unzip（package_release.sh）
 # 环境隐性依赖（成员协议引用，缺失按行内降级链）：WebFetch / ToolSearch+DeferExecuteTool /
 #   ima 知识库 / Obsidian $TB_VAULT_PATH / markitdown——均为可选增强，缺失不阻塞安装
-VERSION="2.11.3"
+# ★M3 v2.11.4：挂载执行体 scripts/check_external_skills.py + 规范 references/skill-mounting.md
+#   须随包分发（含 claude-code/desktop/cursor 目标）；PyYAML 为 5.4 第 7 项（术语依赖图）
+#   解析 exports/imports 的可选依赖（缺失按「不静默」升 FAIL，见 check_cross_chapter.py）
+VERSION="2.11.4"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0
@@ -263,6 +266,11 @@ install_claude_code() {
     # skills 复制到 ~/.claude/skills/（Claude Code 自 v2.1.32+ 支持 skills frontmatter 字段）
     local SKILL_DIR="$HOME_DIR/.claude/skills"
     run "mkdir -p '$SKILL_DIR'"
+    # ★M3 v2.11.4：挂载规范与校验执行体随包分发（判据 skill 挂载的 SSOT 与门禁）
+    run "mkdir -p '$SKILL_DIR/_harness-scripts'"
+    run "cp '$REPO_DIR/references/skill-mounting.md' '$SKILL_DIR/_harness-scripts/'"
+    run "cp '$REPO_DIR/scripts/check_external_skills.py' '$SKILL_DIR/_harness-scripts/'"
+    ok "  挂载规范+校验执行体 → _harness-scripts/"
     for s in agent-harness-protocol book-orchestration citation-verify learn-protocol manuscript-delivery multi-agent-patterns scientific-figure task-router team-generation textbook-pipeline-workflow; do
         if [[ -d "$REPO_DIR/skills/$s" ]]; then
             run "rm -rf '$SKILL_DIR/$s'"
@@ -307,6 +315,11 @@ install_cursor() {
     log "→ Cursor (Agent Skills)"
     local TARGET_DIR="$REPO_DIR/.cursor"
     run "mkdir -p '$TARGET_DIR/agents' '$TARGET_DIR/skills'"
+    # ★M3 v2.11.4：挂载规范与校验执行体随包分发
+    run "mkdir -p '$TARGET_DIR/skills/_harness-scripts'"
+    run "cp '$REPO_DIR/references/skill-mounting.md' '$TARGET_DIR/skills/_harness-scripts/'"
+    run "cp '$REPO_DIR/scripts/check_external_skills.py' '$TARGET_DIR/skills/_harness-scripts/'"
+    ok "  .cursor/skills/_harness-scripts/（挂载规范+校验执行体）"
     for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
         if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
             run "cp '$REPO_DIR/agents/$a.md' '$TARGET_DIR/agents/$a.md'"

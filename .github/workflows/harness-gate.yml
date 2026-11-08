@@ -34,6 +34,31 @@ jobs:
       # 病史：PHASE_ORDER 是唯一权威枚举，却被四份文档给出四种描述；R4/R5 记在
       # VERIFY 前缀下且全包 0 处写入（僵尸态）→ 续跑按顺序推进必然卡死。
       # 现把「文档与权威源一致」做成机械判据：不一致 exit 1 并列出 文件:行号:错误值 → 正确值。
+      # ★M3/M5 v2.11.4：挂载校验（无挂载 N/A exit 0）+ 跨文件 §引用一致性
+      - name: 外部 skill 挂载校验 + 跨文件引用一致性（M3/M5）
+        run: |
+          set -e
+          python3 scripts/check_external_skills.py --work-root .
+          echo "[OK] 挂载校验通过（无挂载态 N/A）"
+          python3 scripts/check_cross_refs.py --root .
+          echo "[OK] 跨文件 §引用 0 死链"
+          # M5 负向：改掉被引节名 → 门禁必须拦
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, sys
+          t = Path("skills/textbook-pipeline-workflow/SKILL.md")
+          orig = t.read_text(encoding="utf-8")
+          try:
+              t.write_text(orig.replace("## 节级并行与恢复协议（B4，2026-11-04）",
+                                        "## 节级并行与恢复协议V2（B4，2026-11-04）"), encoding="utf-8")
+              r = subprocess.run([sys.executable, "scripts/check_cross_refs.py", "--root", "."],
+                                 capture_output=True, text=True)
+              assert r.returncode == 1, "M5 负向失败：改节名未被引用门禁拦截"
+              print("[OK] M5 负向：节名改名被拦截")
+          finally:
+              t.write_text(orig, encoding="utf-8")
+          PY
+
       - name: 相位一致性门禁（PHASE_ORDER 唯一权威）
         run: python3 scripts/check_phase_consistency.py --root . --verbose
 
@@ -437,7 +462,7 @@ jobs:
           PY
           rm -rf "$WR2/交付"; mkdir -p "$WR2/交付"
           python3 scripts/build_manuscript.py --work-root "$WR2" --chapter ch01 --assemble >/dev/null
-          python3 scripts/check_manuscript.py --work-root "$WR2" --chapter ch01 --json 2>/dev/null > /tmp/stt-neg2.json || true
+          python3 scripts/check_manuscript.py --work-root "$WR2" --chapter ch01 --json 2>&1 > /tmp/stt-neg2.json || true  # ★M8
           python3 - <<'PY'
           import json
           items = {i["id"]: i for i in json.load(open("/tmp/stt-neg2.json"))["items"]}
@@ -529,7 +554,7 @@ jobs:
           if python3 scripts/score_quality.py --work-root "$WR" --chapter ch01 \
             --dim 知识严谨性=85 --dim 前沿性=80 --dim 易懂易学=85 \
             --dim 职业教育适配=80 --dim 规范性=80 \
-            --evidence /tmp/stt-r5-ev-bad.json 2>/dev/null; then
+            --evidence /tmp/stt-r5-ev-bad.json 2>/tmp/stt-r5-bad-err.txt; then
             echo "负向⑤FAIL: 证据缺失未被 score_quality 拦截"; exit 1
           fi
           echo "负向⑤ PASS: 每维证据缺失被 score_quality 拦截"
@@ -677,7 +702,7 @@ jobs:
               --type BLOCK --outcome BLOCKED \
               --reject-key "ch01|术语不一致" \
               --phase VERIFY --start 2026-11-01T11:45:00+00:00 \
-              2>/dev/null | tee /tmp/stt-reject2-out.txt
+              2>/tmp/stt-reject2-err.txt | tee /tmp/stt-reject2-out.txt
           done
           grep -q "INTERVENTION_TRIGGERED=1" /tmp/stt-reject2-out.txt
           python3 scripts/progress.py --work-root "$WR" rejects | tee /tmp/stt-reject2-rejects.txt
@@ -901,7 +926,7 @@ jobs:
           echo '结论: 可交付' > "$WR/章节/ch01/review/proofread_revisions.md"
           python3 scripts/build_manuscript.py --work-root "$WR" --chapter ch01 --assemble >/dev/null
           # ① CS「人工智能（AI）」→ 4.11 必须 PASS（AI 非 CS 禁用写法；兽医域 AI 才是禁用）
-          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --json 2>/dev/null > /tmp/stt-cs.json || true
+          python3 scripts/check_manuscript.py --work-root "$WR" --chapter ch01 --json 2>&1 > /tmp/stt-cs.json || true  # ★M8
           python3 - <<'PY'
           import json
           items = {i["id"]: i for i in json.load(open("/tmp/stt-cs.json"))["items"]}

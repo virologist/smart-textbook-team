@@ -51,6 +51,9 @@ python3 scripts/progress.py --work-root "$WORK_ROOT" update \
 #    判定「样章合格」（判据：① strict 全绿；② 交付 md 字数在 book-spec 预算 ±5%；
 #    ③ 角色团/图表位/习题位形态可作后续章模板）。样章合格 → progress 记
 #    CHAPTER_SCHEDULE notes=sample-chapter-approved → 放大批量（余章并行）；
+#    ★M4 v2.11.4 起该批准态有机械落点：`progress.py update --phase CHAPTER_SCHEDULE
+#    --status DONE --summary … --notes sample-chapter-approved`（写入
+#    「- notes[CHAPTER_SCHEDULE]: …」行，可被 show/rejects 同款读取反查；空串清除）；
 #    样章不合格 → 返修样章本身，禁止放大（缺陷会被逐章复制放大）。
 #    依赖序非平凡（chapter-map 有依赖边）时：样章 = 依赖序第一层全部章
 #    （B4 Kahn 第一波），这些章之间无相互依赖、可并行，共同构成模板基准。
