@@ -55,6 +55,15 @@ T3 门禁 0 HARD/0 路径/exit 0。
   check_term_dependency_graph）；5.5 在 CI 端到端先 check 后 build，docx 未生成
   时 N/A 短路整条；F2 样章协议零执行体（progress.py 无 notes 落点）。
 
+### ★L4 连带修复（CI 静态契约评测抓出的 2 处，本地门禁盲区）
+
+- F31b 判据收窄：`references/profiles/` 下新增判据数据 JSON 后，"每个 profile 含四节
+  结构"把 JSON 也当 profile 文档扫 → 评测器只校验 `*.md`（JSON 是 R7 判据数据载体，
+  schema r7-entities/v1，无四节结构是预期形态）。
+- F32a 计数同步：README「静态契约基准 281 计分项」→ 282（实际计分项以评测器为准）。
+- 本地静态契约评测复跑：282/282 全绿 1.000。此二项暴露「静态契约评测不在本地默认
+  回归链」的盲区 → 列候补池第 7 项。
+
 ### 候补池（本轮审计新增，按严重度排序，未实施）
 
 1. 5.4 补跑第 7 项 + 5.5/5.3/5.4 测试补齐 + CI 端到端改「build→check」顺序（高）
@@ -62,7 +71,8 @@ T3 门禁 0 HARD/0 路径/exit 0。
 3. check_external_skills.py 接入 CI + 挂载消费闭环（中）
 4. F2 样章批准态机械落盘（progress.py notes 字段）（中）
 5. 章节号跨 skill 引用一致性拦截（中）
-6. SKILL_CHANGELOG 对 2.11.1/2.11.2 补登记（低，纯登记）
+6. SKILL_CHANGELOG 对 2.11.1/2.11.2 补登记（低，纯登记·2.11.2 部分已补）
+7. 静态契约评测（test_smart_textbook_team.py）纳入本地/CI 常规回归链（中）
 
 ### 回归
 

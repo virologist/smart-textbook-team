@@ -720,12 +720,15 @@ def check_executability(ck, expert_dir):
     # F31 学科 profile 的可达性：必须能被装配器注入（位于 references/ 下递归区）
     ck.check("F31a", "F", "profiles 位于 references/ 下（装配器 rglob 可递归注入）",
              os.path.isdir(prof_dir), f"未找到: {prof_dir}")
-    ck.check("F31b", "F", "每个 profile 含四节结构（映射表/术语源/核验源/版式）",
+    # ★L v2.11.2：只校验 .md profile 文档——references/profiles/ 下同时承载
+    # R7 判据数据文件（*.json，schema r7-entities/v1），无四节结构是预期形态
+    prof_docs = [f for f in profs if f.endswith(".md")]
+    ck.check("F31b", "F", "每个 profile 文档（*.md）含四节结构（映射表/术语源/核验源/版式）",
              all(("## 1." in read(os.path.join(prof_dir, f))
                   and "## 2." in read(os.path.join(prof_dir, f))
                   and "## 3." in read(os.path.join(prof_dir, f)))
-                 for f in profs) if profs else False,
-             f"profile: {profs}")
+                 for f in prof_docs) if prof_docs else False,
+             f"profile: {prof_docs}")
     ck.check("F31c", "F", "pipeline 定义了外部学科规范注入协议（门禁 3.5）",
              "外部学科规范注入协议" in pipeline and "3.5" in pipeline,
              "跨专业时专业准确性无人看守")
