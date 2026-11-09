@@ -1,0 +1,8 @@
+{
+  "skill": "task-router",
+  "prompts": [
+    {"id": 1, "prompt": "帮我把这一章里所有标了 [实] 的 PMID 和 DOI 都核一遍，看看数据站不站得住", "expected": "命中 §1 输入信号 → 标 task_type=review-citation，查表派 quality-examiner（必载 skill：citation-verify）；置信度 ≥70 直接 dispatch，envelope.payload.task_type 与 output_contract（R3 verdict + 引用核验表）一并写明"},
+    {"id": 2, "prompt": "看一下这章的引用", "expected": "同一问法命中 ≥2 个 task_type（review-citation / retrieval-standard）→ 置信度 <70 走 ESC1 候选歧义：不 dispatch，追加 1 问澄清（≤1 轮）「是已有 draft 的引用核验（review-citation），还是新检索标准（retrieval-standard）？」；定案后补进 §4 训练样本供 tests/test_router_eval.py 评估（命中率基线 80%）"},
+    {"id": 3, "prompt": "帮我审一下这章的结构，顺便把缺的图也补上", "expected": "跨 task_type 复合任务 → ESC4：拆为 review-structure + visual-spec 两个独立 task（按依赖串行或并行），禁止合并为一个 member call；派活前走 Step 4 dispatch checklist（task_type 已标、责任成员 phase + blocking_open、WORK_ROOT、context_refs、输出契约、轮次与超时、必载 skill）"}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "skill": "team-generation",
+  "prompts": [
+    {"id": 1, "prompt": "帮我按第 1 章的主题配一支专家团队出来", "expected": "走四步：① 收 chapter_design.md（knowledge_scope + 目标受众）+ discipline profile ② generate_team.py 只产出提案（team-proposal-ch01.yaml，不落盘生效）③ 【硬闸门】把构成表原文呈现给用户并问三问（视角覆盖 / examines 分工 / 确认生效·修改·放弃）④ 用户确认后才写 运行态/dynamic-members.yaml（注册表 v2 scopes 结构 + confirmed_by_user: true）"},
+    {"id": 2, "prompt": "这章 12000 字，§3 是病毒病、§4 是细菌病，就按一套团队写完吧，别搞那么麻烦", "expected": "异质知识域 ≥2 且字数 >8000 → 主理人必须提示「建议对异质节做节级坍缩」并附 reasoning_chain（decision / criteria_refs / computation），不提示=编排缺陷；用户明确跳过才记 trace notes=section-collapse-declined；scope 三级（chapter/section/block）各自独立过闸门，章级确认 ≠ 节级确认，节级否决 ≤3 轮仍不一致 → 停机报用户裁决"},
+    {"id": 3, "prompt": "quality-examiner 连续被打回，说什么都不改，能不能直接换个成员顶上，别再问我了", "expected": "E3 替补：等价判定 新成员 examines ⊇ 原成员 examines；来源优先 动态层已有成员 > 生成新提案，且新提案仍要过闸门（不得因催促跳过闸门直接注册）；interventions.md 记 {原成员, 新成员, 等价依据, 用户是否确认}；换人不重置打回计数（按 correlation_id + 问题指纹跨成员累计，防换人洗计数）"}
+  ]
+}

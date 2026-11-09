@@ -312,3 +312,45 @@ SCOPE 的三条散落等价约束字段化，不新增语义；覆盖全部 5 �
 ### scientific-figure（★J5 v2.11.1）
 cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用（判据不作内容源）；
 该锚的机械认锚于 v2.11.3 ★M2 在 check_manuscript.py 落地。
+
+---
+
+## v2.12.0 系列（★S 批次，2026-11-10 · darwin 8 维审计落地 S1+S2）
+
+> 本批按 `references/decision-lanes.md` §3.1 红道全链执行：diff 预览 → 实现 →
+> 反向例测试 → 全量 pytest + CI 全绿 → SKILL_CHANGELOG 登记 → 版本四处自洽 → 推送。
+
+### book-orchestration → v1.0.0（★S2 · 三项缺陷修复）
+
+**背景**：2026-11-10 darwin 8 维审计实测——`book-orchestration` 是 10 个 Skill 中
+**唯一 frontmatter 缺 `version`**、**唯一无「变更记录」小节**、且 **D3 边界覆盖最薄**
+（关键词密度 0.57%、`fallback/兜底/降级/回退` 0 次命中、有序步计数 0）的一个。
+
+**变更**：
+- `frontmatter` 补 `version: 1.0.0`（此前 10 个 Skill 中唯一缺失项）。
+- 新增 `## 变更记录` 小节（格式对齐 team-generation：`- v{版本} [{YYYY-MM-DD}] {摘要}`）。
+- 新增 `### 2.1 命令失败处置` 表：五条命令（`progress.py book init` / `book-status` /
+  `update --phase` / `check_book.py --strict` / `build_book.py`）的**退出码 → 全书层动作**映射；
+  含「同一命令连续失败 2 次即停并附完整错误输出上报管家节点裁决」
+  （对齐 multi-agent-patterns「换策略而非重复」纪律）与**红道停机口径**
+  （BOOK_DELIVER 放行 / 样章批准 / 合稿覆盖 三类失败一律停下上报，
+  不得以「先交付后补」推进）。
+- 车道口径 SSOT 仍为 `references/decision-lanes.md`；本节只列**命令级**退出码，
+  不复述车道定义，避免出现第二权威源。
+
+### 其余 9 个 Skill（★S1 · 契约评测用例补齐，SKILL.md 正文零改动）
+
+新增 `skills/{book-orchestration|learn-protocol|manuscript-delivery|scientific-figure|
+task-router|team-generation}/test-prompts.json`（每份 3 条，覆盖正常/异常/边界三型），
+使 10 个 Skill **全部**具备契约评测用例。此前仅 4 个有
+（agent-harness-protocol / citation-verify / multi-agent-patterns / textbook-pipeline-workflow）。
+用例集是**评测资产**，不改变 SKILL.md 正文语义，故各 Skill 版本位不动。
+
+配套新增门禁 `scripts/check_test_prompts.py`（T1 存在性 / T2 结构 / T3 条数 /
+T4 字段 / T5 引用真实性）+ 反向例测试 `tests/test_check_test_prompts.py`（16 用例）。
+
+### ★门禁设计教训（自证循环）
+
+T5 首版把 `test-prompts.json` 自身读进证据池 ⇒ 被检文件自证（用例里写什么池里就有什么）
+⇒ 判据恒绿。由反向例测试当场暴露，修复：`POOL_EXCLUDE_NAMES` 排除被检对象。
+**通则**：任何「内容真实性」判据必须显式排除被检文件，否则必成自证循环。

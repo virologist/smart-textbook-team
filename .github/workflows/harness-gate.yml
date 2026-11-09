@@ -73,6 +73,46 @@ jobs:
       - name: 文档一致性门禁（计数/量纲/编号/归属）
         run: python3 scripts/check_doc_consistency.py --root . --verbose
 
+      # Skill 契约评测用例门禁（2026-11-10 批次 S1）：
+      # 病史：10 个 skill 中只有 4 个有 test-prompts.json，其余 6 个缺失；
+      #   且全仓 scripts/ tests/ .github/ 对 test-prompts **零消费方**——
+      #   「有则加餐、无则全无」，新增/删除/写错用例都不会被任何门禁发现。
+      #   更危险的是「假门禁」：expected 引用了不存在的命令时，用例本身是错的，
+      #   却会逼 Skill 去满足一个不存在的机制 → 比缺用例更坏（缺是明着缺，假是暗着错）。
+      # 本门禁 5 条判据：T1 存在性 / T2 结构 / T3 条数 / T4 字段 / T5 引用真实性。
+      # 正向：真实包 exit 0；负向：删用例文件 + 写编造引用 → 必须 exit≠0。
+      - name: Skill 契约评测用例门禁（check_test_prompts.py 正负双向）
+        run: |
+          set -e
+          python3 scripts/check_test_prompts.py --root .
+          # 负向 1：删掉一个 skill 的用例文件 → 必须被拦（防「新增 skill 漏配」）
+          mv skills/citation-verify/test-prompts.json skills/citation-verify/_tp_probe.json
+          if python3 scripts/check_test_prompts.py --root . 2>/dev/null; then
+            echo "::error::负向失败：缺失 test-prompts.json 未被门禁拦截"
+            mv skills/citation-verify/_tp_probe.json skills/citation-verify/test-prompts.json
+            exit 1
+          fi
+          mv skills/citation-verify/_tp_probe.json skills/citation-verify/test-prompts.json
+          # 负向 2：expected 引用不存在的命令 → 必须被拦（防假门禁）
+          # 还原用文件备份而非 git checkout —— 不依赖 git 索引状态，本地/CI 同行为
+          cp skills/task-router/test-prompts.json /tmp/_tp_backup.json
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("skills/task-router/test-prompts.json")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          d["prompts"][0]["expected"] = "先跑 check_fabricated_nonexistent.py --strict"
+          p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+          if python3 scripts/check_test_prompts.py --root . 2>/dev/null; then
+            echo "::error::负向失败：编造引用未被门禁拦截（假门禁防线失守）"
+            cp /tmp/_tp_backup.json skills/task-router/test-prompts.json
+            exit 1
+          fi
+          cp /tmp/_tp_backup.json skills/task-router/test-prompts.json
+          rm -f /tmp/_tp_backup.json
+          python3 scripts/check_test_prompts.py --root .
+          echo "[OK] Skill 契约评测用例门禁正负双向通过"
+
       # P1 批次门禁（2026-11-04）：并行调度 / 成员契约 / 拆分-合并链路 / 并发度指标
       # 病史：P1 落地三件执行体（scheduler.py / contract_check.py / merge_sections.py）
       # 与一份契约 SSOT（references/member-contracts.json），此前**零测试覆盖**——

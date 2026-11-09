@@ -1,0 +1,8 @@
+{
+  "skill": "scientific-figure",
+  "prompts": [
+    {"id": 1, "prompt": "第3章要配一张鸡球虫病发病率随鸡龄变化的数据图，帮我把这张图做出来", "expected": "四步不可跳——①数据就位（优先正文 [实] 或检索摘要，注明来源与获取日期）②数据抽象（概括性规律→折线图/散点+趋势线，抽象写进图注）③一图一 notebook（assets/{图号}.ipynb 四 cell：图说明/原始数据自包含/绘图代码/导出，matplotlib 须配 rcParams 中文字体防方框）④导出 PDF（矢量，12–15cm）+ PNG（≥300dpi）"},
+    {"id": 2, "prompt": "手头没有实测数据，我按传播模型推了一组数画出来当示意图，这样行吗", "expected": "行但只能走来源优先级 4「推导/模拟数据」：图注须显著标注「示意数据（基于 XX 假设推导）」并说明抽象方法；严禁画成实测数据的样式；图注必须含教学目的+数据来源，否则门禁 4.12 FAIL（防装饰性图）"},
+    {"id": 3, "prompt": "我一张图建了三个 notebook，数据是从 ../data.csv 读进来的，savefig 还写了 'figures/assets/图1-3.pdf'，这样能过吗", "expected": "三条严禁全中——cell 2 数据必须自包含内联（❌依赖外部文件）；契约是一图一 notebook（❌一图多 notebook）；savefig 必须用裸文件名（执行 cwd=notebook 所在目录，带目录前缀会去找 …/figures/assets/figures/assets/…→执行必失败）；门禁 4.10 要求 assets/{图号}.ipynb 存在且符合 4-cell 契约，开 --exec-notebooks 时 4.10e 还要真执行（nbconvert --execute）通过"}
+  ]
+}

@@ -1,5 +1,6 @@
 ---
 name: book-orchestration
+version: 1.0.0
 description: "Whole-book orchestration spec (ADR-01, dual-layer state machine): book domain (BOOK_* phases) vs chapter domain (18 phases), book-spec.md as the chapter manifest, three-phase assembly (per-chapter pipeline → cross-chapter seven checks → book build), plus whole-book gates 5.1-5.5 (chapter list + word budget ≤5%, domain/deps DAG, per-chapter strict, cross-chapter seven, merged docx verifiable). Load when the user asks for a multi-chapter textbook ('整本教材'/'多章成书'/'全书'), or whenever book-spec, chapter schedule, merged deliverable, whole-book figure renumbering, or merged references are in question. Trigger words: 全书 / 整本 / 多章 / book init / book-spec / 合稿 / 成书."
 ---
 
@@ -65,6 +66,30 @@ python3 scripts/check_book.py --work-root "$WORK_ROOT" --strict
 #    （TOC 域；单节连续页码；参考文献去重合并 + 全书重编号；图号重排为全书序）
 python3 scripts/build_book.py --work-root "$WORK_ROOT" [--reference-doc tpl.docx]
 ```
+
+### 2.1 命令失败处置（黄道：机械可判；红道动作不设阈值）
+
+> 口径 SSOT = `references/decision-lanes.md`。本节只列**命令级**退出码与回退动作，
+> 不复述车道定义。**红道动作（BOOK_DELIVER 放行 / 合稿覆盖 / 章样批准）永远人工**，
+> 模型的置信度不是放行依据。
+
+| 命令 | 退出码 | 判定 | 全书层动作 |
+|---|---|---|---|
+| `progress.py book init` | 0 | 成功 | 继续 |
+| | 2 | 输入错（章清单不一致，防串书） | **不重试**，回问管家节点确认章清单；不得自动改清单 |
+| `progress.py book-status` | 0 | 成功 | 继续 |
+| `update --phase …` | 2 | 参数/相位错 | 修正参数后重跑；**不得换相位绕过** |
+| `check_book.py --strict` | 0 | 全书门禁通过 | 允许进 BOOK_DELIVER（红道：仍需人工放行） |
+| | 1 | 门禁 FAIL | **不装配、不交付**；按失败项定位回对应章修，修完重跑（不整书重扫） |
+| | 2 | 用法错 | 修命令后重跑 |
+| `build_book.py` | 0 | 装配成功 | 进入交付终审（红道） |
+| | ≠0 | 装配失败 | **不手工改合稿产物**；修源（各章交付 md）后重跑装配 |
+
+- **重试上限**：同一命令连续失败 **2 次**即停，附完整错误输出上报管家节点裁决
+  （禁止原样重试 —— 同 multi-agent-patterns「换策略而非重复」纪律）。
+- **红道动作失败**：BOOK_DELIVER 放行 / 样章批准 / 合稿覆盖 三类动作失败时，
+  **一律停下上报**，不得以「先交付后补」推进。
+
 
 ## 3. book-spec.md（BOOK_BOOTSTRAP 产物）
 
@@ -174,3 +199,6 @@ python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
 | `assemble_sections.py` | 章**内**拼接与缺节恢复报告（B4）；exit 3 = 需重派 |
 | `build_manuscript.py`（章 docx） | `build_book.py`（书 docx），版式常量同源 TYPESET |
 | W1（单章全流程） | **W5 全书工作流**：book init → BOOK_SPEC → 逐章 W1 → check_book → build_book → BOOK_DELIVER |
+
+## 变更记录
+- v1.0.0 [2026-11-10] 补 version 字段（此前 10 个 skill 中唯一缺失）；§2.1 新增「命令失败处置」表（退出码 → 全书层动作，含重试上限与红道停机口径）；补「变更记录」小节

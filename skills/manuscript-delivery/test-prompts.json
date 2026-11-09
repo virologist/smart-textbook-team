@@ -1,0 +1,8 @@
+{
+  "skill": "manuscript-delivery",
+  "prompts": [
+    {"id": 1, "prompt": "第1章内容写完了，帮我按教材版式出一份 md 和 docx", "expected": "先跑 count_net_words.py --target 12000 生成净字数，填进 frontmatter 7 项（教材名/章节号/章节标题/字数目标/实际净字数/版本/学科profile，自报值不作数）→ build_manuscript.py --format md,docx → check_manuscript.py --strict 过门禁 4"},
+    {"id": 2, "prompt": "审稿人在 Word 里已经接受了几处修订，我直接把这个 docx 交付出去行不行", "expected": "不行——改 docx 不回流 md 即分叉，门禁 4.13 拦截；须 build_manuscript.py --apply-revisions --from-docx 交付/xxx_审阅.docx 覆写 md 后重建 docx（4.13b 校验 md 标记数 == docx 修订数），孤立 insertion 还须带 [整段新增] 或置于「## …新增」小节"},
+    {"id": 3, "prompt": "我的图位、图题注、规格卡三行连着写没空行，习题位也写成 [习题位 1.1：Bloom×3]，这样能过检查吗", "expected": "两处都 FAIL——图位/题注/规格卡之间必须空行分隔（三行连写被 pandoc 合并成同一段落，题注居中与图在题注上方版式全失效）；习题位书稿层唯一合法形式是 [习题 {章}-{序}]，legacy [习题位 …] 判 4.8b FAIL，须迁移为全章流水号"}
+  ]
+}

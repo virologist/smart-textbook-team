@@ -3,6 +3,63 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.0] — 2026-11-10 ★S 批次：Skill 契约评测用例补齐（10/10）+ 用例门禁化 + book-orchestration 边界修复
+
+> 起点：2026-11-10 对本包 10 个 Skill 做 darwin 8 维审计（D8 降级 dry_run），
+> 产出 14 项进化建议。本批落地 S1 + S2 两项**红道**改动（SKILL.md / 判据脚本属
+> 权威源变更，按 `references/decision-lanes.md` §3.1 走全链：diff 预览 → 实现 →
+> 反向例测试 → 全量 pytest + CI 全绿 → 版本四处自洽 → 推送）。
+
+### ★S1 契约评测用例补齐 + 门禁化（新增 1 门禁 + 1 测试文件 + 6 用例集）
+
+- **病灶**：10 个 Skill 中只有 4 个有 `test-prompts.json`（agent-harness-protocol /
+  citation-verify / multi-agent-patterns / textbook-pipeline-workflow，源自 commit `2a3ce4b`），
+  其余 6 个（book-orchestration / learn-protocol / manuscript-delivery / scientific-figure /
+  task-router / team-generation）**缺失**；且全仓 `scripts/` `tests/` `.github/`
+  对 test-prompts **零消费方** ⇒「有则加餐、无则全无」，新增/删除/写错用例都不被任何门禁发现。
+- **补齐**：新增 6 个 `test-prompts.json`，每份 3 条用例，覆盖正常/异常/边界三型
+  （例：book-orchestration 第 2 条「8 章能全量开跑吗」→ 样章先行、不合格返修样章本身）。
+  全部 10 份用例的 `expected` 所引用的命令/门禁编号/判据码**逐条核验存在于包内文本池**，
+  0 编造。
+- **新增门禁** `scripts/check_test_prompts.py`（5 条判据）：
+  - T1 存在性——每个 Skill 目录必须有用例文件（新增 Skill 漏配即 FAIL）
+  - T2 结构——顶层只许 `skill`/`prompts`；`skill` 字段须 == 目录名（== frontmatter.name = 平台索引键）
+  - T3 条数——`prompts` ≥ 3 条（覆盖三型场景）
+  - T4 字段——每条须有 `id`/`prompt`/`expected`；`id` 从 1 连续递增（无重复/跳号）；文本非空
+  - T5 引用真实性——`expected` 中的命令名/门禁编号/判据码必须在包内文本池中存在，
+    否则判「编造引用」= FAIL（防**假门禁**：用例本身写错却逼 Skill 满足不存在的机制，
+    比缺用例更坏——缺是明着缺，假是暗着错）
+- **★首版自证循环缺陷（实测发现并修复）**：T5 首版把 `test-prompts.json` 自身读进了证据池
+  ⇒ 被检文件自证（用例里写什么池里就有什么）⇒ 判据恒绿。反向例测试当场暴露，
+  修复方案：`POOL_EXCLUDE_NAMES = {"test-prompts.json"}` 把被检文件排除出池。
+  **教训**：任何「内容真实性」判据，必须显式排除被检对象，否则必成自证循环。
+- **反向例测试** `tests/test_check_test_prompts.py`：16 用例（3 正向 + 13 反向），
+  负向样本取自审计实测病灶形态（删文件 / skill 名写错 / 顶层多键 / JSON 坏 / 仅 1 条 /
+  id 重复跳号 / expected 空 / 缺字段 / 编造命令 / 编造门禁编号 / 新增 Skill 漏配 /
+  失败计数准确性 / skills 目录缺失）。
+- **接线**：`tests/run_all.py` 增第六道机械门禁「用例契约」；CI `harness-gate.yml`
+  增 1 step「Skill 契约评测用例门禁（正负双向）」——正跑真实包 exit 0，
+  负跑「删用例文件」「写编造引用」各须 exit≠0，否则 CI 红。
+
+### ★S2 book-orchestration 三项缺陷修复
+
+- **缺陷 1**：`frontmatter` 缺 `version` 字段（10 个 Skill 中唯一）→ 补 `version: 1.0.0`。
+- **缺陷 2**：无「变更记录」小节 → 补 `## 变更记录`（格式对齐 team-generation：
+  `- v{版本} [{YYYY-MM-DD}] {摘要}`）。
+- **缺陷 3**：边界覆盖最薄（关键词密度 0.57%、`fallback/兜底/降级/回退` 0 次命中）
+  → 新增 `### 2.1 命令失败处置` 表：`progress.py book init` / `book-status` /
+  `update --phase` / `check_book.py --strict` / `build_book.py` 五条命令的
+  **退出码 → 全书层动作**映射，含「同一命令连续失败 2 次即停并上报」
+  （对齐 multi-agent-patterns「换策略而非重复」纪律）与红道停机口径
+  （BOOK_DELIVER 放行 / 样章批准 / 合稿覆盖 三类失败一律停下上报，不许「先交付后补」）。
+  口径 SSOT 仍为 `references/decision-lanes.md`，本节只列命令级退出码，不复述车道定义。
+
+### 版本四处自洽
+
+- `2.11.5 → 2.12.0`：`plugin.json`（.codebuddy / .claude 两份）/ `marketplace.json`
+  （metadata + plugins[0] 两处）/ `install.sh VERSION` 共 5 个版本位全部同步。
+- README 头部版本 + 进化状态行同步（CI 步数 23 → 24，补「10/10 均配契约评测用例」）。
+
 ## [2.11.5] — 2026-11-09 ★N 批次：续跑收尾——测试欠账补齐 + 副本同步义务履行
 
 > 断点续跑复核发现候补 1 的「5.3/5.4/5.5 测试补齐」子句未做（M1 只做了第 7 项
