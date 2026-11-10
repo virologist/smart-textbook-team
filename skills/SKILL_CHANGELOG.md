@@ -315,6 +315,46 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.14.0 系列（★改造批次，2026-11-10 · 统一 CLI + 确定性门禁 + 红道登记）
+
+> 本批**未改动任何 `SKILL.md` 的 frontmatter version**，故无 skill 版本位变更，
+> 各 skill 的 F3「变更记录节 v{version} 对齐」不受影响。此处登记的是
+> **脚本层 / 编排层**的新增能力，供红道追溯。
+
+### 新增统一 CLI（`scripts/stt.py`）
+
+- 包根解析由「`for r in .workbuddy .codebuddy` 兜底循环 ×5 处」收敛为脚本自身
+  `__file__` 派生（换机首 spawn 死锁零线索的病灶）。
+- 子命令：`env` / `gate --phase` / `spawn` / `net-words` / `verify`。
+- `team-lead.md`「强制三步」step-1 改为 `stt.py spawn` 一行，其余协议文字原样保留。
+- 门禁相位映射：`design` / `retrieve` / `produce` / `proofread` / `cross` / `consistency`。
+
+### 新增确定性判据（三处「文字无检查」缺口）
+
+- `check_gate_design.py`（门禁 1）：知识域非空 / 时数 ≥ 1 / 含知识块锚区块；
+  退出码 0 通过 / 1 判据 FAIL / 2 输入缺失（显式报错，禁止静默吞错）。
+- `check_gate_retrieval.py`（门禁 2）：覆盖率 ≥ 80% / 时效性近 10 年 ≥ 80% /
+  冲突项 WARN 交人工。数据型行以「含数值」识别，**通用层零学科常量**——
+  学科词下沉 `references/profiles/`，不在通用门禁里写死。
+- `check_redlane_registry.py`（红道登记）：R1–R5 版本各处声明自洽 + R6 CHANGELOG
+  顶部须等于当前发布版本。补上 `IMMUNE_FILES` 免检 + 「登记无执行体」的缺口。
+  权威源与 `package_release.sh` 一致（两份 plugin.json / marketplace.json×2 /
+  install.sh / README.md）。
+
+### 通用工程纪律（本批实测固化，供后续复用）
+
+- 测试临时产物**禁止写进仓库内**：repo 扫描类门禁（学科中立 / 静态契约）会扫到
+  产物里的绝对路径而误报；一律放 `/tmp`。
+- 反向例须断言「输出不伪装成通过」：输入缺失判 `exit 2` 还不够，
+  还须断言显式报错文字、且不含「0 项未通过 / 全部通过」。
+- 任何「版本已登记」类判据，权威路径须与打包脚本同源，不得读包内不存在的路径。
+
+### 测试
+
+新增 5 个测试文件 / 18 用例（含 spawn 真实任务包端到端）；全量回归全绿。
+
+---
+
 ## v2.13.1 系列（★挂起项收口批次，2026-11-10 · 架构师审计 D-2/D-3/U-6 + K-1..K-6 入库）
 
 ### check_test_prompts.py（★D-2 豁免机制 + ★D-3 确定性）

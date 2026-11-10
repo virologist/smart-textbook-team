@@ -3,6 +3,51 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.0] — 2026-11-10 ★改造批次：统一 CLI + 门禁 1/2 确定性 linter + 红道登记检查
+
+> 承 2.13.0。本批把「依赖 AI 理解与执行的操作说明」升级为「工具可靠、结果可验证」：
+> 已确认范围仅两项（①统一 CLI 入口；②把文字无检查的缺口转为真实检查），偏好项不做。
+> 注：git HEAD commit 标签为 v2.13.1，但版本声明从未升（停在 2.13.0），故本批直接
+> 收敛到 2.14.0，不留 2.13.1 空号。
+
+### ① 统一 CLI `scripts/stt.py`（新建）
+
+- 从脚本自身 `__file__` 派生专家包根，收敛 `team-lead` 中重复 5 处的
+  `for r in .workbuddy .codebuddy` 兜底循环（换机首 spawn 死锁零线索的真实病灶）。
+- 子命令：`env`（诊断）/ `gate --phase {design|retrieve|produce|proofread|cross|consistency}`
+  / `spawn`（封装 `assemble_spawn_prompt.py`）/ `net-words` / `verify`（聚合静态契约）。
+- 薄封装、不重写既有脚本逻辑；`EXPERT_DIR` 未设时自动反推包根。
+- `agents/smart-textbook-team-team-lead.md`：新增「统一 CLI」章节；「强制三步」step-1
+  由手抄长串命令改为 `stt.py spawn` 一行调用（其余协议原样保留）。
+
+### ② 三处「文字无检查」缺口转为确定性检查
+
+- `scripts/check_gate_design.py`（门禁 1）：G1.1 knowledge_scope 非空 / G1.2 时数 ≥ 1 /
+  G1.3 含知识块锚区块。退出码 0 通过 / 1 FAIL / 2 输入缺失。
+- `scripts/check_gate_retrieval.py`（门禁 2）：G2.1 覆盖率 ≥ 80%（数据型行带
+  `[实]/[估]/[引]/[待核实]` 标签）/ G2.2 时效性近 10 年 ≥ 80% / G2.3 冲突项标记
+  （WARN，不自动 FAIL，交人工）。数据型行以「含数值」判据识别，通用层零学科常量。
+- `scripts/check_redlane_registry.py`（红道登记）：R1–R5 版本各处声明自洽 + R6
+  CHANGELOG 顶部须等于当前发布版本。堵住 `CHANGELOG.md` / `SKILL_CHANGELOG.md` 为
+  `IMMUNE_FILES` 免检、且红道「登记」步骤无执行体导致的「版本已升未登记」缺口。
+  权威版本源与 `package_release.sh` 完全一致（两份 plugin.json / marketplace.json×2 /
+  install.sh / README.md）。
+
+### 测试与验证
+
+- 新增 5 个测试文件、18 用例（含正/反向例与 `spawn` 真实任务包端到端）。
+- 反向例覆盖：版本升而不登记 CHANGELOG 必 FAIL、设计缺要素必 FAIL、
+  输入缺失必 exit 2 且显式报错（不得伪装成「0 项未通过」）、未知相位 exit 2。
+- 修复本批自引入的 3 类缺陷：新测试产物写进仓库内 `.pytest-tmp/` 污染 repo 扫描类
+  门禁（改放 `/tmp`）、门禁 2 写死学科词触发学科中立门禁（改为数值判据）、
+  `check_gate_design.py` 输入缺失静默吞错（补 error 分支）。
+- 全量回归：7 道机械门禁 + 静态契约 282/282 + pytest 全量全绿。
+
+### 四态标注
+
+自动验证通过（CLI/三个 linter/18 用例/全量回归） · AI 评估通过（team-lead 叙事） ·
+人工确认（语义充分性、冲突裁决、同步活动副本） · 尚未验证（线上真实章节任务）。
+
 ## [2.13.0] — 2026-11-10 ★S3-S7 批次：D4 人在回路 ×4 + S5 渐进式披露 + S7 frontmatter 门禁 + T5 假阴性修复
 
 > 承 2.12.0（S1+S2），本批落地 darwin 审计建议清单的 S3/S4/S5/S6/S7 五项红道改动。

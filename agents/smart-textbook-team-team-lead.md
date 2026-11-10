@@ -319,28 +319,41 @@ python3 scripts/contract_check.py --work-root "$WORK_ROOT" --member quality-exam
 3. 输出语言与用户一致
 4. **派单前必须执行「成员人设注入协议」**（见下节）
 
+## 统一 CLI（stt.py）— 改造批次新增
+
+> 收敛此前散落的「EXPERT_DIR 兜底解析 + 分散门禁调用 + 手抄 spawn 装配长串命令」。
+> `stt.py` 从自身 `__file__` 派生专家包根（比 `for r in .workbuddy .codebuddy` 兜底循环更稳，且不依赖 cwd / 环境变量），对外暴露收敛子命令。薄封装、不重写既有脚本，零回归风险。
+
+```bash
+python3 "$EXPERT_DIR/scripts/stt.py" env                                       # 诊断：打印包根与关键路径
+python3 "$EXPERT_DIR/scripts/stt.py" gate --phase design    --work-root "$WORK_ROOT" --chapter ch01   # 门禁 1
+python3 "$EXPERT_DIR/scripts/stt.py" gate --phase retrieve  --work-root "$WORK_ROOT" --chapter ch01   # 门禁 2
+python3 "$EXPERT_DIR/scripts/stt.py" gate --phase proofread --work-root "$WORK_ROOT" --chapter ch01 --strict  # 门禁 4
+python3 "$EXPERT_DIR/scripts/stt.py" gate --phase cross     --work-root "$WORK_ROOT" --affected-from ch01 --strict  # 跨章
+python3 "$EXPERT_DIR/scripts/stt.py" gate --phase consistency --root .   # 静态契约聚合
+python3 "$EXPERT_DIR/scripts/stt.py" spawn --member <id> --task-id <id> --task-file <f> --run-dir <dir> --check-task-package  # 成员人设注入
+python3 "$EXPERT_DIR/scripts/stt.py" verify --root .   # 全量静态契约 + 门禁一致性 + 红道登记
+```
+
+门禁相位映射（SSOT：本文件全局路径约定 + pipeline 门禁定义）：`design→check_gate_design.py` / `retrieve→check_gate_retrieval.py` / `produce→count_net_words.py(门禁3.2)` / `proofread→check_manuscript.py` / `cross→check_cross_chapter.py` / `consistency→静态契约聚合`。门禁 1/2 此前为主理人 AI 判定、无确定性检查，现已固化为 linter（语义判据仍留人工）。
+
 ## 成员人设注入协议（P0 强制 · v2.1 落地）
 
 > **平台事实（2026-09-29 实测取证，与另四团同批）**：`Agent(name=成员ID)` spawn 出的 teammate `agentType` 恒为 `general-purpose`，`agents/<member>.md` **不会**被自动注入。成员看不到自己的信封格式、boundary filter 义务、token budget、只写自有产物的副作用边界——本团 harness 协议设计得再细，不注入即全部落空。
 
 ### 强制三步（每次 spawn，无例外；与 task-router 的 dispatch checklist 串联）
 
-1. **装配**：调确定性脚本生成 spawn 文案，禁止手写/凭记忆拼人设
+1. **装配**：调统一 CLI 生成 spawn 文案，禁止手写/凭记忆拼人设
    ```bash
-   # 本包根目录：**优先取环境变量 EXPERT_DIR**（多机 / 非默认安装位必须显式设）；
-   # 未设时按两个已知安装根依次兜底——WorkBuddy 落 .workbuddy、CodeBuddy 落 .codebuddy，
-   # 新机常只装后者（C-23 实测：旧写法写死 .workbuddy → 新机首 spawn 死锁且零线索）。
-   EXPERT_DIR="${EXPERT_DIR:-$(for r in "$HOME/.workbuddy" "$HOME/.codebuddy"; do
-       d="$r/plugins/marketplaces/my-experts/plugins/smart-textbook-team"
-       [ -d "$d" ] && echo "$d" && break; done)}"
-   : "${EXPERT_DIR:?未找到专家包根——请显式 export EXPERT_DIR=<smart-textbook-team 目录>，禁止猜路径}"
+   # 统一 CLI 收敛了包根解析（从脚本自身 __file__ 派生，无需手动兜底），
+   # 一键完成「解析包根 + 装配 spawn 文案」。EXPERT_DIR 未设时 stt.py 自动反推包根。
    RUN_DIR={WORK_ROOT}/.harness-runs/{task_id}
-   python3 "$EXPERT_DIR/scripts/assemble_spawn_prompt.py" \
+   python3 "$EXPERT_DIR/scripts/stt.py" spawn \
      --member <member-id> --task-id {ch##}-{PHASE}-{R#} \
      --task-file <任务包文件> --run-dir "$RUN_DIR" --check-task-package \
      --out "$RUN_DIR/spawn__<member-id>.md"
    ```
-   脚本确定性完成：成员 MD 全文注入 + 本团 6 个 skill 的 SKILL.md/references 绝对路径 + 白名单校验（非 `plugin.json` 成员直接 exit 2）+ 任务包四要素校验（缺 exit 4）+ 落盘契约 + 下游白名单注入。`EXPERT_DIR` 不存在立即停止上报，禁止猜路径。
+   脚本确定性完成：成员 MD 全文注入 + 本团 6 个 skill 的 SKILL.md/references 绝对路径 + 白名单校验（非 `plugin.json` 成员直接 exit 2）+ 任务包四要素校验（缺 exit 4）+ 落盘契约 + 下游白名单注入。`stt.py` 内部解析包根失败立即停止上报，禁止猜路径。
 2. **spawn**：`Agent(name=<member-id>, subagent_type="general-purpose", prompt=<上一步产物>)`；envelope 要求（task_type/routing_confidence/context_refs/state_patch）由任务包承载，随装配文案一并下发
 3. **收产出**：以落盘文件 `{RUN_DIR}/{task_id}__{member-id}.md` 为准，SendMessage 仅作「摘要+路径」通知。**文件缺失 = 本轮未交付**（同批实测：SendMessage 正文 3 次丢失 1 次；成员"自称落盘"有实证不实）——按 E2 处置并 record_trace 记 `outcome=NO_ARTIFACT`
 

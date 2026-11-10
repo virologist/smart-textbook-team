@@ -17,7 +17,7 @@ set -euo pipefail
 # ★M3 v2.11.4：挂载执行体 scripts/check_external_skills.py + 规范 references/skill-mounting.md
 #   须随包分发（含 claude-code/desktop/cursor 目标）；PyYAML 为 5.4 第 7 项（术语依赖图）
 #   解析 exports/imports 的可选依赖（缺失按「不静默」升 FAIL，见 check_cross_chapter.py）
-VERSION="2.13.0"
+VERSION="2.14.0"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0
