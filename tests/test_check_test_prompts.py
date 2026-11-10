@@ -336,6 +336,38 @@ def test_new_skill_without_prompts_fails(sandbox_pkg):
     assert any("brand-new-skill" in f["detail"] for f in res["fails"])
 
 
+# ── ② 负向：豁免机制护栏（2026-11-10 批次 D-2）─────────────────────────
+
+
+def test_exempt_skill_with_valid_reason_passes(sandbox_pkg, monkeypatch):
+    """合法豁免：删除某 skill 的用例文件 + 登记有效豁免 → 门禁绿（豁免生效）。"""
+    p = _tp(sandbox_pkg, "book-orchestration")
+    p.unlink()
+    monkeypatch.setitem(MOD.EXEMPT_SKILLS, "book-orchestration",
+                        "测试用：纯参考型 skill，无可评测的 prompt 契约")
+    res = MOD.run(sandbox_pkg)
+    assert res["ok"], f"合法豁免未生效：{res.get('fails')}"
+    assert "book-orchestration" in res.get("exemptions", [])
+
+
+def test_exempt_for_nonexistent_skill_fails(sandbox_pkg, monkeypatch):
+    """护栏①：为包内不存在的 skill 登记豁免 → 必须判 FAIL（禁预留占位）。"""
+    monkeypatch.setitem(MOD.EXEMPT_SKILLS, "ghost-skill", "不存在的 skill 的豁免占位")
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "为不存在的 skill 预留豁免未被拦 —— 护栏①失效"
+    assert any("ghost-skill" in f["detail"] and "不存在" in f["detail"] for f in res["fails"])
+
+
+def test_exempt_with_empty_reason_fails(sandbox_pkg, monkeypatch):
+    """护栏②：豁免理由为空串 → 豁免不生效，该 skill 照常判 T1 FAIL。"""
+    p = _tp(sandbox_pkg, "learn-protocol")
+    p.unlink()
+    monkeypatch.setitem(MOD.EXEMPT_SKILLS, "learn-protocol", "   ")
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "空理由豁免生效了 —— 护栏②失效"
+    assert any("豁免理由为空" in f["detail"] for f in res["fails"])
+
+
 # ── ② 负向：门禁自身不可被绕过 ────────────────────────────────────────
 
 

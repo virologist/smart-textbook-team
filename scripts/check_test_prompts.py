@@ -77,6 +77,20 @@ POOL_EXCLUDE_NAMES = {"test-prompts.json"}
 #   → 假阴性逃逸。门禁自己的反例名绝不能成为门禁的证据。
 GATE_SELF_NAME = "check_test_prompts.py"
 
+# ── 豁免机制（2026-11-10 批次：架构师审计 D-2，§9.3 方案 2）──────────────
+# 病灶：T1「每个 Skill 必须有 test-prompts.json」无逃生阀——未来新增**纯参考型
+#   Skill**（只提供术语表/规范查询，无行为契约）时会被逼着写 3 条无意义 prompt，
+#   反而稀释用例集质量。包内其他门禁都有同类豁免（check_domain_neutral 的
+#   SKIP_DIRS / AUDIENCE_SKIP_FILES 同构）。
+# 三护栏（缺一即 FAIL，防止豁免机制本身被滥用成「永久免检」后门）：
+#   ① 键必须在包内真实存在（防「为不存在的 skill 预留豁免」占位不放水）
+#   ② 理由必填非空（豁免必须可审计）
+#   ③ 豁免数 > 0 时输出提醒（防长期遗忘）
+# 当前表为空 = 机制就位、不放水。新增豁免属**判据改动**，须经管家节点确认。
+EXEMPT_SKILLS: dict[str, str] = {
+    # "skill-name": "豁免理由（必填非空，说明为何无可评测的 prompt 契约）",
+}
+
 
 def _read(p: Path) -> str:
     try:
@@ -113,7 +127,11 @@ def build_pool(root: Path) -> tuple[set[str], set[str]]:
         base = root / d
         if not base.is_dir():
             continue
-        for p in base.rglob("*"):
+        # ★确定性遍历（2026-11-10 批次 D-3）：rglob 结果必须 sorted——
+        #   文件系统返回序不保证稳定，set 判定虽不受顺序影响，但同构门禁
+        #   （check_doc_consistency / check_cross_refs 均已 sorted）与未来可能的
+        #   顺序敏感逻辑都要求「同输入 → 同遍历序」的可复现性。
+        for p in sorted(base.rglob("*")):
             if not p.is_file():
                 continue
             if p.suffix in POOL_SUFFIX:
@@ -139,6 +157,16 @@ def check_skill_dir(skill_dir: Path, file_names: set[str], tokens: set[str]) -> 
     fails: list[dict] = []
     name = skill_dir.name
     tp = skill_dir / "test-prompts.json"
+
+    # 豁免检查（先于 T1）：豁免的 skill 跳过全部判据，但豁免声明本身受三护栏校验
+    if name in EXEMPT_SKILLS:
+        reason = EXEMPT_SKILLS[name]
+        if not isinstance(reason, str) or not reason.strip():
+            # 护栏②：理由必填非空
+            return [{"id": "T1", "skill": name,
+                     "detail": "EXEMPT_SKILLS 中该 skill 的豁免理由为空（豁免必须可审计）"}]
+        # 豁免生效：跳过 T1–T5（豁免条目仍需通过 run() 的护栏①校验）
+        return []
 
     # T1 存在性
     if not tp.is_file():
@@ -232,8 +260,19 @@ def run(root: Path) -> dict:
 
     file_names, tokens = build_pool(root)
     skill_dirs = sorted(d for d in skills_dir.iterdir() if d.is_dir() and (d / "SKILL.md").is_file())
+    skill_names = {d.name for d in skill_dirs}
 
     all_fails: list[dict] = []
+
+    # 豁免护栏①：豁免键必须在包内真实存在（防「为不存在的 skill 预留豁免」占位不放水）
+    for exempt_name in sorted(EXEMPT_SKILLS):
+        if exempt_name not in skill_names:
+            all_fails.append({
+                "id": "T1", "skill": exempt_name,
+                "detail": f"EXEMPT_SKILLS 声明的豁免键 '{exempt_name}' 在包内不存在"
+                          "（禁止为不存在的 skill 预留豁免；若 skill 已删除，豁免应同步删除）",
+            })
+
     for sd in skill_dirs:
         all_fails.extend(check_skill_dir(sd, file_names, tokens))
 
@@ -247,6 +286,8 @@ def run(root: Path) -> dict:
         "total_fails": len(all_fails),
         "by_id": by_id,
         "fails": all_fails,
+        # 豁免护栏③的载体：豁免数 > 0 时由输出层提醒（防长期遗忘）
+        "exemptions": sorted(EXEMPT_SKILLS),
     }
 
 
@@ -271,6 +312,10 @@ def main() -> int:
     print("Skill 契约评测用例门禁（test-prompts.json）")
     print("=" * 62)
     print(f"Skill 目录数：{res['checked']}")
+    # 豁免护栏③：豁免数 > 0 时提醒（防长期遗忘成「永久免检」后门）
+    if res.get("exemptions"):
+        print(f"⚠ 豁免生效 {len(res['exemptions'])} 个 skill（须有理由且经管家节点确认）："
+              f"{', '.join(res['exemptions'])}")
     if res["total_fails"] == 0:
         print("✓ T1 存在性 / T2 结构 / T3 条数 / T4 字段 / T5 引用真实性 —— 全部通过")
     else:

@@ -201,10 +201,20 @@ jobs:
           fi
           rm -f scripts/_aud_leak_probe.py
           # SSOT 豁免自证：同词写进 audience-profiles §1 表内不触发（豁免路径正确）
+          # 还原纪律（2026-11-10 U-6 修复）：禁用 `git checkout/restore ... || true`——
+          #   git checkout 对未跟踪文件报 pathspec 错但 exit 0，|| true 进一步吞信号，
+          #   探针残留会静默污染工作区（架构师 /tmp/gitprobe 实测）。改用 cp 备份还原
+          #   + 还原后 grep 校验（探针行必须消失），失败即 exit 1。
+          cp references/audience-profiles.md /tmp/_ap_backup.md
           printf '\n| 探针档 | 每知识块 ≥1 案例锚点 |\n' >> references/audience-profiles.md
           python3 scripts/check_domain_neutral.py --root .
-          git checkout -- references/audience-profiles.md 2>/dev/null || git restore references/audience-profiles.md 2>/dev/null || true
-          echo "[OK] 学科+学段中立性门禁正负双向通过（SSOT 豁免生效）"
+          cp /tmp/_ap_backup.md references/audience-profiles.md
+          rm -f /tmp/_ap_backup.md
+          if grep -q '探针档' references/audience-profiles.md; then
+            echo "::error::U-6：audience-profiles.md 探针残留未还原（工作区被污染）"
+            exit 1
+          fi
+          echo "[OK] 学科+学段中立性门禁正负双向通过（SSOT 豁免生效 + 探针已还原校验）"
 
       - name: Router 离线评测 (>= 0.80)
         run: python3 tests/test_router_eval.py

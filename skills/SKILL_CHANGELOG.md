@@ -315,6 +315,33 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.13.1 系列（★挂起项收口批次，2026-11-10 · 架构师审计 D-2/D-3/U-6 + K-1..K-6 入库）
+
+### check_test_prompts.py（★D-2 豁免机制 + ★D-3 确定性）
+- **D-2 豁免机制**（架构师 §9.3 方案 2）：新增模块常量 `EXEMPT_SKILLS: dict[str, str]`
+  （skill 名 → 必填理由），三护栏：①豁免键须在包内真实存在（禁预留占位）；
+  ②理由非空（豁免可审计）；③豁免数 > 0 时输出提醒（防长期遗忘成永久免检后门）。
+  **当前表为空 = 机制就位、不放水**。新增豁免属判据改动，须经管家节点确认。
+- **D-3 确定性遍历**：`build_pool` 的 `rglob` 改 `sorted()`，对齐包内同构门禁
+  （check_doc_consistency / check_cross_refs）惯例；行为零变化（集合判定不受序影响），
+  可复现性加固。
+- 测试 19 → 22 用例（+3：合法豁免生效 / 幽灵豁免键被拦 / 空理由豁免被拦）。
+
+### harness-gate.yml（★U-6 吞错修复）
+学科中立 step 的 audience-profiles 探针还原：`git checkout/restore ... || true`
+（对未跟踪文件报 pathspec 错但 exit 0，三重吞信号，探针残留静默污染工作区——
+架构师 /tmp/gitprobe 实测）→ 改为 `cp` 文件备份还原 + `grep` 校验探针行已消失，
+失败即 `exit 1`。同文件其他 `|| true`（:395/:555/:1019）有下游断言兜底，非还原动作，
+保留。整段 run 块本地实测 rc=0，探针零残留。
+
+### 配套（wiki 底座，tb-writer 项目侧）
+架构师 §18 拟入库条目 K-1..K-6 经 wiki-creator 编译进 `<项目>/.wiki-creator/`：
+主题 `gate-criteria-design`（门禁判据设计）6 页，backlinks 21，lint 全清
+（0 未互链 / 0 无来源 / 0 重复 slug / 0 主题孤儿）。
+
+---
+
+
 ## v2.13.0 系列（★S3-S7 批次，2026-11-10 · darwin 审计第二批落地）
 
 ### multi-agent-patterns v1.1.0 → v1.2.0（★S3）
