@@ -315,6 +315,59 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.13.0 系列（★S3-S7 批次，2026-11-10 · darwin 审计第二批落地）
+
+### multi-agent-patterns v1.1.0 → v1.2.0（★S3）
+新增「人在回路（到上限/触限时的停机契约）」小节：5 个模式各自的**既有上限值**
+（3 轮 / 2 轮 / 2 轮 / 同方式 2 次+换策略 1 次 / 分支 ≤5）统一绑定到四要素
+「停机动作 / 交付物 / 交回谁 / 用户可做的决定」；「通用反模式清单」补 2 条
+（触限后只停机不交代 / 把「用户没回话」当同意继续）。上限值零杜撰（机械校验）。
+
+### scientific-figure v1.0.0 → v1.1.0（★S3）
+新增「§5 人在回路（撞上限/撞严禁时的停机契约）」：§3 严禁 6 条逐条绑定停机动作与
+降级形式（含无实测数据 → 示意数据降级契约）；§4 复核清单 7 项逐条绑定判定与失败处置；
+停机包 4 类附件；交回谁用包内真实 agent name（visual-instructional-designer /
+quality-examiner / smart-textbook-team-team-lead）。
+
+### task-router v1.3.0 → v1.4.0（★S3）
+新增「§8 人在回路（派活前后与 ESC 升级的停机契约）」：§2 Step 4 dispatch checklist
+全部 7 项 + §3 ESC1–ESC4 逐条绑定四要素；阈值唯一来源 §2 Step 2 的 70 分线，
+未新造阈值；ESC3 换人仍过用户闸门；§8 末尾声明「只补停机契约、不改路由语义」，
+tests/test_router_eval.py 影子实现无需同步（路由枚举/关键词/优先级零改动）。
+
+### citation-verify v1.8.0 → v1.9.0（★S3+S4）
+§方法5「全部失败」由 2 行扩写为 5 段（触发条件/判否动作/是否阻断交付/交付物要求/
+交回谁+用户可决定三条路）。口径：逐条独立不互相阻断，但「全部核验项失败」的章
+**不得进入交付门禁**——显式标注为**人工裁决口径**（check_manuscript.py 实测无
+「全章零通过即 FAIL」判项，不虚构机械门禁）；补「变更记录」小节。
+
+### agent-harness-protocol v1.8.0 → v1.9.0（★S5+S6+S7 存量）
+渐进式披露：顶部新增「路由表（做 X 读 §N）」18 行查找表；§6.2 + §6.5（223 行）
+完整执行体下沉 → `references/harness-protocol-details.md`（新建 265 行，逐字保留，
+机械核验双 True），主文件留指针 + 退出码摘要；主文件 864 → 648 行。
+补「## 变更记录」节（v1.8.0 存量条目，S7 批次）。
+
+### learn-protocol / textbook-pipeline-workflow（★S7 存量，正文零改动）
+各补「## 变更记录」节（v2.1.0 / v1.6.0 条目），frontmatter version 不动（语义未变）。
+
+### manuscript-delivery（★S7 F3 首战命中）
+补 v1.4.0 变更记录条目——frontmatter v1.4.0 与记录最新 v1.3.0 错位的**存量真实病灶**，
+被新门禁 F3 首次运行即拦下（该判据价值的直接实证）。
+
+### 配套执行体（★S7 + ★T5 修复）
+- `scripts/check_skill_frontmatter.py` 新建（F1–F5 五判据，零依赖）+
+  `tests/test_check_skill_frontmatter.py` 19 用例（5 正向 + 14 反向）。
+- `scripts/check_test_prompts.py` T5 判据修复两条**假阴性逃逸**：
+  ① 子串逃逸（`check_foo.py` ⊂ `check_doc_consistency.py` 被判存在）→
+  改为「文件名查真实文件系统 + 其余标识符查 token 精确集合」；
+  ② 门禁自证（自身 docstring 反例名进池）→ 门禁自身与被检文件均不入 token 池。
+  `tests/test_check_test_prompts.py` 16 → 19 用例（新增子串假名 / docstring 反例名 /
+  真实命令不误杀三条反向例）。
+- **通则升级**：内容真实性判据 = 排除被检文件 + 排除判据自身文本 + 精确匹配非子串。
+
+---
+
+
 ## v2.12.0 系列（★S 批次，2026-11-10 · darwin 8 维审计落地 S1+S2）
 
 > 本批按 `references/decision-lanes.md` §3.1 红道全链执行：diff 预览 → 实现 →

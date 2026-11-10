@@ -29,8 +29,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
 import pytest
@@ -237,6 +239,87 @@ def test_T5_fabricated_gate_code_fails(sandbox_pkg):
     res = MOD.run(sandbox_pkg)
     assert not res["ok"]
     assert "T5" in _fail_ids(res)
+
+
+def test_T5_substring_of_real_filename_fails(sandbox_pkg):
+    """★逃逸防线：假名是真实文件名的**子串**时也必须判 FAIL（2026-11-10 实测）。
+
+    病史：T5 首版用「整池字符串 + 子串包含」判定 ⇒ `check_foo.py` 是
+    `check_doc_consistency.py` 的子串 ⇒ 假名被判「存在」⇒ **假阴性逃逸**。
+    修复：标识符改为**精确集合匹配**（文件名查文件系统，其余查 token 集合）。
+
+    ★假名纪律（2026-11-10 二次实测教训）：假名必须**动态生成**并与全包字符串
+    保证不相交——病历文档（CHANGELOG 等）只要提到某个固定假名，该假名就会
+    进入证据池变成「真实 token」，反向例即失效（观测者效应，首版反向例实测踩中）。
+    """
+    fake = "check_zz" + uuid.uuid4().hex[:12] + "_probe.py"
+    assert fake[: -len("_probe.py")] + "_probe.py" == fake
+    # 自校验：假名与包内证据池不相交（防止本测试自身退化成假门禁）
+    file_names, tokens = MOD.build_pool(sandbox_pkg)
+    assert fake not in file_names and fake not in tokens, "假名意外与包内字符串相交"
+
+    p = _tp(sandbox_pkg, "multi-agent-patterns")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["prompts"][0]["expected"] = f"先跑 {fake} --strict 再派活"
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "子串假名未被拦截 —— T5 又退回了子串匹配"
+    assert "T5" in _fail_ids(res)
+    assert any(fake in f["detail"] for f in res["fails"])
+
+
+def test_T5_gate_self_file_excluded_from_evidence_pool(sandbox_pkg):
+    """★逃逸防线二：门禁**自身文件**不得成为证据池（机制级验证）。
+
+    病史：门禁 docstring 写着「如 `check_foo.py`」这类反例示例名，曾被抽成
+    token 放进证据池 ⇒ 用例里写该假名反而「查得到」⇒ 假阴性逃逸。
+    修复：GATE_SELF_NAME 文件不参与 token 抽取。
+
+    ★本测试为何不用固定名直接断言（2026-11-10 三次实测教训——观测者效应）：
+    固定假名只要被写进任何**合法病历文档**（CHANGELOG / SKILL_CHANGELOG——
+    记录病历是文档的正常职责，不能为此把它们排除出池），该假名就会重新变成
+    「真实 token」，基于固定名的断言随机失效。
+    因此测试流程为：沙箱内清除携带假名的病历文档 → 使「假名唯一出处 = 门禁
+    自身」严格成立 → 再断言门禁排除机制 + 端到端拦截。
+    """
+    gate_src = (PKG_ROOT / "scripts" / "check_test_prompts.py").read_text(encoding="utf-8")
+    m = re.search(r"如 `([A-Za-z0-9_\-]+\.py)`", gate_src)
+    assert m, "门禁 docstring 反例名形态变更，本测试需同步更新"
+    docstring_fake = m.group(1)
+
+    # ① 沙箱内清除携带假名的病历文档（使前提严格成立）
+    for cand in (Path(sandbox_pkg) / "skills" / "SKILL_CHANGELOG.md",
+                 Path(sandbox_pkg) / "CHANGELOG.md"):
+        if cand.exists():
+            t = cand.read_text(encoding="utf-8")
+            if docstring_fake in t:
+                cand.unlink()
+
+    # ② 机制断言：现在「假名唯一出处 = 门禁自身」，它不得出现在 token 池
+    file_names, tokens = MOD.build_pool(sandbox_pkg)
+    assert docstring_fake not in file_names, "假名已是真实文件名，测试前提失效"
+    assert docstring_fake in gate_src, "前提失效：门禁文本里已无该反例名"
+    assert docstring_fake not in tokens, (
+        "门禁自身文本进入了证据池 —— GATE_SELF_NAME 排除机制失效")
+
+    # ③ 端到端：唯一证据来源是门禁自身的假名，写进用例必须被判 FAIL
+    p = _tp(sandbox_pkg, "task-router")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["prompts"][0]["expected"] = f"先跑 {docstring_fake} --strict 再派活"
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "门禁自身 docstring 的反例名成了证据 —— 自证逃逸未修"
+    assert "T5" in _fail_ids(res)
+
+
+def test_T5_real_command_still_passes(sandbox_pkg):
+    """正向对照：真实存在的命令名**不得**被误杀（防过度拦截）。"""
+    p = _tp(sandbox_pkg, "citation-verify")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["prompts"][0]["expected"] = "跑 scripts/verify_citations_r7.py 核验，再出表"
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert res["ok"], f"真实命令被误杀：{res.get('fails')}"
 
 
 # ── ② 负向：新增 Skill 未提供用例集 ────────────────────────────────────

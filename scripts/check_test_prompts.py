@@ -71,6 +71,12 @@ POOL_SUFFIX = {".md", ".py", ".yaml", ".yml", ".json"}
 #   T5 永远命中 → 判据形同虚设（这是 T5 首版实测出的真 bug，已修）。
 POOL_EXCLUDE_NAMES = {"test-prompts.json"}
 
+# ★自证防线二（2026-11-10 实测的第二处逃逸）：**门禁脚本自身**的文本也不得进入
+#   证据池。本脚本 docstring 里写着「如 `check_foo.py`」这类**反例示例名**，
+#   它会被 RE_FILE 抽成 token 放进池里 → 用例里写 `check_foo.py` 反而「查得到」
+#   → 假阴性逃逸。门禁自己的反例名绝不能成为门禁的证据。
+GATE_SELF_NAME = "check_test_prompts.py"
+
 
 def _read(p: Path) -> str:
     try:
@@ -79,28 +85,8 @@ def _read(p: Path) -> str:
         return ""
 
 
-def build_pool(root: Path) -> str:
-    """构建 T5 的包内文本池（全包一次性读入）。
-
-    ★排除 test-prompts.json 自身（见 POOL_EXCLUDE_NAMES）——
-      否则被检文件自证，判据永远绿灯。
-    """
-    chunks = []
-    for d in POOL_DIRS:
-        base = root / d
-        if not base.is_dir():
-            continue
-        for p in base.rglob("*"):
-            if not p.is_file() or p.suffix not in POOL_SUFFIX:
-                continue
-            if p.name in POOL_EXCLUDE_NAMES:
-                continue
-            chunks.append(_read(p))
-    return "\n".join(chunks)
-
-
 def collect_identifiers(text: str) -> set[str]:
-    """抽取 expected 文本中的可核验标识符集合。"""
+    """抽取文本中的可核验标识符集合。"""
     ids = set()
     ids |= set(RE_FILE.findall(text))
     ids |= set(RE_NUM.findall(text))
@@ -109,7 +95,46 @@ def collect_identifiers(text: str) -> set[str]:
     return {i for i in ids if i not in IDENT_WHITELIST}
 
 
-def check_skill_dir(skill_dir: Path, pool: str) -> list[dict]:
+def build_pool(root: Path) -> tuple[set[str], set[str]]:
+    """构建 T5 的证据池，返回 (真实文件名集合, 包内标识符 token 集合)。
+
+    ★为什么不用「整池字符串 + 子串匹配」（2026-11-10 实测的两个逃逸）：
+      ① 子串逃逸：`check_foo.py` 是 `check_doc_consistency.py` 的**子串**，
+         子串匹配会判「存在」→ 假阴性。token 集合是**精确相等**判定，天然免疫。
+      ② 自证逃逸：门禁自身 docstring 里的反例名会被抽成 token 放进池里
+         → 写假名反而「查得到」。故门禁自身文件不参与 token 抽取。
+
+    文件名类标识符查**真实文件系统**（file_names），其余标识符查 token 集合
+    （tokens）——两者取并集即为「该标识符在包内确有实据」。
+    """
+    file_names: set[str] = set()
+    tokens: set[str] = set()
+    for d in POOL_DIRS:
+        base = root / d
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*"):
+            if not p.is_file():
+                continue
+            if p.suffix in POOL_SUFFIX:
+                file_names.add(p.name)
+                # ★门禁自身与被检文件都不进 token 池（见 POOL_EXCLUDE_NAMES / GATE_SELF_NAME）
+                if p.name in POOL_EXCLUDE_NAMES or p.name == GATE_SELF_NAME:
+                    continue
+                tokens |= collect_identifiers(_read(p))
+    return file_names, tokens
+
+
+def identifier_exists(ident: str, file_names: set[str], tokens: set[str]) -> bool:
+    """判断标识符在包内是否有实据（文件名查文件系统，其余查 token 集合）。
+
+    ★精确匹配，绝不用子串包含——子串匹配会让「取真实文件名的片段当假名」
+      逃逸（实测 `check_foo.py` ⊂ `check_doc_consistency.py`）。
+    """
+    return ident in file_names or ident in tokens
+
+
+def check_skill_dir(skill_dir: Path, file_names: set[str], tokens: set[str]) -> list[dict]:
     """对单个 Skill 目录执行 T1–T5，返回失败项列表。"""
     fails: list[dict] = []
     name = skill_dir.name
@@ -188,7 +213,8 @@ def check_skill_dir(skill_dir: Path, pool: str) -> list[dict]:
         exp = item.get("expected")
         if not isinstance(exp, str) or not exp.strip():
             continue
-        missing = sorted(i for i in collect_identifiers(exp) if i not in pool)
+        missing = sorted(i for i in collect_identifiers(exp)
+                         if not identifier_exists(i, file_names, tokens))
         if missing:
             fails.append({
                 "id": "T5", "skill": name,
@@ -204,12 +230,12 @@ def run(root: Path) -> dict:
         return {"ok": False, "error": f"未找到 skills 目录：{skills_dir}", "fails": [],
                 "checked": 0, "total_fails": 1}
 
-    pool = build_pool(root)
+    file_names, tokens = build_pool(root)
     skill_dirs = sorted(d for d in skills_dir.iterdir() if d.is_dir() and (d / "SKILL.md").is_file())
 
     all_fails: list[dict] = []
     for sd in skill_dirs:
-        all_fails.extend(check_skill_dir(sd, pool))
+        all_fails.extend(check_skill_dir(sd, file_names, tokens))
 
     by_id: dict[str, int] = {}
     for f in all_fails:

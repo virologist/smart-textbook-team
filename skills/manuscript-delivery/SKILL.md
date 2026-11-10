@@ -408,6 +408,10 @@ python3 scripts/build_book.py --work-root "$WORK_ROOT"
 
 ## 变更记录
 
+- v1.4.0 [2026-11-05] 门禁 4.12d 执行体变更（判据载体 = citation-verify §4d）：第④锚
+  `std-skill:{skill名}:{条目}` 在 `check_manuscript.py` 的 `_has_retrievable_anchor`
+  机械落地（`RE_STD_SKILL` 三段齐全即认锚）——补齐 G6（v2.10）文档声称与机械实现的
+  缺口；①②③ 形态判定不变（10 例正负双向回归锁定）。
 - v1.3.0 [2026-11-01] ADR-05 硬门槛落盘（批次 B4）：判据表补 **4.14 R5 硬门槛**
   （r5-score.json：total≥80 ∧ total==Σ(维度×权重)/100 ∧ 权重和==100 ∧ 每维 ≥1 证据位置；
   不存在 → N/A 不阻塞）；附带归位 frontmatter version 漂移（B5 加 v1.2.0 变更记录时

@@ -157,3 +157,7 @@ compare 返回 1 时，对**每一条告警**生成一条 `signal_type: metric_b
 - **静默重置基线**（直接改/删 `metrics_baseline.jsonl`、或 reset 不带 `--reason`/`--confirm`）——这会抹掉漂移证据，等同虚报完成
 - **协议合入后跳过 protocol-eval 回归**（改了 A 指标却没检查 B 是否退化）
 - **把 compare 的 exit 1 当成「本次任务失败」**：它是学习触发信号，不是交付门禁；交付门禁仍以 `compute_metrics.py` 与四份测试为准
+
+## 变更记录
+
+- v2.1.0 [2026-11-10] 补「变更记录」小节（此前 10 个 skill 中缺失项之一）；登记本次 v2.12.0 批次的存量补齐

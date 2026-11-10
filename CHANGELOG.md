@@ -3,6 +3,67 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.13.0] — 2026-11-10 ★S3-S7 批次：D4 人在回路 ×4 + S5 渐进式披露 + S7 frontmatter 门禁 + T5 假阴性修复
+
+> 承 2.12.0（S1+S2），本批落地 darwin 审计建议清单的 S3/S4/S5/S6/S7 五项红道改动。
+> S6（多 skill 渐进式披露）以 S5 单点落地替代——包内仅 agent-harness-protocol 一份
+> 超大文件（864 行），其余 9 个 Skill 均在 100–420 行合理区间，无需批量外置。
+
+### ★S3 「人在回路」小节 ×4（修 D4 系统性短板：5/10 Skill ≤6 分）
+
+- `multi-agent-patterns` v1.1.0 → v1.2.0：新增「人在回路（到上限/触限时的停机契约）」——
+  把 5 个模式的**既有上限值**（3 轮 / 2 轮 / 2 轮 / 3 次 / 分支 ≤5）统一绑定到
+  四要素「停机动作 / 交付物 / 交回谁 / 用户可做的决定」；上限值零杜撰（机械校验）。
+- `scientific-figure` v1.0.0 → v1.1.0：新增「§5 人在回路」——§3 严禁 6 条逐条绑定
+  停机动作与降级形式（含「无实测数据 → 示意数据降级契约」）；§4 复核清单 7 项逐条绑定
+  判定与失败处置；停机包 4 类附件。
+- `task-router` v1.3.0 → v1.4.0：新增「§8 人在回路」——§2 Step 4 dispatch checklist
+  **全部 7 项** + §3 ESC1–ESC4 逐条绑定四要素；阈值只有一处来源（§2 Step 2 的 70 分线），
+  未新造阈值；ESC3 换人仍过用户闸门。
+- `citation-verify` v1.8.0 → v1.9.0：§方法5 由 2 行扩写为 5 段，明确回答
+  「全部失败时是否阻断交付」——逐条独立不互相阻断，但**该章不得进入交付门禁**
+  （人工裁决口径，不虚构机械判项：实测 check_manuscript.py 无此判据，诚实标注）。
+- 通用纪律：车道口径一律指向 `references/decision-lanes.md`（只引用不复述），
+  无「置信度 ≥ X 自动放行」形态表述，红道动作永远人工。
+
+### ★S5+S6 agent-harness-protocol v1.8.0 → v1.9.0（渐进式披露）
+
+- 顶部新增「路由表（做 X 读 §N）」18 行查找表（角色边界/派活/校验/黑板/超时/预算/
+  熔断/降级/trace/续跑/交接/回传 → §N 直达）。
+- §6.2 关键指标计算 + §6.5 P1 三件执行体（223 行）完整下沉 →
+  **`references/harness-protocol-details.md`（新建，265 行）**——逐字保留（机械核验
+  `body(orig)==body(ref)` 双 True），主文件留指针 + 退出码摘要；关键判据探针
+  （≥0.80 / ≤0.30 / ≤0.10 / BRANCH_CAP / OUT_OF_SCOPE_WRITE 等）全部保留。
+- 主文件 **864 → 648 行**。
+
+### ★S7 frontmatter 门禁（锁死 S2/S4 成果，防回归）
+
+- **存量补齐**：agent-harness-protocol / learn-protocol / textbook-pipeline-workflow
+  补「## 变更记录」节（各登记当前版本一条，不杜撰历史）；manuscript-delivery 补
+  v1.4.0 条目（frontmatter 与记录错位的**存量真实病灶**，F3 首战即中）。
+- **新增门禁** `scripts/check_skill_frontmatter.py`（F1 版本必填 semver / F2 记录节存在
+  含别名 / F3 版本与记录对齐 / F4 name=目录名 / F5 边界完整），零依赖（CI 依赖安装前可跑）。
+- **反向例测试** `tests/test_check_skill_frontmatter.py`（19 用例 = 5 正向 + 14 反向）。
+- **接线**：tests/run_all.py 六→七道机械门禁；CI 新增 step（正负双向，还原用 cp 备份）。
+
+### ★T5 假阴性修复（S1 门禁的两条逃逸路径，实测发现）
+
+- **逃逸一（子串）**：T5 用「整池字符串 + 子串包含」判定 ⇒ 假名 `check_foo.py` 是
+  真实文件 `check_doc_consistency.py` 的**子串** ⇒ 判「存在」⇒ 假阴性。
+- **逃逸二（门禁自证）**：门禁自身 docstring 里的反例名（「如 `check_foo.py`」）
+  被抽成 token 进池 ⇒ 写该假名反而「查得到」。
+- **修复**：证据池改为「文件名查真实文件系统 + 其余标识符查 token **精确集合**」，
+  门禁自身与被检文件均不入 token 池；新增 3 条反向例锁定（子串假名 / docstring 反例名 /
+  真实命令不误杀）。**通则升级：内容真实性判据不仅要排除被检文件，还要排除判据自身
+  文本，且必须精确匹配而非子串包含。**
+
+### 验证与版本自洽
+
+- 全量回归：pytest **421 passed / 3 skipped**（+22）；七道机械门禁 + 静态契约
+  282 计分项全绿（1.000）；路由评测 47/47（1.000）；router_eval 分数不受 S3 影响。
+- 版本五处自洽 2.12.0 → 2.13.0（两份 plugin.json / marketplace.json×2 / install.sh）；
+  README 头部（版本 + CI 26 步）。
+
 ## [2.12.0] — 2026-11-10 ★S 批次：Skill 契约评测用例补齐（10/10）+ 用例门禁化 + book-orchestration 边界修复
 
 > 起点：2026-11-10 对本包 10 个 Skill 做 darwin 8 维审计（D8 降级 dry_run），

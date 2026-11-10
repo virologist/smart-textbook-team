@@ -113,6 +113,56 @@ jobs:
           python3 scripts/check_test_prompts.py --root .
           echo "[OK] Skill 契约评测用例门禁正负双向通过"
 
+      # Skill frontmatter 门禁（2026-11-10 批次 S7）：
+      # 病史：各 Skill 的 frontmatter（version 位）与版本演进记录节全是**纯散文约定**——
+      #   version 被改成 `1.8`（非法 semver）或整行删掉，平台照样加载成功，
+      #   下游 CHANGELOG / 变更记录 / 安装清单全部对不上，且没有任何一步会红；
+      #   变更记录节更是 10 个 skill 中 3 个**完全没有**（agent-harness-protocol /
+      #   learn-protocol / textbook-pipeline-workflow），其余 7 个节名还不统一。
+      # 更隐蔽的一种腐化：**补了节但内容与版本对不上**——实测 manuscript-delivery
+      #   frontmatter 是 v1.4.0，而其变更记录节最新条目仍是 v1.3.0（节在、版本错位）。
+      # 本门禁 5 条判据：F1 版本必填 / F2 记录节存在 / F3 版本对齐 / F4 name 对齐 / F5 边界完整。
+      # 正向：真实包 exit 0；负向：删 version 行 + 改非法节名 → 必须 exit≠0。
+      # ★本门禁零依赖（frontmatter 手写行解析，不需 PyYAML）——故可在本 step 执行。
+      - name: Skill frontmatter 门禁（check_skill_frontmatter.py 正负双向）
+        run: |
+          set -e
+          python3 scripts/check_skill_frontmatter.py --root .
+          # 负向 1：删掉一个 skill 的 version 行 → 必须被拦（防版本位静默腐化）
+          # 还原用文件备份而非 git checkout —— 不依赖 git 索引状态，本地/CI 同行为
+          cp skills/learn-protocol/SKILL.md /tmp/_fm_backup.md
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("skills/learn-protocol/SKILL.md")
+          lines = p.read_text(encoding="utf-8").splitlines(keepends=True)
+          p.write_text("".join(l for l in lines if not l.startswith("version:")),
+                       encoding="utf-8")
+          PY
+          if python3 scripts/check_skill_frontmatter.py --root . 2>/dev/null; then
+            echo "::error::负向失败：缺失 version 行未被门禁拦截"
+            cp /tmp/_fm_backup.md skills/learn-protocol/SKILL.md
+            exit 1
+          fi
+          cp /tmp/_fm_backup.md skills/learn-protocol/SKILL.md
+          # 负向 2：把变更记录节标题改成别名表之外的名称 → 必须被拦（防节名漂移）
+          cp skills/agent-harness-protocol/SKILL.md /tmp/_fm_backup2.md
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("skills/agent-harness-protocol/SKILL.md")
+          t = p.read_text(encoding="utf-8")
+          assert "## 变更记录" in t
+          p.write_text(t.replace("## 变更记录", "## 更新日志", 1), encoding="utf-8")
+          PY
+          if python3 scripts/check_skill_frontmatter.py --root . 2>/dev/null; then
+            echo "::error::负向失败：非法变更记录节名未被门禁拦截"
+            cp /tmp/_fm_backup2.md skills/agent-harness-protocol/SKILL.md
+            exit 1
+          fi
+          cp /tmp/_fm_backup2.md skills/agent-harness-protocol/SKILL.md
+          rm -f /tmp/_fm_backup.md /tmp/_fm_backup2.md
+          python3 scripts/check_skill_frontmatter.py --root .
+          echo "[OK] Skill frontmatter 门禁正负双向通过"
+
       # P1 批次门禁（2026-11-04）：并行调度 / 成员契约 / 拆分-合并链路 / 并发度指标
       # 病史：P1 落地三件执行体（scheduler.py / contract_check.py / merge_sections.py）
       # 与一份契约 SSOT（references/member-contracts.json），此前**零测试覆盖**——

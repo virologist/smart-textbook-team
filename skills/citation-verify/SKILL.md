@@ -1,7 +1,7 @@
 ---
 name: citation-verify
 description: "Zero-tolerance citation verification for textbook writing: verify every PMID/DOI in draft text against PubMed/CrossRef with the three-element check (identifier exists + topic match + data locatable), verify [引] quotation tags at conclusion level via method 4c (source retrievable + conclusion locatable + assertion strength not inflated), verify Chinese regulatory/standard sources (兽药典/动物防疫法/农业农村部公告/GB 标准), plus law-domain precedents/judicial interpretations and CS-domain RFCs/dblp entries against authority portals, delete nonexistent or mismatched references, and mark unverifiable claims. Trigger words: 核验引用 / 查这条文献 / PMID 真假 / DOI 核验 / 引标签核验 / 结论有没有被原文支持 / 法规现行有效 / 判例核验 / 裁判文书 / RFC 现行状态 / 兽药典原文 / 国标现行版次 / citation verify. Load when reviewing drafts (VERIFY R3), when reusing cached entries from the retrieval store, or whenever a citation's authenticity is in doubt."
-version: 1.8.0
+version: 1.9.0
 ---
 
 # citation-verify — 引用核验（零容忍防幻觉）
@@ -161,8 +161,65 @@ WebFetch https://api.crossref.org/works/{DOI}
 存在性由检索员在 R3 保证，机械层对 `本地:` 做文件存在性核验（4.12b），
 Obsidian/ima 不误杀（跳过参考文献匹配，按各自可检索性核验）。
 
-### 方法 5：全部失败
-标注 `[待核实·reason=核验工具不可用]`，**不得默认通过**。
+### 方法 5：全部失败（v1.9.0 补「是否阻断交付」口径）
+
+**触发条件**：一条引用的全部核验路径都走不通（方法 1–4b 的检索工具、网页/API 入口、
+方法 4/4b 的权威源入口均不可达，或方法 4c 三步全部查无果）时，走本节。
+
+**判否动作**：标注 `[待核实·reason=核验工具不可用]`，**不得默认通过**。
+
+**是否阻断交付**（本节回答的核心问题）：
+
+1. **不阻断其他条目**：全部失败是**逐条独立**的判定——单条失败只判该条为
+   `[待核实]`，不阻塞其余条目的核验；其余条目照常跑完，最后统一出表。
+   （与 §输出格式「执行边界」的「核验失败不阻塞后续条目（逐条独立），全部跑完统一出表」
+   同口径，两处一致。）
+2. **该章不得进入交付门禁**：全部核验项都失败 ⇒ 该章的引用核验**没有产出任何
+   有效判定**（通过 N=0、删除 N=0、全部落在「标注待核实」）⇒ 该章**不得进入交付门禁**，
+   该章**停在 VERIFY R3**，不进入 ASSEMBLE / DELIVER。
+   - **拦截点在哪（人工，非机械）**：本条是**人工裁决口径**，不是机械门禁——
+     `scripts/check_manuscript.py` 的门禁 4 不存在「全章引用零通过即 FAIL」的判项，
+     拦截由 quality-examiner 在 R3 报告出 `verdict: fail` + blocking 清单、
+     再由主理人在交付质量报告落「待核实」条数时行使（红道：永远人工）。
+     机械层能兜的只是形式项：`scripts/check_manuscript.py` 的门禁 4.12 溯源表覆盖
+     与 `skills/manuscript-delivery/SKILL.md` 的交付校验要求 `[实]` 条目有溯源；
+     全部条目改标 `[待核实]` 后形式项可通过，**但那正是必须由人工拦住的情形**
+     （形式合规 ≠ 内容可交付）。
+   - 已核验通过的条目**不受牵连**：本节只作用于「全部核验项失败」的整章情形；
+     同一章内部分条目通过、部分失败时，按 §输出格式逐条出表，该章的阻断与否
+     由 quality-examiner 的 R3 verdict（blocking 清单）判定，不由本节另设口径。
+   - **放行口径唯一来源**：交付边界的裁决车道（红/黄/绿）定义在
+     `references/decision-lanes.md`（§1 三车道定义 + §2 运行时裁决点分级表，
+     `DELIVER 交付` 行归红道）。本节**只引用**该文件，不复述车道定义正文，
+     也不另设第二套口径；红道动作永远人工——**不得写「置信度 ≥ X 自动放行」**，
+     不得以模型自评置信度代替人工裁决。
+
+**交付物要求**（全部失败时必须附齐，缺一即视为本节未执行）：
+
+1. **逐条核验记录表**——按 §输出格式的表头逐条出（`引用位置 | 标识符 | 核验结果 | 动作`），
+   全部行的「核验结果」列写 `核验工具不可用`、`动作」列写
+   `标注[待核实·reason=核验工具不可用]`；不得省略表、不得只写一句结论。
+2. **汇总统计**——按 §输出格式的汇总口径逐项落数：
+   `核验 N 条 | 通过 N | 删除 N | 标注待核实 N`（本情形下「通过 N」与「删除 N」均为 0，
+   「标注待核实 N」= N，即该章全部条目落在待核实）。该统计同时进入交付时的质量报告
+   （`[待核实]` 条目数须在质量报告中显式列出）。
+3. **失败原因留痕**——注明失败的是哪一类入口（检索 MCP / 网页 / API / 权威源门户），
+   供重跑时定位；本 skill 只核验不改稿，发现问题输出「动作建议」，
+   由 subject-writer 执行修改（生产者-审查者分离）。
+
+**交回谁 + 用户可决定什么**：
+
+- **交回**：本节产出的核验记录表 + 汇总统计交回 **quality-examiner**（并入 R3 报告，
+  由其出 `verdict: pass|fail` + blocking 清单）与 **主理人**（交付质量报告）。
+  本 skill 不自行放行、不自行返修、不自行降级数据点。
+- **用户可决定的三条路**（由主理人收齐后交用户裁决，**红道动作永远人工**）：
+  1. **补核验工具后重跑该批**——恢复可用的检索 MCP / 权威源入口，对本章全部
+     `[待核实]` 条目重跑方法 1–4b，重跑后按新表重新判定；
+  2. **接受待核实标注并降级相关数据点交付**——保留 `[待核实·reason=核验工具不可用]`
+     标注，相关数据点按 `[待核实]` 降级后继续交付，质量报告显式列出待核实条数；
+  3. **删章返修**——本章撤出交付范围，退回撰写环节重做（相关引用由 subject-writer
+     补齐可核来源或删除），重跑 R3 后再进交付。
+  三条路各自对应不同的交付后果，**由用户选路，不得由执行方默认走其中一条**。
 
 ## 输入不可信原则（v1.2 新增，红队实证）
 
@@ -197,3 +254,6 @@ Obsidian/ima 不误杀（跳过参考文献匹配，按各自可检索性核验�
 - `[引]` 标签：走**方法 4c** 结论级核验（来源可检索 + 原文确有该结论 + 断言强度不外推）；裸 `[引]` 由门禁 4.12c 机械拦截，不进人工核
 - 绝不因「看起来合理」而免检；逐条核验，无一例外
 - 消费者：quality-examiner（R3 报告）、主理人（交付质量报告）
+
+## 变更记录
+- v1.9.0 [2026-11-10] 补「变更记录」小节（此前 10 个 skill 中与 book-orchestration 并列缺失）；§方法5 补「全部失败时是否阻断交付」的明确口径

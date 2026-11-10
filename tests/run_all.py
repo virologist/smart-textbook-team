@@ -6,9 +6,9 @@ run_all.py — 本地全量回归统一入口（★M7 v2.11.4）
 CI harness-gate 与本地回归的同一扇门（判据同源，防「本地绿 CI 红」再现）：
   ① pytest tests/ 全量（独立 --basetemp，防平台 shim tmpdir 冲突）
   ② 静态契约评测 tests/test_smart_textbook_team.py（main 式，282 计分项）
-  ③ 相位/文档/中立/挂载/引用/用例 六道机械门禁
+  ③ 相位/文档/中立/挂载/引用/用例/frontmatter 七道机械门禁
 
-用法：python3 tests/run_all.py [--fast]   # --fast 跳过 pytest（仅六门禁+契约）
+用法：python3 tests/run_all.py [--fast]   # --fast 跳过 pytest（仅七门禁+契约）
 退出码：0 全绿 | 1 任一失败
 """
 from __future__ import annotations
@@ -27,6 +27,7 @@ STEPS = [
     ("挂载校验", [sys.executable, "scripts/check_external_skills.py", "--work-root", str(REPO)]),
     ("引用一致", [sys.executable, "scripts/check_cross_refs.py", "--root", str(REPO)]),
     ("用例契约", [sys.executable, "scripts/check_test_prompts.py", "--root", str(REPO)]),
+    ("frontmatter", [sys.executable, "scripts/check_skill_frontmatter.py", "--root", str(REPO)]),
     ("静态契约", [sys.executable, "tests/test_smart_textbook_team.py"]),
 ]
 

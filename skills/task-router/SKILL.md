@@ -1,6 +1,6 @@
 ---
 name: task-router
-version: 1.3.0
+version: 1.4.0
 description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (17 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
 ---
 
@@ -234,7 +234,49 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
+## 8. 人在回路（派活前后与 ESC 升级的停机契约）
+
+> 本节把 §2 Step 4 的 dispatch checklist（7 项）与 §3 的 ESC1–ESC4（4 条）落到「不满足时到底做什么」：
+> 每项检查 = 一个停机点，每条升级 = 一个交回动作，逐条写明**停机动作 / 交付物 / 交回谁 / 用户可做的决定**。
+> 阈值只有一处来源：§2 Step 2 的 0-100 量纲与 70 分线（总分 ≥ 70 直接 dispatch，< 70 走升级）——
+> 它只决定「派活还是升级」，**不是放行依据**；红道动作永远人工（车道分级 SSOT = `references/decision-lanes.md`，本节不复述其定义）。
+
+### 8.1 派活前 checklist → 动作绑定（§2 Step 4 全部 7 项）
+
+| # | 检查项（§2 Step 4 原文） | 不满足时的停机动作 | 交付物（随停机一并给出） | 交回谁 | 用户可做的决定 |
+|---|---|---|---|---|---|
+| ① | task_type 已标注（写入 envelope `payload.task_type`） | 停下不 dispatch；回退 §2 Step 1 重判；判不出转 §3 ESC2 | 候选 task_type 清单 + 各候选的 §1 输入信号命中理由 + 置信度分（按 §2 Step 2 四项累加） | team-lead（判不出时交回用户） | ① 直接指定 task_type 派工 ② 要求先澄清再派 ③ 终止本任务 |
+| ② | 责任成员当前 phase + blocking_open 已查（黑板查询） | 停下不 dispatch（查不到 ≠ 已查）；补查黑板后重判；确认阻塞转 §3 ESC3 | 黑板查询结果：责任成员当前 phase + blocking_open 列表 | team-lead（阻塞且无等价成员时按 ESC3 上报用户） | ① 等阻塞解除再派 ② 授权按 ESC3 换等价成员 ③ 指定降级 task_type |
+| ③ | WORK_ROOT 已传入成员指令 | 停下不 dispatch；不猜路径，补齐 WORK_ROOT 后重派 | 成员指令草稿里的 WORK_ROOT 取值及其来源 | team-lead | ① 确认指向当前工作目录 ② 指定另一个工作目录 ③ 终止本任务 |
+| ④ | context_refs 路径已给（≤500 token 内联） | 路径缺失 → 停下补路径；内联超 500 token → 停下改传路径（不整篇复制上游产出） | context_refs 清单（相对 WORK_ROOT 的路径）+ 内联 token 估算 | team-lead | ① 确认可给的上游产出范围 ② 追加上下文文件 ③ 缩减范围，只传必要路径 |
+| ⑤ | 期望产出（输出契约）已声明 | 停下不 dispatch；契约与成员职责不符 → 回 §1 改判 task_type（错挂 review-* 或标 custom 的根因就是契约对不上） | 输出契约一行：产物路径 + 裁决形态（与 §1 该 task_type 的输出契约一致） | team-lead | ① 按 §1 契约原样派工 ② 要求额外产出（须先确认路径归属唯一） ③ 拆成两次派工 |
+| ⑥ | 预期轮次 + 超时预算已声明 | 停下不 dispatch；取值一律从 `references/member-contracts.json` 该成员条目取（`timeout_budget_s` / `max_retry` / `on_partial` / `on_timeout`），不自造 | 轮次上限 + 超时秒数 + 超时后动作（该成员的 `on_timeout` 取值） | team-lead | ① 沿用契约默认预算 ② 放宽轮次/超时（自行承担预算） ③ 换更快的成员 |
+| ⑦ | 成员必须加载的 skill 已声明（如 `citation-verify` 对 `review-citation`） | 停下不 dispatch；skill 名不在包内已声明清单 → 停下核对，不写不存在的 skill 名 | required_skills 列表（写入 envelope `payload.required_skills`） | team-lead | ① 保留必载 skill ② 改派不需要该 skill 的 task_type ③ 授权降级为不挂 skill 的自检 |
+
+### 8.2 ESC1–ESC4 → 动作绑定
+
+| 升级码（§3 触发条件原文） | 触发后做什么动作 | 附什么证据 | 交回谁 | 用户可做的决定 |
+|---|---|---|---|---|
+| ESC1 候选歧义（同一问法命中 ≥2 个 task_type） | 不 dispatch；team-lead 追加 1 问澄清（≤1 轮） | 命中候选清单（各候选 task_type + §1 输入信号命中点）+ 置信度分（<70，来自 §2 Step 2） | team-lead 发问 → 用户答 | ① 在候选中指定一个（给出 task_type 名） ② 追加第三候选，重新路由 ③ 终止本任务 |
+| ESC2 未知任务（无任何命中） | 不 dispatch；team-lead 主动追加澄清询问用户 | 原始问法 + §2 Step 3 fallback 逐条比对结果（未命中任何 fallback 关键词） | 用户（team-lead 转达） | ① 用自己的话描述目标（team-lead 重跑 §2 Step 1–3） ② 指定自定义 task_type（标 `task_type_custom=true`，见 §1 扩展规则） ③ 放弃 |
+| ESC3 成员当前阻塞（blocking_open 非空） | 按 §3 顺序处理：先换等价成员（等价判定 = 候选成员 `examines ⊇` 原成员 examines；来源优先：动态层已确认成员 > 生成新提案，新提案仍要过用户闸门）；无等价成员可换 → 不派工，记 `outcome=BLOCKED` | 原成员 blocking_open 列表 + 等价判定依据（examines 覆盖关系）+ 换人记账行（`interventions.md` 记 `{原成员, 新成员, 等价依据, 用户是否确认}`）；换人不重置打回计数（按 `correlation_id + 问题指纹` 跨成员累计） | team-lead（记账与 trace）；生成新提案时交回用户过闸门；无可换时上报用户 | ① 确认换人（写 `interventions.md` 的「用户是否确认」） ② 确认新提案并过用户闸门 ③ 维持原成员、排队等阻塞解除 |
+| ESC4 跨 task_type 复合任务 | 拆为两个独立 task，按依赖串行或并行；禁止合并为一个 member call（违反职责边界） | 拆分后每个 task 的 task_type + 各自输出契约 + 依赖方向（谁先谁后） | team-lead（拆分与派工）；拆分需要新成员时交回用户过闸门 | ① 确认串行 ② 确认并行（须确认两分支产物路径归属不同） ③ 缩小范围只做其中一段 |
+
+> ESC1/ESC2 的澄清轮次按 §3 口径消耗（≤1 轮）；定案后把该问法补进 §4 训练样本，由 `tests/test_router_eval.py` 评估（§6 门槛：命中率 ≥80%）。
+
+### 8.3 交回链（谁在什么时候接住）
+
+1. **默认交回 team-lead**：本节所有停机点的第一收件人是 team-lead（路由决策者）；只有需要改方向、改范围、改人手时才上交用户。
+2. **每次停机在 trace 留一行**：`scripts/record_trace.py --work-root $WORK_ROOT --task-id {task_id} --task-type {task_type} --routing-conf {置信度} --notes "escalation_code=ESC<n>"`（`--notes` 是自由备注字段；`escalation_code` 取 §3 命名消歧注中的码）。
+3. **裁决结果回写**：ESC3 换人写 `interventions.md`（编排者可写 `章节/{ch##}/review/interventions.md`，见 `references/path-ownership.md`）；其余按 §3 的澄清轮次消耗，不另立记录位。
+4. **本节不改协议**：若停机暴露的是协议/判据缺陷（而非本次派活的问题），改协议走 `references/decision-lanes.md` 的进化规范与包内评审门（协议修订权在主理人 + 管家节点评审门，见 `skills/learn-protocol/SKILL.md`），不在本节就地改协议。
+
+> 本节只补停机契约，未改路由语义（枚举 / 关键词 / 优先级均未动）⇒ `tests/test_router_eval.py` 的影子实现无需同步改写，§6 同步义务本轮不触发。
+
+---
+
 ## 7. Changelog
 
 - v1.0.0 [2026-09-18] 初版：12 task_type 枚举 + 4 步决策算法 + 置信度升级 + 离线 eval harness
 - v1.3.0 [2026-11-05] ★G3：枚举 16→17，新增 `review-section`（节级审查，波次收口检查；<800 字跳过；判据=章级 R2 四维节子集，不新增判据源）；§1 补派工纪律五条
+- v1.4.0 [2026-11-10] 新增「§8 人在回路」小节：把 §2 Step 4 dispatch checklist 与 §3 ESC1–ESC4 升级规则逐条绑定到「停机动作 / 交付物 / 交回谁 / 用户可做的决定」；version 1.3.0 → v1.4.0
