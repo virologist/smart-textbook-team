@@ -43,6 +43,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `check_gate_design.py` 输入缺失静默吞错（补 error 分支）。
 - 全量回归：7 道机械门禁 + 静态契约 282/282 + pytest 全量全绿。
 
+### CI 红修复（推送后首次远端 run 42867038211 实测捕获）
+
+- **M10c 失败**：team-lead.md 并入统一 CLI 章节（+33 行）后实际体积 26.9 → 30.2 KB，
+  README 两处「主理人常驻核心 26.9KB」声明漂移出 ±2KB 容差 → 同步更新为 30.2KB
+  （line 5 头部声明 + line 68 WorkBuddy 用法行）。
+- **根因堵漏**：`tests/run_all.py` 自称「本地绿 CI 红同一扇门」，但 STEPS 漏收
+  `tests/test_manifest_sync.py`（M 门禁 33 项）——本批 CI 红正是漏在这。
+  已补「清单同步」步骤（frontmatter 之后、静态契约之前），注释留痕。
+- 教训固化：体积类「文档声明 vs 实测」判据只会由 M 门禁抓，改 agents/*.md 或
+  README 体积相关内容后**必须本地跑 `tests/test_manifest_sync.py`**。
+
 ### 四态标注
 
 自动验证通过（CLI/三个 linter/18 用例/全量回归） · AI 评估通过（team-lead 叙事） ·

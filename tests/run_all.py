@@ -28,6 +28,10 @@ STEPS = [
     ("引用一致", [sys.executable, "scripts/check_cross_refs.py", "--root", str(REPO)]),
     ("用例契约", [sys.executable, "scripts/check_test_prompts.py", "--root", str(REPO)]),
     ("frontmatter", [sys.executable, "scripts/check_skill_frontmatter.py", "--root", str(REPO)]),
+    # M 门禁（跨平台清单同步 33 项）。v2.14.0 实测教训：本文件头注释自称「防本地绿
+    # CI 红再现」，但漏收 test_manifest_sync.py，结果 team-lead.md 增容后 README 的
+    # KB 声明漂移，本地 run_all 全绿、CI M10c 红——正是本文件承诺要防的事故。
+    ("清单同步", [sys.executable, "tests/test_manifest_sync.py"]),
     ("静态契约", [sys.executable, "tests/test_smart_textbook_team.py"]),
 ]
 
