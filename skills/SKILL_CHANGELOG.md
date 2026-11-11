@@ -315,6 +315,29 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.15.0 系列（★T6 批次收口，2026-11-11 · 用例集第三层一致性 U-2）
+
+> 本批**未改任何 SKILL.md 内容与 frontmatter version**——10 个 Skill 的版本位不动。
+> 变更的是「用例集」侧与门禁脚本侧；各 Skill 的 F3 版本对齐不受影响。
+
+### 10 个 Skill 的 test-prompts.json：补顶层 `skill_version` 声明
+
+- agent-harness-protocol / book-orchestration / citation-verify / learn-protocol /
+  manuscript-delivery / multi-agent-patterns / scientific-figure / task-router /
+  team-generation / textbook-pipeline-workflow —— 均声明当前 frontmatter 版本
+  （1.9.0 / 1.0.0 / 1.9.0 / 2.1.0 / 1.4.0 / 1.2.0 / 1.1.0 / 1.4.0 / 2.0.0 / 1.6.0）。
+- **后续纪律（T6b 生效后）**：任何 Skill 升 frontmatter version 时，必须同步
+  复检并更新自己的 test-prompts.json `skill_version`，否则用例门禁 FAIL——
+  这是「Skill 演进 → 用例集跟随」的机械强制，取代此前的纯自觉。
+
+### 门禁脚本（check_test_prompts.py）：T6a 域内定位 + T6b 版本对齐
+
+- 判据与病灶详见 CHANGELOG.md [2.15.0]；精确 token 判据防前缀蒙混
+  （4.1↔4.13、4.10↔4.10e）；文件名类标识归 T5 文件系统判定，不重复判域内。
+- harness-gate CI 用例门禁升为 7 条判据（新增负向 3：版本漂移必须被拦）。
+
+---
+
 ## v2.14.0 系列（★改造批次，2026-11-10 · 统一 CLI + 确定性门禁 + 红道登记）
 
 > 本批**未改动任何 `SKILL.md` 的 frontmatter version**，故无 skill 版本位变更，

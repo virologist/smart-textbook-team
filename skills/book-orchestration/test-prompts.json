@@ -1,5 +1,6 @@
 {
   "skill": "book-orchestration",
+  "skill_version": "1.0.0",
   "prompts": [
     {"id": 1, "prompt": "我要做一本 12 章的《家禽疾病防控》教材，总字数 30 万字左右，从头该怎么起？", "expected": "走 W5 全书链：progress.py book init 生成 book-spec.md（门禁5.1 声明章==磁盘章、字数偏差≤5%）→ 手填 _book/chapter-map.md（5.2 域非空+依赖无环）→ 逐章 W1 → check_book.py --strict → build_book.py 出合稿与 docx"},
     {"id": 2, "prompt": "8 章我都排好了，能不能 8 章一起全量开跑，边跑边并行写？", "expected": "不许全量开跑：先跑 1 章样章走完 W1（check_manuscript --strict 全绿+字数在预算±5%+形态可作模板），合格才 progress.py update --phase CHAPTER_SCHEDULE --status DONE --summary … --notes sample-chapter-approved 放大余章；不合格返修样章本身（缺陷会被逐章复制），样章批准属红道永远人工"},

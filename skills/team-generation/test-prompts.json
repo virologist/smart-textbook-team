@@ -1,5 +1,6 @@
 {
   "skill": "team-generation",
+  "skill_version": "2.0.0",
   "prompts": [
     {"id": 1, "prompt": "帮我按第 1 章的主题配一支专家团队出来", "expected": "走四步：① 收 chapter_design.md（knowledge_scope + 目标受众）+ discipline profile ② generate_team.py 只产出提案（team-proposal-ch01.yaml，不落盘生效）③ 【硬闸门】把构成表原文呈现给用户并问三问（视角覆盖 / examines 分工 / 确认生效·修改·放弃）④ 用户确认后才写 运行态/dynamic-members.yaml（注册表 v2 scopes 结构 + confirmed_by_user: true）"},
     {"id": 2, "prompt": "这章 12000 字，§3 是病毒病、§4 是细菌病，就按一套团队写完吧，别搞那么麻烦", "expected": "异质知识域 ≥2 且字数 >8000 → 主理人必须提示「建议对异质节做节级坍缩」并附 reasoning_chain（decision / criteria_refs / computation），不提示=编排缺陷；用户明确跳过才记 trace notes=section-collapse-declined；scope 三级（chapter/section/block）各自独立过闸门，章级确认 ≠ 节级确认，节级否决 ≤3 轮仍不一致 → 停机报用户裁决"},

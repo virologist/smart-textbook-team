@@ -1,5 +1,6 @@
 {
   "skill": "textbook-pipeline-workflow",
+  "skill_version": "1.6.0",
   "prompts": [
     {"id": 1, "prompt": "现在 RETRIEVE 做完了，接下来该干嘛", "expected": "查 13 态表：RETRIEVE→PRODUCE，先过门禁2（覆盖率≥80%/冲突<20%/时效近10年≥80%）"},
     {"id": 2, "prompt": "审查 R2 发现深度不够要打回，回哪个阶段", "expected": "VERIFY 内 4 轮循环：R1/R2/R3 阻塞→回 PRODUCE 返修；只有 R4 通过才进 PROOFREAD"},

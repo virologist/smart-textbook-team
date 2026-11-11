@@ -396,3 +396,122 @@ def test_missing_skills_dir_returns_error():
         assert not res["ok"]
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+# ── ② 负向：T6 域内定位 + 版本对齐（U-2 第三层一致性）─────────────────
+#
+# ★为什么要 T6（T5 之后的第三层）：
+#   T5 的证据池是**全包**——编号只要在包内任意角落出现就算「有实据」。
+#   于是两个静默漏洞：
+#     ① 域外残留：某 Skill 正文删掉了编号，但该编号还在别的 skill 残留
+#        → 用例集照样判「引用真实」→ 实际该 Skill 已无此机制，用例静默失效。
+#     ② 版本漂移：Skill 升版、机制语义变了，但用例集**从不声明**对应版本
+#        → 升版后 expected 静默过期，零机制提示。
+#   T6a 治①（域内精确定位）、T6b 治②（版本绑定）。
+
+
+def test_T6a_gate_number_only_in_other_skill_is_rejected(sandbox_pkg):
+    """★T6a 核心反向例：编号只在**别的 Skill** 残留 → 必须判 T6 FAIL。
+
+    这是 T5 放过的真实病灶：T5 用全包证据池，`9.99` 这种编号只要在
+    包内任意角落出现就判「引用真实」，哪怕本 Skill 正文根本没有该机制。
+    修复后 T6a 要求编号必须在本 Skill 自身证据域（SKILL.md + 自身
+    references/）中精确定位。
+    """
+    # 构造域外残留：把编号写进「另一个 skill」的正文
+    other = Path(sandbox_pkg) / "skills" / "citation-verify" / "SKILL.md"
+    other.write_text(other.read_text(encoding="utf-8") + "\n\n门禁 7.77 说明。\n",
+                      encoding="utf-8")
+
+    # 本 skill 的用例集引用 7.77 —— 本 skill 域内没有
+    p = _tp(sandbox_pkg, "multi-agent-patterns")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["prompts"][0]["expected"] = "按门禁 7.77 判定不合格即返修"
+    _write(p, data)
+
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "域外残留的编号未被拦截 —— T6a 失效"
+    assert "T6" in _fail_ids(res)
+    assert any("7.77" in f["detail"] for f in res["fails"])
+
+
+def test_T6a_gate_number_present_in_own_skill_passes(sandbox_pkg):
+    """正向对照：本 Skill 域内真实存在的编号**不得**被误杀。"""
+    p = _tp(sandbox_pkg, "scientific-figure")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    # 4.10 / 4.12 确实在 scientific-figure 正文中（真实数据）
+    assert "4.10" in (Path(sandbox_pkg) / "skills" / "scientific-figure" / "SKILL.md").read_text(
+        encoding="utf-8")
+    data["prompts"][0]["expected"] = "按门禁 4.10 与 4.12 判定"
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert res["ok"], f"域内真实编号被误杀：{res.get('fails')}"
+
+
+def test_T6a_substring_number_does_not_satisfy(sandbox_pkg):
+    """★精确 token 反向例：`4.1` 不得被 `4.13` 顶替。
+
+    子串匹配陷阱：`4.1` ⊂ `4.13`、`4.10` ⊂ `4.10e`。
+    若本 Skill 域内只剩 `4.13` 而用例引用 `4.1`，必须判 FAIL。
+    """
+    # 清空本 skill 正文里的编号，使域内只剩 references 中的内容
+    sk = Path(sandbox_pkg) / "skills" / "manuscript-delivery" / "SKILL.md"
+    sk.write_text("---\nname: manuscript-delivery\nversion: 1.4.0\n---\n\n正文。\n",
+                  encoding="utf-8")
+    p = _tp(sandbox_pkg, "manuscript-delivery")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    data["prompts"][0]["expected"] = "按门禁 4.1 判定"
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "子串编号未被拦截 —— T6a 退回了子串匹配"
+    assert "T6" in _fail_ids(res)
+
+
+def test_T6b_missing_skill_version_fails(sandbox_pkg):
+    """T6b：用例集未声明 skill_version → 必须判 T6 FAIL（版本漂移无提示）。"""
+    p = _tp(sandbox_pkg, "task-router")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    del data["skill_version"]
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "缺 skill_version 未被拦截 —— T6b 失效"
+    assert "T6" in _fail_ids(res)
+    assert any("skill_version" in f["detail"] for f in res["fails"])
+
+
+def test_T6b_stale_skill_version_fails(sandbox_pkg):
+    """★T6b 核心反向例：Skill 升版、用例集版本未同步 → 必须判 T6 FAIL。
+
+    真实漂移形态：frontmatter version 升到 1.5.0，用例集仍声明 1.4.0。
+    """
+    sk = Path(sandbox_pkg) / "skills" / "task-router" / "SKILL.md"
+    sk.write_text(sk.read_text(encoding="utf-8").replace("version: 1.4.0", "version: 1.5.0", 1),
+                  encoding="utf-8")
+    p = _tp(sandbox_pkg, "task-router")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["skill_version"] == "1.4.0"
+    _write(p, data)
+    res = MOD.run(sandbox_pkg)
+    assert not res["ok"], "版本漂移未被拦截 —— T6b 失效"
+    assert "T6" in _fail_ids(res)
+    assert any("1.4.0" in f["detail"] and "1.5.0" in f["detail"] for f in res["fails"])
+
+
+def test_T6b_synced_skill_version_passes(sandbox_pkg):
+    """正向对照：版本对齐的用例集**不得**被误杀。"""
+    res = MOD.run(sandbox_pkg)
+    assert res["ok"], f"版本对齐的用例集被误杀：{res.get('fails')}"
+
+
+def test_T6_all_ten_use_case_sets_declare_version():
+    """全包 10 份用例集都必须声明 skill_version，且与 frontmatter 一致。"""
+    for sd in _skill_dirs(PKG_ROOT):
+        data = json.loads((sd / "test-prompts.json").read_text(encoding="utf-8"))
+        assert "skill_version" in data, f"{sd.name} 用例集未声明 skill_version"
+        fmv = re.search(r"^version:\s*(.+?)\s*$",
+                        (sd / "SKILL.md").read_text(encoding="utf-8"), re.M)
+        assert fmv, f"{sd.name} frontmatter 缺 version"
+        assert data["skill_version"] == fmv.group(1).strip(), (
+            f"{sd.name} 用例集 skill_version={data['skill_version']} ≠ "
+            f"frontmatter version={fmv.group(1).strip()}")
+

@@ -1,5 +1,6 @@
 {
   "skill": "multi-agent-patterns",
+  "skill_version": "1.2.0",
   "prompts": [
     {"id": 1, "prompt": "我要让 3 个 agent 分别检索三个病的资料然后合并，用串行还是并行", "expected": "Fan-out/Fan-in：无依赖+各写独立路径→并行（分支≤5，correlation_id 聚合，禁交叉合并）"},
     {"id": 2, "prompt": "审查循环跑了 3 轮还不收敛，要不要继续", "expected": "Generator-Critic 上限 3 轮；触顶→停，通知用户附 3 轮证据链（禁止无限循环）"},

@@ -3,6 +3,33 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.0] — 2026-11-11 ★T6 批次收口（U-2）：Skill 契约评测用例第三层一致性
+
+> 本批改动（check_test_prompts.py T6a/T6b + 10 个用例集 skill_version 声明 +
+> harness-gate CI 判据 + 配套测试）此前已实现、已随多轮全量回归通过，但一直
+> 未提交、未登记、未走发布链——本版收口。实现归属架构师审计挂起项 U-2。
+
+### 第三层一致性：用例集 ↔ Skill 自身证据域 ↔ Skill 当前版本
+
+- **T6a 域内定位**：编号类标识（4.13 / 4.10e / 5.5 等）必须能在**该 Skill 自身
+  证据域**（SKILL.md + 自身 references/）以**精确 token** 定位；只在别处残留
+  不再算数。病灶：T5 证据池是全包，本 Skill 已删某机制、别处仍有残留时用例
+  静默失效。
+- **T6b 版本对齐**：用例集顶层须声明 `skill_version` 且等于该 Skill frontmatter
+  version；Skill 升版后用例集未同步 = FAIL。病灶：expected 随版本静默过期，
+  零机制提示。
+- 精确 token 判据（编号前后不得是 word char 或 `.`）：防 `4.1` 蒙混 `4.13`、
+  `4.10` 蒙混 `4.10e` 的前缀误判；文件名类标识仍归 T5 按真实文件系统判定
+  （脚本常在包级 scripts/，判域内会假阴性）。
+- 10 个 `skills/*/test-prompts.json` 均补 `skill_version` 声明（10/10 与
+  frontmatter 对齐）；顶层键白名单收紧为 skill/prompts/skill_version。
+
+### 配套
+
+- `tests/test_check_test_prompts.py` 扩容（+119 行，含 T6 正反向例；全文件 29 用例）。
+- `harness-gate.yml` 用例门禁升为 7 条判据，新增负向 3（T6b 版本漂移必须被拦）。
+- 实测：正向 rc=0（7 类 × 10 Skill）；负向 task-router 版本漂移 rc=1 含明确报错。
+
 ## [2.14.0] — 2026-11-10 ★改造批次：统一 CLI + 门禁 1/2 确定性 linter + 红道登记检查
 
 > 承 2.13.0。本批把「依赖 AI 理解与执行的操作说明」升级为「工具可靠、结果可验证」：

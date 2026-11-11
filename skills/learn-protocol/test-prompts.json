@@ -1,5 +1,6 @@
 {
   "skill": "learn-protocol",
+  "skill_version": "2.1.0",
   "prompts": [
     {"id": 1, "prompt": "这一章刚交付完，是不是该沉淀经验了？要做什么？", "expected": "DELIVER 后自动触发：先 metrics_baseline.py record --chapter ch## --protocol-version <ver> 追加基线；再扫四类信号源（review/interventions.md 反复打回点、r3_verification_log.md 核验失败、round*_report.md 红线命中、运行态/trace.jsonl 延迟超预算）；每条转最小可操作规则「在 X 情形下因为 Y 出现 Z 应当 W」，写入 学习/候补/{日期}_{ch##}_候补.yaml（signal_type 8 值枚举+target+priority+status OPEN）；铁律：只产候选规则，不改 agent MD"},
     {"id": 2, "prompt": "metrics_baseline.py compare 跑完返回 exit 1 了，是不是这次任务失败了？", "expected": "不是失败，是机械触发信号（偏离 running mean >20% 或破红线）；交付门禁仍以 compute_metrics.py 与四份测试为准。对每条告警生成 signal_type: metric_breach 候补，metric_evidence 必须由 metrics_baseline.py compare --json 机器输出填（手写估算按编造处理），破红线=P0、纯偏离>20%=P1，delta_report 指向 运行态/metrics_delta.json"},

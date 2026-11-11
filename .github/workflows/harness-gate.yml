@@ -79,8 +79,17 @@ jobs:
       #   「有则加餐、无则全无」，新增/删除/写错用例都不会被任何门禁发现。
       #   更危险的是「假门禁」：expected 引用了不存在的命令时，用例本身是错的，
       #   却会逼 Skill 去满足一个不存在的机制 → 比缺用例更坏（缺是明着缺，假是暗着错）。
-      # 本门禁 5 条判据：T1 存在性 / T2 结构 / T3 条数 / T4 字段 / T5 引用真实性。
-      # 正向：真实包 exit 0；负向：删用例文件 + 写编造引用 → 必须 exit≠0。
+      # 本门禁 7 条判据：T1 存在性 / T2 结构 / T3 条数 / T4 字段 / T5 引用真实性
+      #   / T6a 域内定位 / T6b 版本对齐。
+      # T6（2026-11-10 批次 U-2，第三层一致性）：
+      #   病灶：T5 的证据池是**全包**——编号只要在包内任意角落出现就算「有实据」；
+      #     ① 域外残留：本 Skill 正文删了某编号、别的 skill 还在残留 → 用例集照样过
+      #        → 该 Skill 实际已无此机制，用例静默失效；
+      #     ② 版本漂移：Skill 升版、机制语义变了，但用例集**从不声明**对应版本
+      #        → expected 静默过期，零机制提示。
+      #   T6a：编号须在本 Skill 自身证据域（SKILL.md + 自身 references/）精确定位；
+      #   T6b：用例集顶层须声明 skill_version 且等于 frontmatter version。
+      # 正向：真实包 exit 0；负向：删用例文件 / 编造引用 / 版本漂移 → 必须 exit≠0。
       - name: Skill 契约评测用例门禁（check_test_prompts.py 正负双向）
         run: |
           set -e
@@ -110,6 +119,34 @@ jobs:
           fi
           cp /tmp/_tp_backup.json skills/task-router/test-prompts.json
           rm -f /tmp/_tp_backup.json
+          # 负向 3（T6b）：Skill 升版、用例集版本未同步 → 必须被拦（防版本漂移静默）
+          cp skills/task-router/SKILL.md /tmp/_sk_backup.md
+          cp skills/task-router/test-prompts.json /tmp/_tp_backup.json
+          python3 - <<'PY'
+          import pathlib, json
+          sk = pathlib.Path("skills/task-router/SKILL.md")
+          t = sk.read_text(encoding="utf-8")
+          t = t.replace("version: 1.4.0", "version: 1.9.9", 1)
+          sk.write_text(t, encoding="utf-8")
+          p = pathlib.Path("skills/task-router/test-prompts.json")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          d["skill_version"] = "1.4.0"   # 故意保持旧版本 = 漂移
+          p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+          if python3 scripts/check_test_prompts.py --root . 2>/dev/null; then
+            echo "::error::负向失败：Skill 升版后用例集未同步未被门禁拦截（T6b 版本漂移失守）"
+            cp /tmp/_sk_backup.md skills/task-router/SKILL.md
+            cp /tmp/_tp_backup.json skills/task-router/test-prompts.json
+            exit 1
+          fi
+          cp /tmp/_sk_backup.md skills/task-router/SKILL.md
+          cp /tmp/_tp_backup.json skills/task-router/test-prompts.json
+          rm -f /tmp/_sk_backup.md /tmp/_tp_backup.json
+          # 还原校验（U-6 纪律）：探针残留必须为零，否则工作区被污染
+          if grep -q '1.9.9' skills/task-router/SKILL.md; then
+            echo "::error::T6b 负向探针残留未还原（工作区被污染）"
+            exit 1
+          fi
           python3 scripts/check_test_prompts.py --root .
           echo "[OK] Skill 契约评测用例门禁正负双向通过"
 
