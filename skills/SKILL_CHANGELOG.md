@@ -315,6 +315,30 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.15.1 系列（★全面审计确定性修复，2026-11-13 · 脚本/编排层）
+
+> 本批**未改任何 SKILL.md 内容与 frontmatter version**，10 个 Skill 版本位不动；
+> F3「变更记录节 v{version} 对齐」不受影响。登记的是门禁脚本与编排层的确定性修复。
+
+### 门禁脚本层（红道可追溯）
+
+- `check_redlane_registry.py`：核心声明缺失 `exit 2`（防空集 PASS）；`install.ps1` 纳入第 7 处权威源。
+- `check_external_skills.py`：残留检查先于 `n==0`；`load_manifest()` 补 `OSError`。
+- `check_skill_frontmatter.py` / `check_test_prompts.py`：`--json` 输入缺失统一 `exit 2`、`total_fails=0`。
+- `check_gate_retrieval.py`：删从未引用的 `--strict` 死参数，冲突项恒 WARN 交人工的设计不变。
+- `scripts/stt.py`：`_run_consistency()` 消重、严格模式默认、补 `--affected-from`、删未用 import。
+- `scheduler.py`：预算解析异常打 WARN，不再静默降级为「不受限」。
+- `package_release.sh`：排除 `__pycache__` / `.pytest_cache` / `*.pyc`。
+- `tests/run_all.py`：增「红道登记」STEP、pytest 收集数自洽校验、头注释诚实化。
+
+### 用例 / 文档层
+
+- `tests/test_check_redlane_registry.py` +3 反向例；`tests/test_stt_cli.py` +3 用例并加强 verify 断言。
+- `skills/task-router/SKILL.md` 正文 15→17 类（仅修事实矛盾，frontmatter version 不动）。
+- 判据与病灶全文见 `CHANGELOG.md` [2.15.1] 与 `docs/2026-11-12-全面审计与修复报告.md`。
+
+---
+
 ## v2.15.0 系列（★T6 批次收口，2026-11-11 · 用例集第三层一致性 U-2）
 
 > 本批**未改任何 SKILL.md 内容与 frontmatter version**——10 个 Skill 的版本位不动。

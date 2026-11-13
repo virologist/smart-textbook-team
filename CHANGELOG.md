@@ -3,6 +3,52 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.1] — 2026-11-13 ★全面审计确定性修复：假绿·吞错·版本漂移·缓存入包
+
+> 补丁版。范围＝「通读全包审计」中**有把握直接修**的 24 处 / 19 文件；
+> 审计报告的 25 项需语义裁决 / 架构改动 / 历史留档的清单**一项未动**，待人工裁决后另议版本。
+> 未改任何 `SKILL.md` 的 frontmatter version，10 个 Skill 版本位不动。
+
+### 事实与文档一致性
+
+- `install.ps1` 版本从 `2.8.0` 追平到当前版，并纳入版本自洽集合（此前 Windows 安装态
+  长期注册成 2.8.0，且不在任何检查器视野内）。
+- 「6 agents + 9 skills」→ 10（`AGENTS.md` / `install.sh` / `install.ps1`）；
+  `task-router/SKILL.md` 正文「15 类」→ 17 类（与同文件 SSOT 及 README 一致）。
+- 改造交付报告：CI/push 状态更新为已闭环、删除逐字重复的备份段、标注所对应发布版本。
+- `.gitignore` 补 `__pycache__/` / `*.pyc` / `.pytest_cache/`，清理已核实的未跟踪缓存。
+
+### 确定性逻辑缺陷（含反向例）
+
+- **空集假绿**：`check_redlane_registry.py` 核心版本声明全缺失时不再打印 PASS，改 `exit 2`；
+  实证空目录 `rc=2` 且输出无 `[PASS]`。
+- **版本盲区**：`install.ps1` 纳入 R1-R5 权威源（第 7 处）；只漂移它 → `rc=1` + `[FAIL]`。
+- **吞错**：`check_external_skills.py` 把「清单空但有挂载残留」的 problems 提到 `n==0` 之前，
+  `load_manifest()` 补 `OSError` 让死分支生效；`scheduler.py` 预算解析异常不再裸 `pass`，打 WARN。
+- **退出码口径**：`check_skill_frontmatter.py` / `check_test_prompts.py` 输入缺失时
+  `--json` 与非 JSON 统一 `exit 2` 且 `total_fails=0`。
+- **CLI 与实现对齐**：`stt.py` 抽 `_run_consistency()` 消重、严格模式改默认（留 `--no-strict`
+  调试逃生口）、补文档已用而 CLI 不认识的 `--affected-from`、删未用 import 与不实 docstring；
+  `check_gate_retrieval.py` 删从未引用的 `--strict` 死参数（冲突项恒 WARN 交人工的设计不变）。
+- **分发包**：`package_release.sh` 排除运行态缓存（实测曾带入 28 项 / 556 KiB）。
+- **本地门禁补位**：`run_all.py` 增「红道登记」步、pytest 段增
+  `collected == passed + skipped` 自洽校验、头注释改为诚实声明「与 CI 判据集不完全同源」。
+- **测试**：`test_check_redlane_registry.py` 补 3 反向例（空目录 / 缺核心 / install.ps1 漂移），
+  `test_stt_cli.py` 补 3 用例并把 verify 断言加强为「4 检查器确实执行」。
+
+### 验证
+
+- 反向例 9/9；新增与改动测试 24 passed；8 个改动脚本 `py_compile`、`bash -n` 均 PASS。
+- 发布前复验：十门禁 + 静态契约 `FAST_RC=0`；pytest `455 passed / 3 skipped`
+  （收集 458 自洽）；临时打包 0 缓存条目。
+- 正式导出 zip 重打为本版；远端 CI 结论见发布记录。
+
+### 未纳入本版
+
+审计报告 §四 25 项（CI 判据集分叉 / 负向实验还原保护 / OSError 哨兵比对链 /
+两处空跑 PASS / 死链 / CHANGELOG 跳号 / 大体积 PNG / frontmatter 解析收敛 /
+stt.py 覆盖盲区等）全部保留待人工裁决。
+
 ## [2.15.0] — 2026-11-11 ★T6 批次收口（U-2）：Skill 契约评测用例第三层一致性
 
 > 本批改动（check_test_prompts.py T6a/T6b + 10 个用例集 skill_version 声明 +
