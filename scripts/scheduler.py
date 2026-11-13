@@ -309,8 +309,9 @@ def resolve_token_budget(token_budget: int | None, work_root: Path) -> tuple[int
             lim = (data.get('budget') or {}).get('tokens_limit')
             if lim:
                 return int(lim), '黑板 budget.tokens_limit'
-        except Exception:
-            pass
+        except Exception as e:
+            _log(f'黑板 budget.tokens_limit 读取/解析失败（{type(e).__name__}: {e}），'
+                 '按无上限处理——若本应有上限请检查 workflow-state.yaml', 'WARN')
     return None, '无预算上限（用户 Q3：单章 token 不受限）'
 
 

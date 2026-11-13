@@ -44,7 +44,7 @@ def _retrieval_text(retrieval_dir: str) -> str:
     )
 
 
-def check(design_path: str, retrieval_dir: str, strict: bool = False) -> dict:
+def check(design_path: str, retrieval_dir: str) -> dict:
     design = Path(design_path)
     if not design.is_file():
         return {"ok": False, "exit": 2, "error": f"设计文件不存在：{design_path}"}
@@ -94,11 +94,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="门禁 2 检索质量 linter")
     ap.add_argument("--design", required=True, help="chapter_design.md 路径")
     ap.add_argument("--retrieval-dir", required=True, help="检索产物目录（含 *.md）")
-    ap.add_argument("--strict", action="store_true", help="保留位（冲突项始终 WARN）")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     args = ap.parse_args()
 
-    rep = check(args.design, args.retrieval_dir, args.strict)
+    rep = check(args.design, args.retrieval_dir)
     if "error" in rep:
         sys.stderr.write(f"[check_gate_retrieval] {rep['error']}\n")
         return int(rep.get("exit", 2))

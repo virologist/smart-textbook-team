@@ -17,6 +17,8 @@ check_redlane_registry.py — 红道登记 / 版本各处声明自洽 检查（�
   R3  .claude-plugin/marketplace.json  metadata.version 与 plugins[0].version
   R4  install.sh                       VERSION=
   R5  README.md                        "> 版本 X.Y.Z"（对外公示版本，要求一致）
+  +   install.ps1                      $VERSION = 'X.Y.Z'（补入；此前长期停在 2.8.0
+      且不在任何检查器视野内 = Windows 安装态版本漂移）
   R6  CHANGELOG.md 顶部 `## [X.Y.Z]` 必须等于当前版本（已登记），
       否则判 FAIL：版本已升但 CHANGELOG 未登记该版本（红道登记缺口）
 
@@ -36,6 +38,7 @@ from pathlib import Path
 RE_README = re.compile(r"版本\s+(\d+\.\d+\.\d+)")
 RE_INSTALL = re.compile(r'VERSION="(\d+\.\d+\.\d+)"')
 RE_CHANGELOG = re.compile(r"^##\s*\[(\d+\.\d+\.\d+)\]", re.M)
+RE_INSTALL_PS1 = re.compile(r"\$VERSION\s*=\s*'(\d+\.\d+\.\d+)'")
 
 
 def _read(p: str) -> str | None:
@@ -90,7 +93,23 @@ def check(root: str) -> dict:
         m = RE_README.search(readme)
         versions["README.md"] = m.group(1) if m else None
 
-    # R6 CHANGELOG 顶部
+    # install.ps1（Windows 安装器，补入版本自洽集合）
+    ps1 = _read(root_p / "install.ps1")
+    if ps1 is not None:
+        m = RE_INSTALL_PS1.search(ps1)
+        versions["install.ps1"] = m.group(1) if m else None
+        if m is None:
+            return {"ok": False, "exit": 2,
+                    "error": "install.ps1 存在但 $VERSION 声明无法解析（判据无法运行）"}
+
+    # 核心声明缺失 → 判据没跑，必须显式报错而非打印 PASS（防空集恒真）
+    required = [".claude-plugin/plugin.json", "install.sh", "README.md"]
+    missing = [k for k in required if versions.get(k) is None]
+    if missing:
+        return {"ok": False, "exit": 2,
+                "error": "核心版本声明缺失或无法解析：" + "、".join(missing)}
+
+    # CHANGELOG 顶部
     changelog = _read(root_p / "CHANGELOG.md")
     changelog_top = None
     if changelog is not None:

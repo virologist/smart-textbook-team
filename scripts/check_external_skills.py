@@ -52,8 +52,12 @@ def load_manifest(work_root: Path) -> tuple[list[dict] | None, str | None]:
     mf = work_root / "学科标准" / "external-skills.yaml"
     if not mf.is_file():
         return [], None
+    try:
+        raw = mf.read_text(encoding="utf-8")
+    except OSError as e:
+        return None, f"清单读取失败: {e}"
     out, cur = [], None
-    for i, line in enumerate(mf.read_text(encoding="utf-8").splitlines(), 1):
+    for i, line in enumerate(raw.splitlines(), 1):
         s = line.strip()
         if not s or s.startswith("#"):
             continue
@@ -174,14 +178,16 @@ def main() -> int:
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
-        if n == 0:
-            print(f"✓ 未挂载外部判据 skill（N/A，规范见 references/skill-mounting.md）")
-            return 0
+        # problems 必须先判：n==0 时也可能是「清单空但有挂载残留」，
+        # 提前 return 0 会把残留静默吞掉（v2.15.1 审计实测缺陷）
         if problems:
             print(f"✗ 外部 skill 挂载校验 FAIL（{n} 个挂载，{len(problems)} 项问题）：")
             for p in problems:
                 print(f"  - {p}")
             return 1
+        if n == 0:
+            print(f"✓ 未挂载外部判据 skill（N/A，规范见 references/skill-mounting.md）")
+            return 0
         print(f"✓ 外部 skill 挂载校验通过（{n} 个挂载，命名/frontmatter/双向一致全过）")
     return 0 if not problems else 1
 

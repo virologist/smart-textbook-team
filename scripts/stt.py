@@ -14,7 +14,7 @@ stt.py — 智能教材编写天团 统一 CLI 入口（改造批次，2026-11-1
                                          proofread / cross / consistency
   stt spawn --member <id> ...      封装 assemble_spawn_prompt.py（成员人设注入）
   stt net-words --target <n> <f>   封装 count_net_words.py（门禁 3.2）
-  stt verify [--root <pkg>]        跑全量静态契约 + 门禁一致性 + 红道登记
+  stt verify [--root <pkg>]        跑 4 项静态一致性检查（doc/phase/frontmatter/红道登记）
 
 设计原则：
   · 薄封装：本 CLI 只负责「解析包根 + 派发」，不重写既有脚本逻辑，零回归风险。
@@ -37,7 +37,6 @@ import argparse
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PKG = os.path.dirname(_HERE)  # scripts/ 的父目录 = 专家包根
@@ -85,8 +84,24 @@ def cmd_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_consistency(root: str) -> int:
+    """consistency 与 verify 共用的静态一致性检查集合（消除逐字重复实现）。"""
+    rc = 0
+    for s, a in (
+        ("check_doc_consistency.py", ["--root", root]),
+        ("check_phase_consistency.py", ["--root", root]),
+        ("check_skill_frontmatter.py", ["--root", root]),
+        ("check_redlane_registry.py", ["--root", root]),
+    ):
+        print(f"\n=== {s} ===")
+        c = _run(s, a)
+        rc = rc or c
+    return rc
+
+
 def cmd_gate(args: argparse.Namespace) -> int:
     phase = args.phase.lower()
+    strict = not args.no_strict
     ed = resolve_expert_dir()
     work_root = args.work_root
     chapter = args.chapter
@@ -104,11 +119,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
             return 2
         retrieval_dir = os.path.join(work_root, "知识库", "retrieval")
         design = os.path.join(_chapter_dir(work_root, chapter), "chapter_design.md")
-        extra = []
-        if args.strict:
-            extra.append("--strict")
+        # 门禁 2 的冲突项恒为 WARN 交人工裁决，不设严格模式（原 --strict 为死参数）
         return _run("check_gate_retrieval.py",
-                    ["--design", design, "--retrieval-dir", retrieval_dir, *extra])
+                    ["--design", design, "--retrieval-dir", retrieval_dir])
 
     if phase == "produce":
         if not args.target or not args.file:
@@ -120,31 +133,21 @@ def cmd_gate(args: argparse.Namespace) -> int:
         if not work_root or not chapter:
             sys.stderr.write("[gate:proofread] 需要 --work-root 与 --chapter\n")
             return 2
-        extra = ["--strict"] if args.strict else []
+        extra = ["--strict"] if strict else []
         return _run("check_manuscript.py",
                     ["--work-root", work_root, "--chapter", chapter, *extra])
 
     if phase == "cross":
-        if not work_root or not chapter:
-            sys.stderr.write("[gate:cross] 需要 --work-root 与 --chapter\n")
+        affected = args.affected_from or chapter
+        if not work_root or not affected:
+            sys.stderr.write("[gate:cross] 需要 --work-root 与 --chapter/--affected-from\n")
             return 2
-        extra = ["--strict"] if args.strict else []
+        extra = ["--strict"] if strict else []
         return _run("check_cross_chapter.py",
-                    ["--work-root", work_root, "--affected-from", chapter, *extra])
+                    ["--work-root", work_root, "--affected-from", affected, *extra])
 
     if phase == "consistency":
-        root = args.root or "."
-        rc = 0
-        for s, a in (
-            ("check_doc_consistency.py", ["--root", root]),
-            ("check_phase_consistency.py", ["--root", root]),
-            ("check_skill_frontmatter.py", ["--root", root]),
-            ("check_redlane_registry.py", ["--root", root]),
-        ):
-            print(f"\n=== {s} ===")
-            c = _run(s, a)
-            rc = rc or c
-        return rc
+        return _run_consistency(args.root or ".")
 
     sys.stderr.write(f"[gate] 未知相位：{phase}（支持 design/retrieve/produce/proofread/cross/consistency）\n")
     return 2
@@ -167,18 +170,7 @@ def cmd_net_words(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    root = args.root or "."
-    rc = 0
-    for s, a in (
-        ("check_doc_consistency.py", ["--root", root]),
-        ("check_phase_consistency.py", ["--root", root]),
-        ("check_skill_frontmatter.py", ["--root", root]),
-        ("check_redlane_registry.py", ["--root", root]),
-    ):
-        print(f"\n=== {s} ===")
-        c = _run(s, a)
-        rc = rc or c
-    return rc
+    return _run_consistency(args.root or ".")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -193,7 +185,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--chapter", help="章节号，如 ch01")
     g.add_argument("--target", type=int, help="produce 门禁的目标净字数")
     g.add_argument("--file", help="produce 门禁的 draft.md 路径（与 --work-root/--chapter 二选一）")
-    g.add_argument("--strict", action="store_true", help="门禁按严格模式（存在 FAIL 即非零退出）")
+    g.add_argument("--strict", action="store_true",
+                   help="（兼容保留）严格模式现为默认；存在 FAIL 即非零退出")
+    g.add_argument("--no-strict", action="store_true",
+                   help="关闭默认严格模式，仅报告不阻塞（调试用）")
+    g.add_argument("--affected-from", help="cross 相位修订起始章；缺省回退 --chapter")
     g.add_argument("--root", help="consistency 的包根（默认 .）")
     g.set_defaults(func=cmd_gate)
 

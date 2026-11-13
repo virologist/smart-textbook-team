@@ -6,3 +6,8 @@
 
 # WorkBuddy 会话临时文件（宿主预览会话标记，含会话 UUID，运行时产物不入库）
 .pending-preview-session
+
+# Python / pytest 运行态缓存（派生产物，不入分发包）
+__pycache__/
+*.pyc
+.pytest_cache/

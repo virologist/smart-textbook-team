@@ -7,7 +7,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 # task-router — 结构化任务路由
 
 > 解决"问法歧义→分派错位"问题。把 team-lead 的 6 行关键词路由表升级为 **task_type schema + 决策表 + 置信度升级**。
-> 路由器本质：把"用户口语化问法"映射成 15 个标准 task_type 之一，再查表派活。
+> 路由器本质：把"用户口语化问法"映射成 17 个标准 task_type 之一，再查表派活。
 > （G3 修复 2026-10-31：枚举 13→15——补 review-score（R5 评分）、review-proofread（R4 校稿三件套）两类；
 > 此前 R4b/R5/校稿三件套无 task_type 可路由，被迫错挂 review-citation 或标 custom，路由审计失真。）
 > （B1-3 2026-11-04：枚举 15→16——补 review-proofread-score：R4+R5 合并单次派工，省一次全稿重读。）

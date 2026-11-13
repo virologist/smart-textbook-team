@@ -92,7 +92,7 @@ for needle, label in must_have:
     if needle not in t:
         errors.append(f"缺少关键结构: {label}（'{needle}'）")
 
-# 4) 技能循环 ×3 应含 9 技能（匹配 foreach ($s in @(...)) 实际格式）
+# 4) 技能循环 ×3 应含 10 技能（匹配 foreach ($s in @(...)) 实际格式）
 declared = {"agent-harness-protocol","book-orchestration","citation-verify","learn-protocol","manuscript-delivery",
             "multi-agent-patterns","scientific-figure","task-router","team-generation","textbook-pipeline-workflow"}
 n_loops = 0
@@ -101,14 +101,14 @@ for m in re.finditer(r"foreach\s*\(\$s\s+in\s+@\(([^)]*)\)\)", t):
     if declared <= names:
         n_loops += 1
 if n_loops < 3:
-    errors.append(f"技能循环含全 9 技能的只有 {n_loops} 处（应 ≥3）")
+    errors.append(f"技能循环含全 10 技能的只有 {n_loops} 处（应 ≥3）")
 
 if errors:
     print(f"[lint-ps1] FAIL — {len(errors)} 项：")
     for e in errors:
         print("   ✗", e)
     sys.exit(1)
-print(f"[lint-ps1] PASS — 括号配平 / 引号闭合 / {len(must_have)} 关键结构 / 技能循环×3(9技能)")
+print(f"[lint-ps1] PASS — 括号配平 / 引号闭合 / {len(must_have)} 关键结构 / 技能循环×3(10技能)")
 PYEOF
 }
 
@@ -341,7 +341,7 @@ install_cursor() {
             cat > "$REPO_DIR/AGENTS.md" <<'EOF'
 # AGENTS.md — Smart Textbook Team (Cursor)
 
-This project uses the Smart Textbook Team (6 agents + 9 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
+This project uses the Smart Textbook Team (6 agents + 10 skills) from `smart-textbook-team-team-lead`. Subagent definitions are in `.cursor/agents/`, skills in `.cursor/skills/`.
 
 ## Quick start
 

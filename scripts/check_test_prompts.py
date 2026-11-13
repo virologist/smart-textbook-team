@@ -398,13 +398,18 @@ def main() -> int:
     root = Path(args.root).resolve()
     res = run(root)
 
+    if res.get("error"):
+        # 判据没跑 ≠ FAIL：退出码统一为 2，且不得虚报 total_fails
+        res["total_fails"] = 0
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            print(f"✗ {res['error']}")
+        return 2
+
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0 if res.get("ok") else 1
-
-    if res.get("error"):
-        print(f"✗ {res['error']}")
-        return 2
 
     print("=" * 62)
     print("Skill 契约评测用例门禁（test-prompts.json）")

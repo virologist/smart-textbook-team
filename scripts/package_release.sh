@@ -74,6 +74,10 @@ trap 'rm -rf "$STAGE"' EXIT
 cp -R "$PKG_ROOT" "$STAGE/smart-textbook-team"
 rm -rf "$STAGE/smart-textbook-team/.git" "$STAGE/smart-textbook-team/.DS_Store"
 find "$STAGE" -name '.DS_Store' -delete 2>/dev/null || true
+# 运行态缓存属派生产物，不进分发包（审计实测曾带入 28 项 / 556 KiB）
+find "$STAGE/smart-textbook-team" -type d \( -name '__pycache__' -o -name '.pytest_cache' \) \
+    -prune -exec rm -rf {} + 2>/dev/null || true
+find "$STAGE/smart-textbook-team" -name '*.pyc' -delete 2>/dev/null || true
 
 rm -f "$OUT"
 (cd "$STAGE" && zip -r -q "$OUT" smart-textbook-team)
