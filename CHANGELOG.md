@@ -3,6 +3,19 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.2] — 2026-11-15 ★通读全包审计：死链/版本缺登/数值漂移清零（文档一致性）
+
+> 范围＝用户「通读整个项目」指令中**有把握直接修**的文档/链接/数值一致性缺陷；
+> 25 项需语义裁决 / 架构改动 / 历史留档的清单**一项未动**，待人工裁决后另议版本。
+
+- **死链修复 ×3（文件内链接）**：
+  - `skills/task-router/SKILL.md` 基线报告链接 `docs/evals/router_baseline.md`（不存在）→ 改为指向真实存在的评估实现 `tests/test_router_eval.py`
+  - `skills/textbook-pipeline-workflow/SKILL.md` 升级设计链接 `docs/smart-textbook-team-诊断与升级设计-2026-11-04.md`（不存在）→ 删除该背景引用行
+  - `scripts/score_quality.py` 用法示例 `--rubric references/profiles/custom-rubric.json`（不存在）→ 改为缺省 rubric 源 `references/chapter-structure.md`
+- **版本登记补缺**：补 `## [2.10.1]` 顶层条目（此前仅 `skills/SKILL_CHANGELOG.md` 登记，主 CHANGELOG 漏登）
+- **版本号唯一性**：合并重复的 `## [2.2.2]` 续段为单版本号下两个子段
+- **数值漂移修正**：`vendor/shared-core/README.md` 的 core/shim 行数声明（369/378/45）更新为实测值（694/131）
+
 ## [2.15.1] — 2026-11-13 ★全面审计确定性修复：假绿·吞错·版本漂移·缓存入包
 
 > 补丁版。范围＝「通读全包审计」中**有把握直接修**的 24 处 / 19 文件；
@@ -690,6 +703,14 @@ manifest 33/33。版本 → **2.10.3**。
 
 - pytest **364 passed + 3 skipped**（+1 = D7 负向例测试）；router 47/47；protocol_eval 1.000（6 组件）；
   doc_consistency 7/7；manifest 33/33。版本 → **2.10.2**。
+
+## [2.10.1] - 2026-11-06 ★升维收口 H1-H5：执行体接线补全（文档承诺 → 实现存在）
+
+- quality-examiner / team-lead 路由装配补强（R7 信号 → 路由分发链路打通）
+- references/member-contracts.json / path-ownership.md 补建（角色装配可达性 + 路径唯一归属）
+- scripts/check_doc_consistency.py / contract_check.py 强化（契约一致性判据）
+- tests/test_router_eval.py 扩用例（+7）
+- 配套 `skills/SKILL_CHANGELOG.md` 登记：task-router v1.2.0→v1.3.0 / agent-harness-protocol v1.7.0→v1.8.0 / textbook-pipeline-workflow v1.5.0→v1.6.0 / team-generation v1.0.0→v2.0.0
 
 ## [2.10.0] — 2026-11-05 升维批次：三级坍缩 + 节级审查 + 推理链信封 + 工具编排总表
 
@@ -1895,9 +1916,7 @@ legacy 形式只在 **1 处**声明（`agents/subject-writer.md`）⇒ 以书稿
   验**可达性与可执行性**（路径是否位于可注入区 / 引用是否指向真实文件 / CLI 是否受理该状态）。
   静态契约计分项 199 → **213**，4 道门禁全绿
 
-## [2.2.2] - 2026-10-30（续）
-
-### 批次 2：书稿交付链（docx + md｜按用户拍板 Q1 重做的能力补齐）
+### 批次 2：书稿交付链（续 2.2.2；docx + md｜按用户拍板 Q1 重做的能力补齐）
 > **背景与勘误（实测）**：`team-lead.md:105` 曾写「按 CHANGELOG 工具链 `scripts/build_chapter.py`
 > 模板，可选生成 docx」。实测 `scripts/` 无该文件、CHANGELOG/README/AGENTS/CONTRIBUTING 全文
 > `grep docx|pandoc|build_chapter` **0 命中**、git 全历史无此文件 → **引用了不存在的文件且伪造了出处**。

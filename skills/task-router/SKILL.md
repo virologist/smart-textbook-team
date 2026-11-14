@@ -226,7 +226,7 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 每章 DELIVER 后跑 `tests/test_router_eval.py`：
 - 20+ 路由器训练样本（§4）
 - 计算命中率 = 正确分派数 / 总样本
-- 输出基线报告 → `docs/evals/router_baseline.md`
+- 输出基线报告 → `tests/test_router_eval.py`（路由器命中率评估实现；`docs/evals/router_baseline.md` 由历史批次承诺但当前未生成）
 
 **门槛**：命中率 < 80% → 路由器需扩展（加更多训练样本或调整权重）。
 

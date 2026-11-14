@@ -15,11 +15,11 @@
 
 | 文件 | 状态 | 引用方 |
 |---|---|---|
-| `assemble_spawn_prompt.py` | 公共版 369 行 + shared-core 归属声明（378 行） | 4 包 shim 转调 + viral-evo-lab 定制版对齐 |
+| `assemble_spawn_prompt.py` | 公共版 694 行（含 shared-core 归属声明，实测 2026-11-15） | 4 包 shim 转调 + viral-evo-lab 定制版对齐 |
 
 ### 引用方清单（2026-10-14）
 
-- **shim 转调**（scripts/assemble_spawn_prompt.py = 45 行兼容入口）：
+- **shim 转调**（scripts/assemble_spawn_prompt.py = 131 行兼容入口，实测 2026-11-15）：
   `vet-med-ppt-team` / `research-orchestration-team` / `smart-textbook-team` / `triz-invention-team`
 - **定制版独立维护**（公共版 + V1 数字核验增量，头部有来源声明）：
   `viral-evo-lab`

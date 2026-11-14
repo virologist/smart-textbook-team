@@ -315,6 +315,15 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.15.2 系列（★通读全包审计：文档一致性清零，2026-11-15 · 死链/版本缺登/数值漂移）
+
+- 范围＝用户「通读整个项目」指令中**有把握直接修**的文档/链接/数值一致性缺陷；
+  25 项需语义裁决 / 架构改动 / 历史留档的清单**一项未动**，待人工裁决后另议版本。
+- 死链修复 ×3（文件内链接）：task-router SKILL.md / textbook-pipeline-workflow SKILL.md / score_quality.py
+- CHANGELOG 补 `## [2.10.1]` 漏登 + 合并重复 `## [2.2.2]` 续段（版本号唯一性）
+- vendor/shared-core/README.md core/shim 行数声明（369/378/45 → 694/131）实测对齐
+- 版本七处权威源同步至 2.15.2；本次**未改任何 skill frontmatter version**
+
 ## v2.15.1 系列（★全面审计确定性修复，2026-11-13 · 脚本/编排层）
 
 > 本批**未改任何 SKILL.md 内容与 frontmatter version**，10 个 Skill 版本位不动；

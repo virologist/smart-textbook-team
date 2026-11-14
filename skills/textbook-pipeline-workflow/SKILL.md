@@ -119,7 +119,6 @@ BOOTSTRAP → INTAKE → CLARIFY → SPECIFY → RETRIEVE → PRODUCE → VERIFY
 
 > **本节是升级 A / 升级 C 的唯一权威口径（SSOT）**；执行体 = `scripts/parallel_gate.py`，
 > 路径归属 = `references/path-ownership.md`，回归 = `tests/test_parallel_gate.py`。
-> 起因见 `docs/smart-textbook-team-诊断与升级设计-2026-11-04.md` §3.2 升级 A/C 与 Q2：
 > 13 态全链串行把 scout 压在设计之后、把绘章图压在全链尾部，属于**过度保守**的粗粒度串行。
 
 ### 0. 相位枚举不变（先立边界）

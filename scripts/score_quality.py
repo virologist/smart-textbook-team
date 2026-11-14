@@ -17,7 +17,7 @@ LLM 只负责逐维给分与证据位置（脚本为主、LLM 为辅）。
 
   # 六维/自定义 rubric（profile 配置）：--rubric 传权重 JSON
   python3 scripts/score_quality.py --work-root "$WR" --chapter ch01 \\
-      --rubric references/profiles/custom-rubric.json --dim ... --evidence ...
+      --rubric references/chapter-structure.md --dim ... --evidence ...
 
 输入
 ------------------------------------------------------------------------------
