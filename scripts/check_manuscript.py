@@ -392,7 +392,6 @@ def check_data_figure_notebooks(text: str, work_root: Path, chapter: str, r: Res
     绘图代码 + 导出；本函数默认查结构与数据内联， 时
     额外真执行（判据 4.10e，见 _exec_notebook 的双档说明）。
     """
-    import zipfile as _zf
     slots = RE_FIGURE_SLOT.findall(text)
     if not slots:
         r.add("4.10", "数据图 notebook 校验（本章无图位，N/A）", True)

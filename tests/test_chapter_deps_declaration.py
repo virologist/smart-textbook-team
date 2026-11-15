@@ -38,7 +38,6 @@ SCRIPTS = PKG_ROOT / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 
 import build_manuscript  # noqa: E402
-import check_cross_chapter as ccc  # noqa: E402
 import count_net_words  # noqa: E402
 
 # 真实教材工作区（主仓）。R4 在该工作区补了首批声明；测试直接针对它取真值。

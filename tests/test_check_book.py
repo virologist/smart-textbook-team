@@ -21,8 +21,6 @@ from pathlib import Path
 
 import subprocess
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import check_book  # noqa: E402
 

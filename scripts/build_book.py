@@ -41,7 +41,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -49,7 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from check_book import read_book_spec  # book-spec 解析单一来源（B5c）
 from build_manuscript import (         # 版式与 pandoc 参数复用单章 SSOT
-    TYPESET, FINGERPRINT_KEY, check_deps, run_pandoc, postprocess_docx, log,
+    TYPESET, FINGERPRINT_KEY, check_deps, run_pandoc, log,
 )
 
 

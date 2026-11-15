@@ -692,7 +692,6 @@ def eval_conditional_artifacts(cases: list[dict]) -> list[dict]:
       · 有 task_type ⇒ targets = task_type_required[task_type]；
       · 未知 task_type ⇒ verdict=UNKNOWN_TASK_TYPE。
     """
-    import fnmatch
     mod = load_component('contract_check')
     results = []
     for c in cases:

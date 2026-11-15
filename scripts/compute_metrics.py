@@ -34,7 +34,7 @@ from pathlib import Path
 
 from _profile_loader import read_discipline, load_section7
 # ── 2026-11-04 诊断 P0-1/C2/H1/H2/H3：口径统一到 trace_schema SSOT ──
-from trace_schema import normalize_outcome, is_success, REVIEW_TASK_TYPES
+from trace_schema import is_success
 
 
 def load_traces(work_root: Path) -> tuple[list[dict], int]:

@@ -9,7 +9,6 @@ test_m_batch_gates.py — ★M 批次门禁回归（v2.11.3/v2.11.4）
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import tempfile

@@ -415,7 +415,7 @@ def load_term_rows(work_root: Path, chapter: str) -> tuple[list[tuple], str]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
         from check_manuscript import (  # type: ignore
-            _extract_term_table, _parse_term_rows, _resolve_term_table,
+            _parse_term_rows, _resolve_term_table,
         )
     except Exception as e:                       # pragma: no cover
         return [], f'术语表模块不可用（{e}）'
