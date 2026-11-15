@@ -332,7 +332,10 @@ jobs:
       - name: pytest 全量回归（458 用例 · 收集数自洽校验）
         run: |
           set -e
-          python3 -m pip install --quiet pytest
+          # 全量用例依赖 python-docx / PyYAML（test_cross_chapter_deps、
+          # test_check_book 等）——本 step 早于「安装书稿链依赖」，须自装，
+          # 否则 18 个用例因「PyYAML 不可用」FAIL（v2.16.0 首跑实测）。
+          python3 -m pip install --quiet pytest python-docx pyyaml
           python3 - <<'PY'
           import re, subprocess, sys, tempfile
           base = [sys.executable, "-m", "pytest", "tests", "-q", "--disable-warnings"]
