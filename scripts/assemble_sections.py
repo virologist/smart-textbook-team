@@ -51,6 +51,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from _profile_loader import read_discipline, load_section7
+from _common import log  # B4/B5：统一日志通道 SSOT
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 TRACE_TIMEOUT_S = 30
@@ -77,9 +78,6 @@ def strip_frontmatter(text: str) -> tuple[str, str]:
         return '', text
     return m.group(1), text[m.end():]
 
-
-def log(msg: str, level: str = "INFO") -> None:
-    print(f"[{level}] {msg}", file=sys.stderr)
 
 
 def parse_design_order(design_path: Path) -> list[str]:

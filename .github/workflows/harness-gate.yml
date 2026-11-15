@@ -24,9 +24,11 @@ jobs:
   harness-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # B10（2026-11-16）：checkout@v4 / setup-python@v5 运行在 Node 20，
+      # GitHub Actions 已弃用 Node 20 runner → 升级到 Node 24 版本消除告警。
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -93,6 +95,17 @@ jobs:
       - name: Skill 契约评测用例门禁（check_test_prompts.py 正负双向）
         run: |
           set -e
+          # A2（2026-11-16）：负向探针在改真实 skills/ 前先备份，trap EXIT 兜底还原。
+          # 任何中途失败 / CI 取消都能恢复，避免被改状态污染后续 repo 扫描门禁。
+          cp skills/citation-verify/test-prompts.json /tmp/_ci_tp_citation.json
+          cp skills/task-router/test-prompts.json /tmp/_ci_tp_router.json
+          cp skills/task-router/SKILL.md /tmp/_ci_sk_router.md
+          _ci_restore_tp() {
+            cp /tmp/_ci_tp_citation.json skills/citation-verify/test-prompts.json 2>/dev/null || true
+            cp /tmp/_ci_tp_router.json skills/task-router/test-prompts.json 2>/dev/null || true
+            cp /tmp/_ci_sk_router.md skills/task-router/SKILL.md 2>/dev/null || true
+          }
+          trap _ci_restore_tp EXIT
           python3 scripts/check_test_prompts.py --root .
           # 负向 1：删掉一个 skill 的用例文件 → 必须被拦（防「新增 skill 漏配」）
           mv skills/citation-verify/test-prompts.json skills/citation-verify/_tp_probe.json
@@ -164,6 +177,14 @@ jobs:
       - name: Skill frontmatter 门禁（check_skill_frontmatter.py 正负双向）
         run: |
           set -e
+          # A2（2026-11-16）：负向探针改真实 skills/ 前先备份，trap EXIT 兜底还原。
+          cp skills/learn-protocol/SKILL.md /tmp/_ci_fm_learn.md
+          cp skills/agent-harness-protocol/SKILL.md /tmp/_ci_fm_agent.md
+          _ci_restore_fm() {
+            cp /tmp/_ci_fm_learn.md skills/learn-protocol/SKILL.md 2>/dev/null || true
+            cp /tmp/_ci_fm_agent.md skills/agent-harness-protocol/SKILL.md 2>/dev/null || true
+          }
+          trap _ci_restore_fm EXIT
           python3 scripts/check_skill_frontmatter.py --root .
           # 负向 1：删掉一个 skill 的 version 行 → 必须被拦（防版本位静默腐化）
           # 还原用文件备份而非 git checkout —— 不依赖 git 索引状态，本地/CI 同行为
@@ -221,6 +242,14 @@ jobs:
       - name: 学科中立性门禁（check_domain_neutral.py 正负双向）
         run: |
           set -e
+          # A2（2026-11-16）：探针须落在 scripts/ 才能被中立性门禁扫到，无法外置；
+          # 改用 trap EXIT 兜底：任何失败/取消都删探针、还原 SSOT 文件。
+          cp references/audience-profiles.md /tmp/_ci_ap_backup.md
+          _ci_restore_neutral() {
+            rm -f scripts/_leak_probe.py scripts/_aud_leak_probe.py 2>/dev/null || true
+            cp /tmp/_ci_ap_backup.md references/audience-profiles.md 2>/dev/null || true
+          }
+          trap _ci_restore_neutral EXIT
           python3 scripts/check_domain_neutral.py --root .
           printf 'X = "禽流感回潮探针"\n' > scripts/_leak_probe.py
           if python3 scripts/check_domain_neutral.py --root . 2>/dev/null; then
@@ -280,9 +309,15 @@ jobs:
 
       - name: 静态契约评测 (>= 0.99)
         run: |
-          python3 tests/test_smart_textbook_team.py
-          SCORE=$(python3 tests/test_smart_textbook_team.py --json | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])")
+          # D5（2026-11-16）：原样跑两遍（直跑 + --json）→ 合并为单次 --json。
+          # test_smart_textbook_team.py 的 --json 分支同样以 returncode 表达通过/失败，
+          # 故单次执行即可同时拿 score 与退出码，避免 282 计分项重复执行。
+          set -o pipefail
+          SCORE_JSON=$(python3 tests/test_smart_textbook_team.py --json)
+          PYTEST_RC=$?
+          SCORE=$(printf '%s' "$SCORE_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['score'])")
           echo "静态契约总分: $SCORE"
+          test "$PYTEST_RC" -eq 0 || { echo "::error::静态契约评测存在失败项"; exit "$PYTEST_RC"; }
           python3 -c "import sys; sys.exit(0 if float('$SCORE') >= 0.99 else 1)"
 
       - name: shared-core 分发与防漂移门禁
@@ -290,6 +325,33 @@ jobs:
 
       - name: 跨平台清单同步门禁
         run: python3 tests/test_manifest_sync.py
+
+      # A1（2026-11-16）：此前 CI 只单跑 6 个 pytest 文件，tests/ 下 23 个新增用例
+      # 在 CI 上 0 收集却全绿 = 假绿。补全量 pytest step，与本地 run_all.py 同口径
+      # （独立 --basetemp + 收集数自洽校验），确保远端真正执行全部用例。
+      - name: pytest 全量回归（458 用例 · 收集数自洽校验）
+        run: |
+          set -e
+          python3 -m pip install --quiet pytest
+          python3 - <<'PY'
+          import re, subprocess, sys, tempfile
+          base = [sys.executable, "-m", "pytest", "tests", "-q", "--disable-warnings"]
+          with tempfile.TemporaryDirectory(prefix="ci-pytest-collect-") as c, \
+               tempfile.TemporaryDirectory(prefix="ci-pytest-run-") as r:
+              cp = subprocess.run(base + ["--collect-only", "--basetemp", c],
+                                  capture_output=True, text=True)
+              m = re.search(r"(\d+) tests? collected", cp.stdout)
+              collected = int(m.group(1)) if m else sum(1 for x in cp.stdout.splitlines() if "::" in x)
+              rp = subprocess.run(base + ["--basetemp", r], capture_output=True, text=True)
+              pm = re.search(r"(\d+) passed", rp.stdout)
+              sm = re.search(r"(\d+) skipped", rp.stdout)
+              passed = int(pm.group(1)) if pm else 0
+              skipped = int(sm.group(1)) if sm else 0
+              print(rp.stdout[-2000:])
+              ok = collected > 0 and rp.returncode == 0 and (passed + skipped) == collected
+              print(f"collected={collected} passed={passed} skipped={skipped}")
+              sys.exit(0 if ok else 1)
+          PY
 
       - name: install.sh 干跑冒烟（--dry-run，无副作用）
         run: |

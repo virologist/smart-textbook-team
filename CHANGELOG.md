@@ -3,6 +3,31 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.0] — 2026-11-16 ★A 组 4 硬伤 + B/C/D 组审计修复（CI 判据集/假绿/吞错/接口一致性）
+
+### A 组 4 硬伤（架构 / 语义）
+- **A1 CI 判据集分叉**：新增「pytest 全量回归」step（收集数自洽校验），把此前 CI 0 收集的 23 个测试文件纳入远端执行——消除「CI 绿但新用例未跑」的假绿。
+- **A2 负向实验还原无保护**：三个含探针的 step（用例契约 / frontmatter / 学科中立）加 `trap ... EXIT` 兜底还原，任何中途失败或 CI 取消都能恢复被改的真实 `skills/` 文件。
+- **A3 `install_state_check.py` OSError 空哈希 fail-open**：读失败改返回带路径的哨兵（不缓存），两端读失败不再得到同一常量哈希而误判「不漂移」；补负例测试。
+- **A4 两处门禁空跑仍 exit 0**：`check_cross_chapter`（<2 章）、`check_declaration`（checked==0）改为显式拒绝（exit 2），与 check_phase_consistency「扫 0 处拒绝判 PASS」口径对齐；cross 加 `--allow-single-chapter` 逃生口；补 7 个反向例。
+
+### B 组（接口 / 错误处理 / 重复代码）
+- **B1** `docx_text_fingerprint` 读失败由 `""` 改 `None`（fail-closed），两个调用方分别处理，避免写出空指纹属性。
+- **B4/B5** 三份逐字相同的 `log()`（build_manuscript/assemble_sections/merge_sections）抽取为 `scripts/_common.py` 统一日志通道（stderr）。
+- **B6** `compute_metrics._product_quality` 的未用导入改为 `importlib.util.find_spec` 显式依赖探测（行为不变）。
+- **B7a** `count_net_words --self-test` 从手撕 sys.argv 改为注册 argparse flag。
+- **B10** CI `actions/checkout@v4→v5`、`setup-python@v5→v6`，消除 Node 20 runner 弃用告警。
+- **B2/B3/B7b/B8/B9** 实证后保守保留并文档化：退出码 SSOT 模块 `_exit_codes.py`（不改既有契约）、17 处 except 均为明确降级语义、skip-preload flag 是 M3 反查锚不可外移、三个 fingerprint 是双向锚的不同端点、3 个公共 API 死函数保留。
+
+### C / D 组
+- **C1** `compute_metrics` 3 个常量正则外提模块级（只编译一次），动态 trigger 保留。
+- **D5** CI 静态契约 step 双跑合并为单次 `--json`（退出码语义等效）。
+- **D2** 11-12 报告 §六/§七过期状态加时点勘误。
+- **C2/D1/D3/D4** 实证后保留：os.walk 带剪枝语义、avatars 资产涉平台回退规则、CHANGELOG 跨仓死链属历史留档、workbench 孤儿副本在仓库外。
+
+### 验证
+- py_compile / bash -n / YAML parse 全绿；十门禁 + 静态契约全绿；pytest **462 passed / 3 skipped**（新增 7 反向例）；版本七处自洽 R1-R6 全 PASS。
+
 ## [2.15.2] — 2026-11-15 ★通读全包审计：死链/版本缺登/数值漂移清零（文档一致性）
 
 > 范围＝用户「通读整个项目」指令中**有把握直接修**的文档/链接/数值一致性缺陷；

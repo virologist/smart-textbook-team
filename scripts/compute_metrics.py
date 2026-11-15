@@ -36,6 +36,17 @@ from _profile_loader import read_discipline, load_section7
 # ── 2026-11-04 诊断 P0-1/C2/H1/H2/H3：口径统一到 trace_schema SSOT ──
 from trace_schema import is_success
 
+# C1（2026-11-16）：数据标签判据的 3 个**常量正则**外提到模块级，只编译一次。
+# 此前它们在 _product_quality 的逐章循环内每章重编译——虽因 re 内部缓存实测
+# 收益极小（24,000 次仅 5.3ms），但外提是零风险的结构改进，不改判据语义。
+# 动态 trigger（依赖 profile §7 的 _domain_alt）仍留在循环内，按章重编译。
+_RE_LABEL = re.compile(r'\[(?:实|估|引|待核实)[^\]]*\]')
+_RE_LABEL_TAIL = re.compile(r'^[。！？\s]*\[(?:实|估|引|待核实)[^\]]*\]')
+_RE_HAS_VALUE = re.compile(
+    r'\d+(?:\.\d+)?\s*(?:%|％|倍|次|天|日|周|月|年|小时|分钟|'
+    r'mg|kg|ml|L|羽|只|例|个|项|种|元|万元|亿|万|℃|度|克|吨)')
+_RE_UNIT_FALLBACK = r'[%％]|\d+(\.\d+)?\s*(?:%|％|倍|次|天|日|周|年|mg|ml|ug)'
+
 
 def load_traces(work_root: Path) -> tuple[list[dict], int]:
     """读取 trace.jsonl。返回 (有效记录列表, 坏行数)。
@@ -352,11 +363,18 @@ def _read_protocol_eval(work_root: Path | None) -> dict | None:
 
 
 def _product_quality(work_root: Path) -> dict | None:
-    """整章产物质量三维度（C9）。数据不全 → 返回 None（N/A，不阻塞）。"""
-    try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from count_net_words import count_net_words
-    except ImportError:
+    """整章产物质量三维度（C9）。数据不全 → 返回 None（N/A，不阻塞）。
+
+    B6（2026-11-16）：原写法 `from count_net_words import count_net_words` 导入后
+    函数体从不调用该名字——它实际是「依赖可用性探测」（模块缺失 ⇒ 本项 N/A，
+    不阻塞），不是真调用。改为 importlib.util.find_spec 显式表达探测意图，
+    去掉误导性的未用绑定（行为不变：模块缺失仍返回 None）。
+    """
+    import importlib.util
+    _scripts_dir = str(Path(__file__).resolve().parent)
+    if _scripts_dir not in sys.path:
+        sys.path.insert(0, _scripts_dir)
+    if importlib.util.find_spec("count_net_words") is None:
         return None
 
     chapters = sorted((work_root / '章节').glob('ch*')) if (work_root / '章节').is_dir() else []
@@ -402,27 +420,17 @@ def _product_quality(work_root: Path) -> dict | None:
         # ② 数据标签完整率：数值触发词陈述句带 [实]/[估]/[引]/[待核实] 的比例
         #    触发词 = profile §7 学科指标（动态）+ 通用单位模式（兜底）
         _alt_parts = ([_domain_alt] if _domain_alt else [])
-        _alt_parts.append(r'[%％]|\d+(\.\d+)?\s*(?:%|％|倍|次|天|日|周|年|mg|ml|ug)')
+        _alt_parts.append(_RE_UNIT_FALLBACK)
         trigger = re.compile(
             rf'[^。！？\n]*(?:{"|".join(_alt_parts)})[^。！？\n]*[。！？]', re.I)
-        label = re.compile(r'\[(?:实|估|引|待核实)[^\]]*\]')
-        # 口径修正（R3 真实跑批暴露，2026-11-05）：标签写在**句末标点之后**
-        # （教材通用写法「……产蛋率93%。[实](PMID: 12345678)」）时，
-        # 句级正则只截到句号 ⇒ 标签落在匹配范围外 ⇒ 误判「未标注」。
-        # 实测同一份稿：行级口径 107/107 = 100%，句级口径仅 20/105 = 19%。
-        # 修法：命中句后再看**紧邻其后**的标签，若贴在该句之后则计入。
-        # 不放宽触发条件，只修标签归属判定——否则该指标长期误报 FAIL。
-        label_tail = re.compile(r'^[。！？\s]*\[(?:实|估|引|待核实)[^\]]*\]')
-        # ★ v2.9.0（2026-11-05 R3-遗留 L2）：分母必须是「**带具体数值**」的陈述句。
-        #   病灶（真实章 ch_01 实测）：触发词命中 188 句，其中 **155 句只有触发词
-        #   而无数值**（如「本病多见于日龄较大鸡群」「免疫程序规范与否影响保护率」）
-        #   ⇒ 原口径把这类**无数值**定性描述计入分母 ⇒ 覆盖率被系统性稀释
-        #   （真值约 0.21，口径读数 0.17）。
-        #   协议原文是「每条**学科数据**必须带标签」⇒ 分母只该算「数据句」。
-        #   ⇒ 增「具体数值」判据：数字 + 单位/百分号（纯数量词如「3号舍」不算数据）。
-        _has_value = re.compile(
-            r'\d+(?:\.\d+)?\s*(?:%|％|倍|次|天|日|周|月|年|小时|分钟|'
-            r'mg|kg|ml|L|羽|只|例|个|项|种|元|万元|亿|万|℃|度|克|吨)')
+        # C1：label / label_tail / _has_value 三个常量正则已外提至模块级
+        # （_RE_LABEL / _RE_LABEL_TAIL / _RE_HAS_VALUE），此处直接复用。
+        # 口径修正说明保留于模块级常量定义处：
+        #   · 标签写在句末标点之后时，句级正则截不到 → 用 label_tail 看紧邻其后标签
+        #   · 分母只算「带具体数值」的数据句（_has_value），纯定性描述不计入
+        label = _RE_LABEL
+        label_tail = _RE_LABEL_TAIL
+        _has_value = _RE_HAS_VALUE
         n_trig = 0
         n_lab = 0
         n_trig_nodata = 0

@@ -179,3 +179,35 @@ class TestGraph:
         assert ccc.dependency_closure(deps, 'ch01') == ['ch02', 'ch03']
         assert ccc.dependency_closure(deps, 'ch03') == []
         assert ccc.dependency_closure(deps, 'ch04') == []
+
+
+class TestNoSilentPass:
+    """A4a（2026-11-16）：判据没跑不得算通过。
+
+    病灶：<2 章时 7 项判据全部未执行却 WARN + exit 0（假绿），
+    与 check_phase_consistency「扫到 0 处拒绝判 PASS」口径冲突。
+    """
+
+    def test_single_chapter_rejects_with_exit_2(self, work_root):
+        draft(work_root, 'ch01')
+        r = run_cli(work_root)
+        assert r.returncode == 2, f"单章必须 exit 2（判据未执行）: {r.stdout}{r.stderr}"
+        out = json.loads(r.stdout)
+        assert out['status'] == 'error' and out['error'] == 'insufficient_chapters'
+
+    def test_zero_chapter_also_rejects(self, work_root):
+        r = run_cli(work_root)  # 无任何 draft
+        assert r.returncode == 2, r.stdout + r.stderr
+
+    def test_allow_single_chapter_escape_hatch(self, work_root):
+        draft(work_root, 'ch01')
+        r = run_cli(work_root, '--allow-single-chapter')
+        assert r.returncode == 0, r.stdout + r.stderr
+
+    def test_two_chapters_still_work(self, work_root):
+        draft(work_root, 'ch01', exports=['T0'])
+        draft(work_root, 'ch02')
+        r = run_cli(work_root)
+        assert r.returncode == 0, r.stdout + r.stderr
+        out = json.loads(r.stdout)
+        assert 'chapters' in out and 'issues' in out and out['chapters'] == ['ch01', 'ch02']

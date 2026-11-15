@@ -53,6 +53,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from _common import log  # B4/B5：统一日志通道 SSOT
 
 # ──────────────────────────────────────────────────────────── CONFIG（可覆写）
 # 版式默认（对应 manuscript-delivery skill §3.1；--reference-doc 优先于本区）
@@ -100,9 +101,6 @@ def manuscript_fingerprint(text: str) -> str:
 # 注：Markdown 表格不栅格化——pandoc 会转成 docx 原生表格（可编辑、可选中）。
 # （原 RE_TABLE_FENCE 常量从未被使用，属死代码，已删除）
 
-
-def log(msg: str, level: str = "INFO") -> None:
-    print(f"[{level}] {msg}", file=sys.stderr)
 
 
 # ──────────────────────────────────────────────────────────── 依赖检查
@@ -618,12 +616,16 @@ def apply_revisions(work_root: Path, chapter: str, from_docx: Path,
 
 
 # ──────────────────────────────────────────────────────────── docx 后处理
-def docx_text_fingerprint(docx_path: Path) -> str:
+def docx_text_fingerprint(docx_path: Path) -> str | None:
     """docx **document.xml 原始字节**（含修订标记全部内容）的 hash——校验侧可重算。
 
     R5 教训：python-docx 的 paragraphs **看不到 w:ins/w:del 内的 run**（修订内文本
     对其不可见）——基于它的 hash 拦不住修订内文本篡改。document.xml 原始字节覆盖
     全部内容（正文+修订+属性引用），任何 XML 级改动都会改变 hash。
+
+    B1（2026-11-16）：读失败返回 None（fail-closed），与同仓
+    check_manuscript._docx_fingerprint 的哲学一致。此前返回 "" 会把「IO 读失败」
+    与「指纹真的为空」混淆，且让 build 侧写出 `FINGERPRINT_KEY=` 空值属性。
     """
     import hashlib
     import zipfile as _zf
@@ -632,7 +634,7 @@ def docx_text_fingerprint(docx_path: Path) -> str:
             raw = z.read("word/document.xml")
         return hashlib.sha256(raw).hexdigest()[:16]
     except Exception:
-        return ""
+        return None
 
 
 def postprocess_docx(docx_path: Path, chapter_title: str,
@@ -734,6 +736,11 @@ def postprocess_docx(docx_path: Path, chapter_title: str,
     # 双向锚（R5）：先 save 落定版式，再算**最终文本** hash 回写属性，再 save 一次
     doc.save(str(docx_path))
     text_fp = docx_text_fingerprint(docx_path)
+    if text_fp is None:
+        # B1（2026-11-16）：读失败（fail-closed）不得写出 `FINGERPRINT_KEY=None`
+        # 空指纹属性——那会让 4.13d 校验无法区分「构建失败」与「指纹为空」。
+        log("无法读取 docx document.xml 计算指纹——不写空指纹属性", "WARN")
+        return False
     doc.core_properties.comments = (
         f"{FINGERPRINT_KEY}={text_fp}"
         + (f" md={fingerprint}" if fingerprint else "")

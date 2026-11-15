@@ -410,15 +410,25 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true", help="存在 FAIL 即 exit 1")
     ap.add_argument("--affected-from", default='',
                     help="只重跑该章修订的下游受影响章（第 7 项静态依赖闭包，如 ch02）")
+    ap.add_argument("--allow-single-chapter", action="store_true",
+                    help="允许 <2 章时跳过并返回 0（默认拒绝：判据没跑不得算通过）")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     work_root = Path(args.work_root).expanduser()
     chapters = load_chapters(work_root)
     if len(chapters) < 2:
-        print(f"[WARN] 有效章节 {len(chapters)} 章（<2）——跨章校验需要 ≥2 章 draft，跳过",
-              file=sys.stderr)
-        return 0
+        # A4a（2026-11-16）：与 check_phase_consistency「扫到 0 处拒绝判 PASS」口径对齐。
+        # 此前 <2 章时 7 项判据全部未执行却 WARN+exit 0 = 假绿；改为显式 exit 2。
+        # 确需跳过单章的场景（如教学演示）由 --allow-single-chapter 显式声明。
+        msg = (f"[ERROR] 有效章节 {len(chapters)} 章（<2）——跨章校验需要 ≥2 章 draft；"
+               f"判据未执行不得算通过（若确有单章场景请显式加 --allow-single-chapter）")
+        print(msg, file=sys.stderr)
+        if args.json:
+            print(json.dumps({"status": "error", "error": "insufficient_chapters",
+                              "chapters": sorted(chapters), "issues": []},
+                             ensure_ascii=False, indent=2))
+        return 0 if args.allow_single_chapter else 2
 
     _discipline = read_discipline(work_root)
     _metrics = load_section7(work_root, _discipline, "conflict_metrics")

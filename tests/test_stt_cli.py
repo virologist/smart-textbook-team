@@ -66,13 +66,23 @@ def test_stt_gate_help_exposes_new_flags():
 
 
 def test_stt_gate_cross_accepts_affected_from():
-    """team-lead 文档示例用的 --affected-from 必须是 CLI 认识的参数。"""
+    """team-lead 文档示例用的 --affected-from 必须是 CLI 认识的参数。
+
+    2026-11-16（A4a）：check_cross_chapter 对 <2 章改为 exit 2（判据没跑不算通过），
+    与 argparse 的 exit 2 语义撞车。故本测试不再用 returncode!=2 判断「参数被认识」，
+    改为验证：① 无 unrecognized arguments（argparse 真认识该 flag）；
+    ② stderr 是「章节不足」的业务错误（证明参数已下达到门禁并被消费）。
+    """
     b = _setup()
     r = subprocess.run([sys.executable, str(STT), "gate", "--phase", "cross",
                        "--work-root", str(b), "--affected-from", "ch01"],
                        capture_output=True, text=True)
-    assert "unrecognized arguments" not in (r.stdout + r.stderr), r.stdout + r.stderr
-    assert r.returncode != 2, "参数解析失败（exit 2）"
+    combined = r.stdout + r.stderr
+    assert "unrecognized arguments" not in combined, combined
+    # 参数已被正确解析并传给门禁：要么正常跑，要么因「章节不足」被门禁拒绝
+    if r.returncode == 2:
+        assert "有效章节" in combined and "<2" in combined, \
+            f"exit 2 必须是章节不足的业务错误，而非参数解析失败: {combined}"
 
 
 def test_stt_gate_design_pass():

@@ -88,6 +88,7 @@ def is_success(raw) -> bool:
 
 
 def is_review_task_type(task_type) -> bool:
+    # B9（2026-11-16）：包内暂未调用，但为公共 API（返工率分母口径），保留。
     """判定是否「审查类任务」——返工率的分母口径。
 
     判据（2026-11-04 H1 修复）：审查类 task_type 以 `review-` 开头，

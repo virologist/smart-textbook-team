@@ -190,6 +190,35 @@ class TestCollectFiles:
         assert h_a != h_b
         assert isc._sha256(a) == h_a
 
+    def test_sha256_oserror_returns_path_sentinel_not_empty_hash(self, work_root):
+        """A3 负例（2026-11-16）：读失败不得返回空内容 sha256。
+
+        病灶：两端文件都读失败（OSError）时，若都退回空内容 sha256
+        (e3b0c44…)，会因「哈希相同」被误判为『不漂移』——把 IO 故障
+        伪装成健康。修复后必须返回带路径的哨兵，且不同路径哨兵不同。
+        """
+        isc._FILE_HASH_CACHE.clear()
+        # 目录当作文件打开 → OSError（IsADirectoryError 是 OSError 子类）
+        d1 = work_root / 'unreadable_a'
+        d2 = work_root / 'unreadable_b'
+        d1.mkdir()
+        d2.mkdir()
+        h1 = isc._sha256(d1)
+        h2 = isc._sha256(d2)
+        empty = __import__('hashlib').sha256(b'').hexdigest()
+        assert h1.startswith('__IO_ERROR__:'), f"读失败未返回哨兵: {h1}"
+        assert h1 != empty, "读失败不得返回空内容 sha256（会伪装成『不漂移』）"
+        assert h1 != h2, "两个不同路径的读失败哨兵必须不同，否则仍会误判一致"
+        # 读失败不得写缓存：同一路径恢复为真实文件后应算出真哈希（非哨兵）
+        isc._FILE_HASH_CACHE.clear()
+        recovering = work_root / 'recovering.txt'
+        h_fail = isc._sha256(recovering)   # 尚不存在 → FileNotFoundError (OSError)
+        assert h_fail.startswith('__IO_ERROR__:')
+        recovering.write_text('ok', encoding='utf-8')
+        h_ok = isc._sha256(recovering)
+        assert not h_ok.startswith('__IO_ERROR__:'), "同路径恢复后不得复用读失败哨兵"
+
+
 
 # ══════════════════════════════════════════════════════════════════════
 # 2. 比对分类（4 种状态）

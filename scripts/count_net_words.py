@@ -112,8 +112,8 @@ def self_test() -> int:
 
 
 def main() -> int:
-    if "--self-test" in sys.argv:          # 必须在 argparse 之前——--self-test 不是合法选项
-        return self_test()
+    # B7（2026-11-16）：--self-test 注册为 argparse flag，不再手撕 sys.argv——
+    # 避免 flag 与 argparse 行为脱节（如 --self-test --json 组合被静默忽略）。
     ap = argparse.ArgumentParser(description="净字数 SSOT 计数器")
     ap.add_argument("file", nargs="?", help="被统计的 markdown 文件")
     ap.add_argument("--exclude-headings", action="store_true",
@@ -121,7 +121,11 @@ def main() -> int:
     ap.add_argument("--target", type=int, help="目标净字数（触发门禁判定）")
     ap.add_argument("--tol", type=float, default=0.05, help="容差（默认 0.05）")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--self-test", action="store_true", help="运行内置自检并退出")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     if args.file is None:
         ap.error("缺少文件参数（或用 --self-test 自检）")

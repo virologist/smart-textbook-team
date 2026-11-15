@@ -106,6 +106,7 @@ def wave_state_path(work_root: Path, chapter: str, wave_id: int) -> Path:
 
 
 def list_wave_states(work_root: Path, chapter: str) -> list[Path]:
+    # B9（2026-11-16）：包内暂未调用，但为公共 API（波次状态枚举），保留。
     """列出某章的全部波次状态文件（按 wave_id 升序）。"""
     d = work_root / '运行态'
     if not d.is_dir():
@@ -795,6 +796,7 @@ KNOWN_MEMBERS = (
 
 
 def path_owner(pkg_root: Path, rel_path: str, chapter: str) -> str | None:
+    # B9（2026-11-16）：包内暂未调用，但为公共 API（路径归属反查），保留。
     """查某路径的归属者（读 references/path-ownership.md）。
 
     返回归属者 member id；未登记返回 None（→ 判据不误杀）。

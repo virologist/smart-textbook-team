@@ -168,6 +168,14 @@ def main() -> int:
                             if reason and not soft:
                                 hits.append((rel, line_no, sent.strip()[:80], reason))
 
+    # A4b（2026-11-16）：checked==0 意味着扫描判据失效（glob 路径/正则失配），
+    # 此时 TECH_DEBT=0 是「没跑算通过」的假绿。与 check_phase_consistency
+    # 「扫到 0 处拒绝判 PASS」口径对齐：显式报错 exit 2。
+    if checked == 0:
+        print(f"[ERROR] 扫描声明 0 条——判据可能已失效（检查 SCAN_GLOBS/正则），"
+              f"拒绝以 TECH_DEBT=0 判 PASS", file=sys.stderr)
+        return 2
+
     print("=" * 62)
     print(f"M3 声明↔实现反查 | 扫描声明 {checked} 条")
     print("=" * 62)

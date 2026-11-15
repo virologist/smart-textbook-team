@@ -53,6 +53,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from _common import log  # B4/B5：统一日志通道 SSOT
 
 RE_SECTION_FILE = re.compile(r"^(\d+(?:\.\d+)?)\.md$")
 
@@ -73,9 +74,6 @@ CHECK_ITEMS = (
      '相邻节之间须有过渡（承接句/小结），避免拼接感'),
 )
 
-
-def log(msg: str, level: str = 'INFO') -> None:
-    print(f'[{level}] {msg}', file=sys.stderr)
 
 
 def _read_section_order(design_path: Path) -> list[str]:

@@ -125,6 +125,11 @@ def _main_with_skip_preload() -> int:
 
 
 if __name__ == "__main__":
+    # B7b（2026-11-16 评估）：此处手撕 sys.argv 是**必要设计**，非疏漏——
+    #   _mod.main() 是联邦 core，其 argparse 不认识本包私有的降级 flag；
+    #   且本 flag 要拦截 core 的入口并注入说明，必须在 core.parse_args() 之前剥离。
+    #   同时 M3 反查锚依赖本段实现行（budget.cuts 声明的实物证据），不可外移。
+    #   故保留现状；与 B7a（count_net_words）的「可注册 flag」情形不同。
     if "--skip-skill-preload" in sys.argv:
         sys.argv.remove("--skip-skill-preload")
         sys.exit(_main_with_skip_preload())

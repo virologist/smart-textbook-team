@@ -186,7 +186,14 @@ _FILE_HASH_CACHE: dict[str, str] = {}
 
 
 def _sha256(path: Path) -> str:
-    """文件 sha256（带缓存，避免同一文件算两次）。"""
+    """文件 sha256（带缓存，避免同一文件算两次）。
+
+    ⚠ fail-closed（2026-11-16 A3 修复）：读失败不得返回「空内容 sha256」
+    （e3b0c44…）——那会让源仓与安装态两端都读失败时得到**同一个常量哈希**，
+    被判为「内容一致/不漂移」，把真实的 IO 故障伪装成健康。改为返回带路径的
+    哨兵串（两端绝对路径不同 ⇒ 哨兵不同 ⇒ 必然落入 diff），且**不写缓存**
+    （读失败是瞬时态，缓存下来会永久污染后续比对）。
+    """
     key = str(path)
     cached = _FILE_HASH_CACHE.get(key)
     if cached is not None:
@@ -197,7 +204,9 @@ def _sha256(path: Path) -> str:
             for chunk in iter(lambda: f.read(65536), b''):
                 h.update(chunk)
     except OSError:
-        h = hashlib.sha256()
+        # 带绝对路径的哨兵：两端同相对路径但根不同 ⇒ 字符串不同 ⇒ 判为漂移。
+        # 不写 _FILE_HASH_CACHE：避免瞬时 IO 失败被永久固化为「已知哈希」。
+        return f"__IO_ERROR__:{key}"
     digest = h.hexdigest()
     _FILE_HASH_CACHE[key] = digest
     return digest

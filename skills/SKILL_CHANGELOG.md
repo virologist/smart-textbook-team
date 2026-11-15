@@ -315,6 +315,20 @@ cell1 图说明行补 `[实]（std-skill:{skill名}:{条目}）` 锚形态引用
 
 ---
 
+## v2.16.0 系列（★A 组 4 硬伤 + B/C/D 组审计修复，2026-11-16 · CI/门禁/接口一致性）
+
+> 本批**未改任何 SKILL.md 内容与 frontmatter version**，10 个 Skill 版本位不动；
+> 改动集中在 scripts/、tests/、CI workflow 与审计报告。
+
+- **A1**：CI 新增「pytest 全量回归」step（收集数自洽），把此前 0 收集的 23 个测试文件纳入远端
+- **A2**：3 个负向实验 step 加 `trap ... EXIT` 兜底还原，防中断污染真实 skills/
+- **A3**：`install_state_check._sha256` OSError 改带路径哨兵 + 不缓存，杜绝双读失败误判「不漂移」
+- **A4**：`check_cross_chapter`（<2 章）与 `check_declaration`（checked==0）空跑改 exit 2，加 7 反向例
+- **B1/B4/B5/B6/B7a/B10**：docx 指纹 fail-closed；三份 log() 抽 `scripts/_common.py`；依赖探测显式化；--self-test 注册 argparse；CI actions 升版消 Node20 告警
+- **B2/B3/B7b/B8/B9**：实证后保留并文档化（退出码 SSOT `_exit_codes.py`、降级 except、M3 反查锚、双向锚 fingerprint、公共 API 死函数）
+- **C1/D5/D2**：常量正则外提；CI 静态契约双跑合并；11-12 报告状态勘误
+- 验证：十门禁 + 静态契约全绿；pytest 462 passed / 3 skipped（+7 反向例）；版本 R1-R6 自洽
+
 ## v2.15.2 系列（★通读全包审计：文档一致性清零，2026-11-15 · 死链/版本缺登/数值漂移）
 
 - 范围＝用户「通读整个项目」指令中**有把握直接修**的文档/链接/数值一致性缺陷；

@@ -983,7 +983,15 @@ def check_revision_state(text: str, work_root: Path, chapter: str,
 
 
 def _docx_fingerprint(docx_path: Path) -> str | None:
-    """读 docx 核心属性里的构建指纹（STT_MANUSCRIPT_FINGERPRINT=...）；无则 None。"""
+    """读 docx 核心属性里的构建指纹（STT_MANUSCRIPT_FINGERPRINT=...）；无则 None。
+
+    B8（2026-11-16 澄清）：本函数与 build_manuscript 的两个 fingerprint **不是重复实现**，
+    而是 4.13d 双向锚的两个不同端点：
+      · build_manuscript.manuscript_fingerprint(md 正文) → 写入属性的 md= 溯源值
+      · build_manuscript.docx_text_fingerprint(docx XML 现算) → 写入属性的主指纹
+      · 本函数 → 从属性**读回**主指纹，与校验侧现算值比对
+    三者职责不同（写 md 溯源 / 写内容指纹 / 读属性指纹），刻意不合并。
+    """
     try:
         from docx import Document
         cp = Document(str(docx_path)).core_properties.comments or ""
@@ -1019,6 +1027,11 @@ def check_fingerprint(text: str, work_root: Path, chapter: str, r: Result):
                   f"{p.name} 无 {FINGERPRINT_KEY}（旧版/外来产物，须用 build_manuscript 重建）")
             continue
         fp_now = docx_text_fingerprint(p)
+        if fp_now is None:
+            # B1（2026-11-16）：读失败 fail-closed——单独报错，不与「文本被改动」混淆
+            r.add(f"4.13d-{label}", f"{label} docx 文本完整（现算 hash == 属性指纹）",
+                  False, f"无法读取 {p.name} 的 document.xml 计算指纹（IO 故障/文件损坏）")
+            continue
         r.add(f"4.13d-{label}", f"{label} docx 文本完整（现算 hash == 属性指纹）",
               fp_now == fp_attr,
               f"属性={fp_attr} 现算={fp_now} —— docx 在构建后被改动且未回流/重建（铁律违规）")
