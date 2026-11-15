@@ -332,9 +332,12 @@ jobs:
       - name: pytest 全量回归（458 用例 · 收集数自洽校验）
         run: |
           set -e
-          # 全量用例依赖 python-docx / PyYAML（test_cross_chapter_deps、
-          # test_check_book 等）——本 step 早于「安装书稿链依赖」，须自装，
-          # 否则 18 个用例因「PyYAML 不可用」FAIL（v2.16.0 首跑实测）。
+          # 全量用例依赖 pandoc / python-docx / PyYAML（test_check_book 构建链、
+          # test_cross_chapter_deps 解析链）——本 step 早于「安装书稿链依赖」，
+          # 须自装全套，否则 v2.16.0 首跑实测：18 用例因 PyYAML 缺失 FAIL、
+          # 复跑 2 用例因 pandoc=MISSING FAIL。与后序依赖 step 的安装口径一致。
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pandoc
           python3 -m pip install --quiet pytest python-docx pyyaml
           python3 - <<'PY'
           import re, subprocess, sys, tempfile
