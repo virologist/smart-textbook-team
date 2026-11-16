@@ -17,7 +17,7 @@ set -euo pipefail
 # ★M3 v2.11.4：挂载执行体 scripts/check_external_skills.py + 规范 references/skill-mounting.md
 #   须随包分发（含 claude-code/desktop/cursor 目标）；PyYAML 为 5.4 第 7 项（术语依赖图）
 #   解析 exports/imports 的可选依赖（缺失按「不静默」升 FAIL，见 check_cross_chapter.py）
-VERSION="2.16.0"
+VERSION="2.17.0"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="all"
 DRY_RUN=0
@@ -257,7 +257,7 @@ install_claude_code() {
     log "  使用用户级 ~/.claude/agents/（subagent 用户级共享）"
     run "mkdir -p '$TARGET_DIR'"
     # 复制 6 个 agent MD
-    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
+    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer learner-advocate standards-alignment assessment-designer; do
         if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
             run "cp '$REPO_DIR/agents/$a.md' '$TARGET_DIR/$a.md'"
             ok "  agent: $a.md"
@@ -291,7 +291,7 @@ install_claude_desktop() {
     fi
     local AGENTS_DIR="$HOME_DIR/.claude/agents"
     run "mkdir -p '$AGENTS_DIR'"
-    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
+    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer learner-advocate standards-alignment assessment-designer; do
         if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
             run "cp '$REPO_DIR/agents/$a.md' '$AGENTS_DIR/$a.md'"
             ok "  agent: $a.md"
@@ -320,7 +320,7 @@ install_cursor() {
     run "cp '$REPO_DIR/references/skill-mounting.md' '$TARGET_DIR/skills/_harness-scripts/'"
     run "cp '$REPO_DIR/scripts/check_external_skills.py' '$TARGET_DIR/skills/_harness-scripts/'"
     ok "  .cursor/skills/_harness-scripts/（挂载规范+校验执行体）"
-    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer; do
+    for a in smart-textbook-team-team-lead didactic-architect literature-scout subject-writer quality-examiner visual-instructional-designer learner-advocate standards-alignment assessment-designer; do
         if [[ -f "$REPO_DIR/agents/$a.md" ]]; then
             run "cp '$REPO_DIR/agents/$a.md' '$TARGET_DIR/agents/$a.md'"
             ok "  .cursor/agents/$a.md"

@@ -36,7 +36,7 @@ def load_task_types() -> dict[str, str]:
     for line in SKILL_PATH.read_text(encoding='utf-8').splitlines():
         m = re.match(
             r'^\|\s*`?([a-z][a-z-]+)`?\s*\|[^|]+\|\s*'
-            r'(didactic-architect|literature-scout|subject-writer|quality-examiner|visual-instructional-designer)\s*\|',
+            r'(didactic-architect|literature-scout|subject-writer|quality-examiner|visual-instructional-designer|learner-advocate|standards-alignment|assessment-designer)\s*\|',
             line,
         )
         if m:

@@ -56,6 +56,9 @@ MEMBER_IDS = [
     "subject-writer",
     "quality-examiner",
     "visual-instructional-designer",
+    "learner-advocate",
+    "standards-alignment",
+    "assessment-designer",
 ]
 
 

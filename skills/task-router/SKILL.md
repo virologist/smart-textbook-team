@@ -1,7 +1,7 @@
 ---
 name: task-router
 version: 1.4.0
-description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (17 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
+description: "Structured task dispatch for the Smart Textbook Team. Defines task_type enum (22 types) with member routing table, confidence scoring, escalation rules, and offline eval harness. Load BEFORE any member dispatch to make task→member routing explicit and auditable. Trigger words: 路由 / dispatch / 派活 / task_type / 谁来做 / 调谁."
 ---
 
 # task-router — 结构化任务路由
@@ -25,10 +25,13 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 
 ---
 
-## 1. task_type 枚举（17 类，SSOT）
+## 1. task_type 枚举（22 类，SSOT）
 
 > （★G3 v2.10：枚举 16→17——补 review-section（节级审查，波次收口检查）；
 > 审查粒度与节级生产对齐：撰写已到节级，审查补上节级轻量轮。）
+> （v2.17.0：枚举 17→22——补 5 类可选增强路由：review-learner / standards-parse /
+> standards-audit / assessment-generate / assessment-review。三名常驻成员均属可选增强，
+> 由主理人按场景 spawn，不改 13 态强制门禁链。）
 
 | task_type | 中文 | 责任成员 | 输入信号 | 输出契约 |
 |-----------|------|---------|---------|---------|
@@ -49,8 +52,13 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | `visual-spec` | 图表规格 + 代码 | visual-instructional-designer | 图表位 `[图 X-X：...]` + `draft.md` | 规格卡 + Mermaid/SVG（数据图含 .ipynb） |
 | `visual-review` | 图表审查（图与正文一致性）| visual-instructional-designer | 已产图表 + 最终 `draft.md` | 图文一致性 verdict |
 | `gap-retrieval` | 缺口清单检索（gaps.md 消费） | literature-scout | `章节/{ch##}/gaps.md`（architect 产出） | 按缺口逐条证据 + 覆盖追踪 |
+| `review-learner` | **学习者视角试读**（v2.17.0 可选增强） | learner-advocate | `draft.md` + `chapter_design.md`（audience） | `review/learner_verdict.md`（四维裁决） |
+| `standards-parse` | **标准条目解析**（v2.17.0 可选增强） | standards-alignment | `学科标准/` 标准文档 + 目标类型=设计对齐 | `standards_checklist.md`（四类条目 + 1+X 映射） |
+| `standards-audit` | **成稿课标勾稽**（v2.17.0 可选增强） | standards-alignment | `standards_checklist.md` + `draft.md` | `review/alignment_report.md`（逐条覆盖状态） |
+| `assessment-generate` | **题库生成**（v2.17.0 可选增强） | assessment-designer | 终稿 `draft.md` + `chapter_design.md`（Bloom）+ 题量配额 | `assessment/{题型}.md` + `assessment/bloom_map.md` |
+| `assessment-review` | **题目审题**（v2.17.0，编排决策另派） | quality-examiner | `assessment/` 已产题目 | 题目 R5 同级 verdict（秦不自审，见其分工边界） |
 
-> **扩展规则**：未覆盖的新场景（18+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
+> **扩展规则**：未覆盖的新场景（23+），按"输入信号"最相似者降级路由，并在 trace `task_type_custom=true` 标记。
 
 > **review-section 派工纪律（★G3 v2.10）**：
 > ① 节级审查是**波次收口检查**（PRODUCE 与 VERIFY 之间），**不新增相位**；

@@ -18,7 +18,7 @@ param(
     [switch]$Help
 )
 
-$VERSION = '2.16.0'
+$VERSION = '2.17.0'
 # 仓库根 = 本脚本所在目录（install.ps1 就在仓库根，不要再取父目录）。
 # 2026-10-30 修复：原实现多取一次 -Parent 指向了仓库的**父目录**，
 # 导致所有 Test-Path 判假 → 逐个静默跳过，WorkBuddy 安装态实际什么都不装且不报错。
@@ -129,7 +129,7 @@ function Install-ClaudeCode {
     $TARGET_DIR = Join-Path $HOME_DIR '.claude\agents'
     Write-Log '  使用用户级 ~/.claude/agents/ (subagent 用户级共享)'
     Run "New-Item -ItemType Directory -Force -Path '$TARGET_DIR'"
-    foreach ($a in @('smart-textbook-team-team-lead','didactic-architect','literature-scout','subject-writer','quality-examiner','visual-instructional-designer')) {
+    foreach ($a in @('smart-textbook-team-team-lead','didactic-architect','literature-scout','subject-writer','quality-examiner','visual-instructional-designer','learner-advocate','standards-alignment','assessment-designer')) {
         $src = Join-Path $REPO_DIR (Join-Path 'agents' "$a.md")
         if (Test-Path $src) {
             Run "Copy-Item -Path '$src' -Destination '$TARGET_DIR\$a.md'"
@@ -155,7 +155,7 @@ function Install-ClaudeDesktop {
     # 仅 Windows 测试过
     $AGENTS_DIR = Join-Path $HOME_DIR '.claude\agents'
     Run "New-Item -ItemType Directory -Force -Path '$AGENTS_DIR'"
-    foreach ($a in @('smart-textbook-team-team-lead','didactic-architect','literature-scout','subject-writer','quality-examiner','visual-instructional-designer')) {
+    foreach ($a in @('smart-textbook-team-team-lead','didactic-architect','literature-scout','subject-writer','quality-examiner','visual-instructional-designer','learner-advocate','standards-alignment','assessment-designer')) {
         $src = Join-Path $REPO_DIR (Join-Path 'agents' "$a.md")
         if (Test-Path $src) {
             Run "Copy-Item -Path '$src' -Destination '$AGENTS_DIR\$a.md'"
@@ -182,7 +182,7 @@ function Install-Cursor {
     $TARGET_DIR = Join-Path $REPO_DIR '.cursor'
     Run "New-Item -ItemType Directory -Force -Path '$TARGET_DIR\agents'"
     Run "New-Item -ItemType Directory -Force -Path '$TARGET_DIR\skills'"
-    foreach ($a in @('smart-textbook-team-team-lead','didactic-architect','literature-scout','subject-writer','quality-examiner','visual-instructional-designer')) {
+    foreach ($a in @('smart-textbook-team-team-lead','didactic-architect','literature-scout','subject-writer','quality-examiner','visual-instructional-designer','learner-advocate','standards-alignment','assessment-designer')) {
         $src = Join-Path $REPO_DIR (Join-Path 'agents' "$a.md")
         if (Test-Path $src) {
             Run "Copy-Item -Path '$src' -Destination '$TARGET_DIR\agents\$a.md'"

@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "updated": "2026-11-06",
-  "note": "成员产物契约 SSOT（M2 部分落盘判据 + §3.3.2 数据传递协议的具体化）。编排者 spawn 前注入本契约，收件时用 scripts/contract_check.py 比对 must_produce —— 缺项判 PARTIAL，不静默当合格。",
+  "version": "1.1.0",
+  "updated": "2026-11-16",
+  "note": "成员产物契约 SSOT（M2 部分落盘判据 + §3.3.2 数据传递协议的具体化）。编排者 spawn 前注入本契约，收件时用 scripts/contract_check.py 比对 must_produce —— 缺项判 PARTIAL，不静默当合格。v1.1.0（v2.17.0）：新增 learner-advocate / standards-alignment / assessment-designer 三条可选增强契约（常驻成员，主理人按场景 spawn，不改 13 态强制门禁链）。",
   "placeholders": {
     "{ch}": "章节号，如 ch03",
     "{图号}": "图号，如 3-1",
@@ -113,6 +113,60 @@
       "max_retry": 3,
       "on_partial": "BLOCK",
       "on_timeout": "TIMEOUT"
+    },
+    "learner-advocate": {
+      "role": "学习者视角审查",
+      "must_produce": [
+        "章节/{ch}/review/learner_verdict.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/chapter_design.md",
+        "章节/{ch}/figures/**"
+      ],
+      "timeout_budget_s": 1200,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT",
+      "note": "v2.17.0 新增·可选增强（VERIFY 后、PROOFREAD 前的试读裁决）。幂等；audience 声明缺失 → NEED_INPUT 不猜画像。四维修法方向 ≤1 句，禁代写正文（审查者≠改写者）。"
+    },
+    "standards-alignment": {
+      "role": "课标对齐",
+      "must_produce": [
+        "章节/{ch}/standards_checklist.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/chapter_design.md",
+        "知识库/retrieval/**"
+      ],
+      "timeout_budget_s": 1200,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT",
+      "note": "v2.17.0 新增·可选增强（补 pipeline 门禁 3.5 条目生产缺口）。幂等；标准文档缺失 → NEED_INPUT，禁止自拟标准。成稿勾稽目标另产 review/alignment_report.md（见输出规范，按目标类型二选一）。",
+      "task_type_required": {
+        "standards-audit": [
+          "章节/{ch}/review/alignment_report.md"
+        ]
+      }
+    },
+    "assessment-designer": {
+      "role": "习题与考核设计",
+      "must_produce": [
+        "章节/{ch}/assessment/bloom_map.md"
+      ],
+      "must_not_write": [
+        "章节/{ch}/draft.md",
+        "章节/{ch}/figures/**",
+        "章节/{ch}/chapter_design.md",
+        "交付/**"
+      ],
+      "timeout_budget_s": 1800,
+      "max_retry": 3,
+      "on_partial": "BLOCK",
+      "on_timeout": "TIMEOUT",
+      "note": "v2.17.0 新增·可选增强（填 writer 资源位题库占位）。★唯一非幂等成员：执行前必须查 assessment/ 已有题目指纹去重。draft 非终稿 → blocked；Bloom 分布缺失 → NEED_INPUT。四题型文件按需生成，bloom_map.md 四元组核对表为必产锚。"
     },
     "smart-textbook-team-team-lead": {
       "role": "编排",

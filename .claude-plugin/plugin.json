@@ -1,7 +1,7 @@
 {
   "name": "smart-textbook-team",
-  "version": "2.16.0",
-  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members. v2.1: task-router routing + trace/progress observability. v2.6: section-level wave state persistence + contract write-back + lead verdict gate. v2.9: exercise-marker canonical form. v2.10: three-level team collapse (chapter/section/block) + section-level review loop (review-section) + reasoning-chain envelope fields (21) + tool orchestration SSOT table + std-skill local anchor form ④.",
+  "version": "2.17.0",
+  "description": "Smart textbook authoring team: 13-state pipeline orchestration covering instructional design, retrieval, writing, review, and delivery with anti-hallucination citation verification. v2.0: ACP envelope alignment across members. v2.1: task-router routing + trace/progress observability. v2.6: section-level wave state persistence + contract write-back + lead verdict gate. v2.9: exercise-marker canonical form. v2.10: three-level team collapse (chapter/section/block) + section-level review loop (review-section) + reasoning-chain envelope fields (21) + tool orchestration SSOT table + std-skill local anchor form ④. v2.17: +3 optional-enhancement members (learner-advocate / standards-alignment / assessment-designer), 22 task_types.",
   "author": {
     "name": "TZUVet",
     "email": "54756814+virologist@users.noreply.github.com",
@@ -23,7 +23,10 @@
     "./agents/literature-scout.md",
     "./agents/subject-writer.md",
     "./agents/quality-examiner.md",
-    "./agents/visual-instructional-designer.md"
+    "./agents/visual-instructional-designer.md",
+    "./agents/learner-advocate.md",
+    "./agents/standards-alignment.md",
+    "./agents/assessment-designer.md"
   ],
   "skills": [
     "./skills/agent-harness-protocol",

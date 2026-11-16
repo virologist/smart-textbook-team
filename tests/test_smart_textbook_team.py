@@ -66,6 +66,9 @@ MEMBER_IDS = [
     "subject-writer",
     "quality-examiner",
     "visual-instructional-designer",
+    "learner-advocate",
+    "standards-alignment",
+    "assessment-designer",
 ]
 # 13 态状态机（来自 textbook-pipeline-workflow skill SSOT）
 STATES_13 = [
@@ -392,7 +395,8 @@ def check_pipeline(ck, expert_dir, plugin):
     bad_hits = []
     for md_name in ("didactic-architect", "literature-scout", "subject-writer",
                     "quality-examiner", "visual-instructional-designer",
-                    "smart-textbook-team-team-lead"):
+                    "smart-textbook-team-team-lead",
+                    "learner-advocate", "standards-alignment", "assessment-designer"):
         md_text = read(os.path.join(agent_dir, f"{md_name}.md"))
         for n, line in enumerate(md_text.splitlines(), 1):
             if re.search(r"mcp__[a-z_]+__[a-z_]+", line):

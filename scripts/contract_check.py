@@ -792,6 +792,10 @@ KNOWN_MEMBERS = (
     'subject-writer',
     'quality-examiner',
     'visual-instructional-designer',
+    # v2.17.0 三名可选增强常驻成员
+    'learner-advocate',
+    'standards-alignment',
+    'assessment-designer',
 )
 
 

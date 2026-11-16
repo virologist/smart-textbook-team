@@ -3,6 +3,32 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.0] — 2026-11-16 ★团队补位：3 名可选增强成员（学习者视角/课标对齐/习题考核）
+
+> 触发：用户「按设计稿落地，发 v2.17.0」。立项依据为前几轮审计的三个实证缺口（学习者视角零覆盖 / 门禁 3.5 条目无生产者 / 题库只有占位无实体），非凭空扩编。
+
+### 新增成员（3 名 · 常驻但可选增强）
+- **learner-advocate（施学露 · 验证者 Verifier）**：以 `audience` 画像试读草稿，产出认知负荷 / 前置知识断层 / 语言难度 / 动机设计「四维可读性裁决」+ blocking 清单（位置锚 + 修法方向），落 `review/learner_verdict.md`。与 quality-examiner 互补——严正词判「专业对不对」，施学露判「学生读不读得懂」；R5 五维无独立可读性维，正好补位。幂等；audience 缺失 → `NEED_INPUT` 不猜画像。
+- **standards-alignment（傅标正 · 分析者 Analyzer）**：把用户提供的标准文档（专业教学标准 / 人才培养方案 / 课程标准 / 1+X 证书标准）解析为四类可判定条目（知识点 / 能力等级 / 术语表 / 禁用表述）+ 验收判据 + 1+X 节号映射，落 `standards_checklist.md`；成稿后产出 `review/alignment_report.md` 逐条勾稽，使 pipeline 门禁 3.5 从「无条目自动 N/A 不阻塞」变为真检验。E1 文档缺失 → `NEED_INPUT`，**禁止自拟标准**。
+- **assessment-designer（秦卷舒 · 生成者·考核 Generator-A）**：按 chapter_design 的 Bloom 目标分布出题，四题型模板（节自测 / 章末思考 / 岗位案例 / 1+X 对接）+ 参考答案 + 评分要点 + `assessment/bloom_map.md` 四元组核对表，填充 writer 的 `[资源位：题库]` 占位。**唯一非幂等成员**——写前必查已有题目指纹去重。draft 非终稿 → blocked；数据正文无据 → 标 `[待补充证据]` 不编造。
+
+### 编排与契约同步
+- `references/member-contracts.json` 1.0.0→1.1.0，新增三条 must_produce / must_not_write 契约；standards-alignment 的条件产物（standards-audit → alignment_report）进 `task_type_required`。
+- `scripts/contract_check.py` `KNOWN_MEMBERS` 白名单 +3；`references/path-ownership.md` 路径归属表 +4 行（含 assessment/ 非幂等标注）。
+- team-lead 成员表 +3 行 + 可选增强定位说明、全局路径约定 +3 类产物、单 agent 直调路由表 +5 条问法。
+- `skills/agent-harness-protocol/SKILL.md` 角色矩阵 +3 行（验证者 / 分析者 / 生成者·考核）。
+- `skills/task-router/SKILL.md` task_type 枚举 **17→22 类**：新增 `review-learner` / `standards-parse` / `standards-audit` / `assessment-generate` / `assessment-review`（审题另派 quality-examiner，出题者不自审）；扩展规则阈值 18+→23+。
+- 三新成员均**不改 13 态 SSOT 强制门禁链、不新增相位**（试读记 VERIFY、配题记 ASSEMBLE），由主理人按场景 spawn。
+
+### 清单与安装态同步
+- 两份 `plugin.json` agents[] +3、`.codebuddy-plugin` teamInfo.memberAgents +3；`marketplace.json` 版本/描述同步。
+- `install.sh` / `install.ps1` 各 3 处成员循环 +3（安装态成员可达）；`vendor/shared-core/VENDOR.json` members +3 → `--list-members` 实测输出 8 名。
+- `avatars/` 新增 3 张同风格头像（暖粉渐变 / 扁平插画 / 主题图标 / AI生成水印）：learner-advocate.png / standards-alignment.png / assessment-designer.png。
+- README 成员表 +3 行 + 成员数声明 5→8；文档一致性门禁 D1「task_type 计数」两处声明 17→22（该门禁当场抓到漂移，实证有效）。
+
+### 验证
+- py_compile / 静态契约 / manifest sync（33 项全过）/ doc consistency（D1-D7 全过）/ 学科中立（0 FAIL，三新成员零新增 WARN）/ router eval（22 类解析，47/47 = 1.000）/ 版本自洽 R1-R5 全 PASS；pytest 全量回归与 CI 见发布记录。
+
 ## [2.16.0] — 2026-11-16 ★A 组 4 硬伤 + B/C/D 组审计修复（CI 判据集/假绿/吞错/接口一致性）
 
 ### A 组 4 硬伤（架构 / 语义）

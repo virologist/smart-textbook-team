@@ -49,6 +49,10 @@ version: 1.7.0
 | `章节/{ch##}/review/r5_score.json` | quality-examiner（v1.8.0 ★G2：由 `score_quality.py` 无 `--out` 时默认双落盘的契约路径；运行态 SSOT 仍归主理人侧脚本） | 写（R5 评分五维+证据 JSON） | 只读；contract_check 在 review-proofread-score / review-score task_type 下必查 |
 | `章节/{ch##}/sections/{节号}.verdict.md` | quality-examiner（v1.8.0 ★G3：节级审查 verdict，task_type=review-section 专属产物） | 写（单节 pass/blocking 裁决；**禁改 `{节号}.md` 节稿本体**——verdict 是提案，writer 按它定点返修） | 只读；<800 字节按 SSOT 跳过节审则无此文件（contract_check 常规核对不查，--task-type review-section + --section 激活必查） |
 | `章节/{ch##}/review/interventions.md` | smart-textbook-team-team-lead | append | 只读 |
+| `章节/{ch##}/review/learner_verdict.md` | learner-advocate（v2.17.0 新增·可选增强） | 写/改（四维可读性裁决，幂等） | 只读；禁改 draft/design，修法方向 ≤1 句 |
+| `章节/{ch##}/standards_checklist.md` | standards-alignment（v2.17.0 新增·可选增强） | 写/改（四类可判定条目 + 1+X 映射，幂等） | 只读；标准文档只读，禁自拟条目 |
+| `章节/{ch##}/review/alignment_report.md` | standards-alignment（v2.17.0 新增·task_type=standards-audit） | 写/改（逐条覆盖状态） | 只读 |
+| `章节/{ch##}/assessment/**` | assessment-designer（v2.17.0 新增·可选增强） | 写/改（四题型 + bloom_map，**非幂等·写前必查重**） | 只读；禁改 draft/figures/交付/design |
 | `章节/{ch##}/figures/{图号}.md` | visual-instructional-designer | 写/改 | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.mmd` | visual-instructional-designer | 写（图表源码：Mermaid） | 只读 |
 | `章节/{ch##}/figures/assets/{图号}.svg` | **smart-textbook-team-team-lead**（由 `build_manuscript.py` 从 md ```svg 代码块落盘，见 `write_source_assets()`） | 写（SVG 矢量直嵌 docx，不经 mmdc） | 只读 |

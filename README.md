@@ -1,7 +1,7 @@
 # smart-textbook-team — 智能教材编写天团
 
 > 转换自 content-forge v5 多 Agent 框架（tb-writer 项目），适配 WorkBuddy 专家团规范 v2.0。
-> 版本 2.16.0 | 2026-11-13 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
+> 版本 2.17.0 | 2026-11-13 | 作者 TZUVet ｜ 跨平台安装：`bash install.sh`（WorkBuddy / Claude Code / Claude Desktop / Cursor）
 > 进化状态：evo-2 → evo-16 共 15 轮进化，静态契约基准 282 计分项全绿（1.000）+ 路由评测 47/47（1.000）+ CI 门禁 26 步全绿；**10 个 skill**（agent-harness-protocol / book-orchestration / citation-verify / learn-protocol / manuscript-delivery / multi-agent-patterns / scientific-figure / task-router / team-generation / textbook-pipeline-workflow）——**10/10 均配契约评测用例**（`skills/*/test-prompts.json`，门禁 `check_test_prompts.py`）；主理人常驻核心 30.2KB
 > **交付形态（v2.3.0）**：大学教材**书稿** —— `.md`（源，唯一编辑入口，**承载审稿修订语义**）+ `.docx`（交付格式 + Word 追踪修订审改载体，改后须回流 md）+ `_审阅.docx`（修订标记→Word 真修订）+ `.溯源.md`（自动生成），规格见 `skills/manuscript-delivery/SKILL.md`
 > **跨专业（v2.2.2）**：学科知识已外置为 profile —— `references/profiles/{veterinary|computer-science|law}.md`，新增学科只需复制改写该文件，**规范本体零学科常量**（默认 veterinary）；**学段判据同构外置（#71）**：`references/audience-profiles.md` 四档判据表 SSOT，通用层零学段常量（门禁同 check_domain_neutral）
@@ -32,13 +32,18 @@
 | subject-writer | 祝书白（学科内容撰写师） | R1→R2→R3 多轮撰写、数据来源标签、思政融入、引用统计口径（evo-12） |
 | quality-examiner | 严正词（质量控制审查官） | R1-R4 四轮审查、引用逐条核验（按批计 vs 整批计）、结构化裁决 |
 | visual-instructional-designer | 绘章图（可视化教学设计师） | 图表规格、Mermaid/SVG 产图、图文一致性 |
+| learner-advocate | 施学露（学习者视角审查员） | 四维可读性试读（认知负荷/前置断层/语言难度/动机）、受众适配裁决（v2.17.0 可选增强） |
+| standards-alignment | 傅标正（课程标准对齐专员） | 标准文档→可判定条目、1+X 映射、门禁 3.5 勾稽（v2.17.0 可选增强） |
+| assessment-designer | 秦卷舒（习题与考核设计师） | Bloom 分层命题、四题型题库、评分要点、资源位填充（v2.17.0 可选增强） |
+
+> **v2.17.0 三名新增成员**均为常驻但**可选增强**：由主理人按场景 spawn，不改 13 态强制门禁链。施学露与严正词互补（「学生读不读得懂」vs「专业对不对」）；傅标正补门禁 3.5 条目生产缺口；秦卷舒填 writer 题库资源位。三者均不代写正文、不改设计，边界见各自 MD。
 
 ## Skills
 
 - `textbook-pipeline-workflow` — **13 态状态机**（A-N + H LEARN）、门禁、E1-E5 错误协议、handoff 契约、介入协议（evo-11 迁入）、统稿 checklist（evo-11 迁入）
 - `citation-verify` — PMID/DOI 零容忍核验 + 中文法规/标准/公告源核验链（v1.3）；输入不可信原则（evo-11：指令注入防护/缓存不豁免三要素/来源分级）
 - `agent-harness-protocol` — **Harness 执行层骨架**（evo-11 自 team-lead 迁入）：消息信封、状态黑板、重试/超时/预算/熔断/trace、降级链、开工/收尾三件套（P2-7）、**角色矩阵与接口契约、任务分配三模式、冲突仲裁五类**
-- `task-router` — **17 类 task_type 路由**（v2.1 新增）：4 步路由算法、置信度合成（0-100 量纲）、ESC1-ESC4 升级规则（与 pipeline E1-E5 错误分级分离）、47 用例离线评测（1.000）
+- `task-router` — **22 类 task_type 路由**（v2.1 新增，v2.17.0 扩至 22 类）：4 步路由算法、置信度合成（0-100 量纲）、ESC1-ESC4 升级规则（与 pipeline E1-E5 错误分级分离）、47 用例离线评测（1.000）
 - `multi-agent-patterns` — 多代理协作公共模式（串行/并行/条件触发；铁律）
 - `learn-protocol` — **LEARN 阶段协议**（evo-11 新建）：三步曲（数据收集 → 规则草案 → 候补池）+ 合并门禁 + 反模式
 - `manuscript-delivery` — **书稿交付规格**（v2.2.2 新增）：**md 为源、docx 为交付**的双格式铁律、md 结构契约、内置教材版式 + 三级覆写、**双轨图表**（md 保留可渲染源码 / docx 嵌栅格化 PNG，栅格化三级降级不静默丢图）、门禁 4 判据族（4.0–4.14）
@@ -67,7 +72,7 @@
 
 - **WorkBuddy**：专家中心选择「智能教材编写天团」即可启动。主理人糜编澜会先澄清需求（教材名/读者/章节/字数/时数），再按 SOP 推进。Skills 由编排者按需加载（progressive disclosure），常驻核心 30.2KB（v2.14.0 统一 CLI 章节并入后实测值）。
 - **导出发布包**：`bash scripts/package_release.sh`（自动校验四处版本声明自洽 → 打包 → 回读自检）；`--check` 只校验既有包是否落后于源仓。导出物默认落在 `tb-writer/smart-textbook-team.zip`（不入 git，二进制 3.4MB）。
-- **跨平台**（Claude Code / Claude Desktop / Cursor）：`bash install.sh --dry-run` 预览 → `bash install.sh --target <平台>` 安装；git clone 后 `python3 scripts/assemble_spawn_prompt.py --list-members` 应列出 5 名成员（vendor 兜底开箱可用）。
+- **跨平台**（Claude Code / Claude Desktop / Cursor）：`bash install.sh --dry-run` 预览 → `bash install.sh --target <平台>` 安装；git clone 后 `python3 scripts/assemble_spawn_prompt.py --list-members` 应列出 8 名成员（vendor 兜底开箱可用）。
 - **包根定位与环境变量 `EXPERT_DIR`**（多机 / 非默认安装位必读）：脚本与装配器调用都靠 `EXPERT_DIR` 指到本包根目录。**优先级：显式 `export EXPERT_DIR=<包根>` > 按宿主安装根兜底**——WorkBuddy 装在 `$HOME/.workbuddy/plugins/marketplaces/my-experts/plugins/smart-textbook-team`，CodeBuddy 装在 `$HOME/.codebuddy/...`（同层级）。两套宿主部署位置不同，写死其一会让新机上首次 spawn 直接死锁且**零线索**，故一律先设环境变量。测试夹具的包根解析同此顺序，末位再回落到仓库自身（CI / 纯 clone 态）。
 
 ## 与原 v5 框架的映射

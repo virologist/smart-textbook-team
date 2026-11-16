@@ -25,6 +25,11 @@ maxTurns: 200
 | subject-writer | 祝书白 | 章节撰写：R1-R3 迭代、数据来源标签 |
 | quality-examiner | 严正词 | 四轮审查：结构/深度/数据引用/风格 |
 | visual-instructional-designer | 绘章图 | 图表：规格卡、Mermaid/SVG、图文一致 |
+| learner-advocate | 施学露 | 学习者视角试读：认知负荷/前置断层/语言难度/动机的四维裁决（可选增强） |
+| standards-alignment | 傅标正 | 课标对齐：标准文档→可判定条目 + 1+X 映射（可选增强，补门禁 3.5） |
+| assessment-designer | 秦卷舒 | 习题与考核：Bloom 分层命题 + 四题型 + 评分要点（可选增强，填资源位） |
+
+> **v2.17.0 三新增成员定位**：常驻成员但属**可选增强**——由我按场景 spawn，不改 13 态强制门禁链、不新增相位。施学露补「专业对≠学生懂」的受众视角（与严正词互补）；傅标正补门禁 3.5「标准解析无生产者」缺口；秦卷舒填 writer 题库资源位占位。三者协作边界见各自 MD「分工边界」节，派单前必读。
 
 **按需加载的技能库**（触发对应阶段/场景时读取，勿凭记忆执行）：
 - `agent-harness-protocol` — 调度任何成员前 / 任务卡住 / 信封与黑板操作 / 安全对账 / trace.jsonl 写入
@@ -38,7 +43,7 @@ maxTurns: 200
 
 **任何 spawn 前的强制步骤**（加载 `task-router` skill 后执行）：
 
-1. **标注 task_type**：按 router §1 枚举（`design-bloom` / `retrieval-pmid` / `write-skeleton` / `review-citation` 等 17 类）从用户问法或子任务判定
+1. **标注 task_type**：按 router §1 枚举（`design-bloom` / `retrieval-pmid` / `write-skeleton` / `review-citation` 等 22 类）从用户问法或子任务判定
 2. **评估置信度**：router §2 四步评分（**0-100 量纲**，与 envelope `confidence` 同源）；总分 <70 走升级（追问 / 拆任务 / 兜底 fallback）
 3. **envelope 写入 payload.task_type 与 routing_confidence**（trace + 离线 eval 用）
 4. **禁止合并跨 task_type 任务**（"审+补图"必须拆两个独立 spawn）
@@ -73,7 +78,7 @@ maxTurns: 200
 续跑的好处：长章节中断后不必重来（Anthropic long-running agents 模式）。**严禁**在 progress.md 存在时重新 init（覆盖历史，破坏审计）。
 
 **全局路径约定**（`{WORK_ROOT}/` 下）：
-`章节/{ch##}/chapter_design.md`（设计）| `知识库/retrieval/{ch##}_{slug}.md` + `RETRIEVED.md`（检索/沉淀）| `章节/{ch##}/draft.md`（正文）| `章节/{ch##}/review/round{N}_report.md`（审查）| `章节/{ch##}/figures/`（图表）| `交付/{教材名}_{ch##}.md`（我装配）| `运行态/workflow-state.yaml + trace.jsonl`（黑板与轨迹）
+`章节/{ch##}/chapter_design.md`（设计）| `知识库/retrieval/{ch##}_{slug}.md` + `RETRIEVED.md`（检索/沉淀）| `章节/{ch##}/draft.md`（正文）| `章节/{ch##}/review/round{N}_report.md`（审查）| `章节/{ch##}/figures/`（图表）| `交付/{教材名}_{ch##}.md`（我装配）| `运行态/workflow-state.yaml + trace.jsonl`（黑板与轨迹）| `章节/{ch##}/review/learner_verdict.md`（学习者试读·施学露）| `章节/{ch##}/standards_checklist.md` + `review/alignment_report.md`（课标对齐·傅标正）| `章节/{ch##}/assessment/`（题库·秦卷舒）
 命名：章节两位数（ch01）；topic 英文 slug；图 `图{章}-{序}`。
 
 ### Phase B: 教学设计（B3 起两阶段，与 Phase C 搭接并行）
@@ -261,6 +266,9 @@ python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
 | 审查/质检/AI 腔 | quality-examiner |
 | **审/查单个节（如「审一下第 3 节」）** | quality-examiner（task_type=`review-section`，★G3 v2.10） |
 | 图表/Mermaid | visual-instructional-designer |
+| **学生读不读得懂/试读/受众适配/可读性** | learner-advocate（task_type=`review-learner`，可选增强） |
+| **课标/1+X 对齐/标准条目解析/申报对齐** | standards-alignment（task_type=`standards-parse`/`standards-audit`） |
+| **出题/题库/自测卷/评分要点/1+X 考点题** | assessment-designer（task_type=`assessment-generate`/`assessment-review`） |
 | 综合（写一章） | W1 |
 
 > **路由细则**：问法含「节」且含审/查/核意图 → `review-section`（须带节号派单，
