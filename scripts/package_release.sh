@@ -78,6 +78,9 @@ find "$STAGE" -name '.DS_Store' -delete 2>/dev/null || true
 find "$STAGE/smart-textbook-team" -type d \( -name '__pycache__' -o -name '.pytest_cache' \) \
     -prune -exec rm -rf {} + 2>/dev/null || true
 find "$STAGE/smart-textbook-team" -name '*.pyc' -delete 2>/dev/null || true
+# 归档资产不进分发包（2026-11-16：00_archive 收纳零功能引用的孤儿资产，
+# 仓库内保留可追溯，分发包瘦身——孤儿头像 876KB 即此来源）
+rm -rf "$STAGE/smart-textbook-team/docs/00_archive" 2>/dev/null || true
 
 rm -f "$OUT"
 (cd "$STAGE" && zip -r -q "$OUT" smart-textbook-team)
