@@ -30,6 +30,7 @@ STEPS = [
     ("学科中立", [sys.executable, "scripts/check_domain_neutral.py", "--root", str(REPO)]),
     ("挂载校验", [sys.executable, "scripts/check_external_skills.py", "--work-root", str(REPO)]),
     ("引用一致", [sys.executable, "scripts/check_cross_refs.py", "--root", str(REPO)]),
+    ("链接核验", [sys.executable, "scripts/check_md_links.py", "--pkg-root", str(REPO)]),
     ("用例契约", [sys.executable, "scripts/check_test_prompts.py", "--root", str(REPO)]),
     ("frontmatter", [sys.executable, "scripts/check_skill_frontmatter.py", "--root", str(REPO)]),
     # 红道登记 R1-R6：此前仅 stt.py verify 间接调用，本地 STEP 与 CI 都无直接门禁

@@ -264,10 +264,12 @@ python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
 ## 预设 Workflow
 
 - **W1 全流程**（默认）：A→B→C→D→E → PROOFREAD → CONSOLIDATION → VISUALIZE → ASSEMBLE → DELIVER → LEARN；交互点仅 A 确认 + DELIVER 交付。**B3 并行重叠（主序列不变）**：B 的 `SPECIFY-refine` 与 C 搭接；E 的 `VISUALIZE-spec` 与 VERIFY-R2/R3 重叠，`VISUALIZE-final` 仍在 CONSOLIDATION 之后；`>50%` 图表位变更自动回退旧串行序（见 Phase B / E / VISUALIZE）。**v2.18 runbook 挂载点**：A 内 ★R1 课标解析（有标准文档才派）→ E 内 ★R2 学习者试读（R2 pass 后并行）→ PROOFREAD 前 ★R2-补收口 + ★R2b 课标勾稽（有 checklist 才派）→ ASSEMBLE 内 ★R3 配题（终稿后派）——触发式默认执行，用户明说跳过须 trace 留痕
-- **W2 只审查**：跳 B/C/D，E → PROOFREAD → CONSOLIDATION（**前置：用户已提供现成 draft.md，否则回退 W1**）
+- **W2 只审查**：跳 B/C/D，E → PROOFREAD → CONSOLIDATION（**前置：用户已提供现成 draft.md，否则回退 W1**）。**v2.18 runbook 挂载**：W2 无 Phase A/B ⇒ 默认无 standards_checklist ⇒ ★R2b 不触发（除非用户同时提供 checklist）；★R2 学习者试读照常挂 E 内 R2 pass 后（audience 未声明时提示一次，用户给档即派）；★R3 配题属 ASSEMBLE，W2 终点在 CONSOLIDATION 不含 ⇒ 不触发，用户要题时单派 `assessment-generate`（需终稿——W2 只审不改稿，题基于用户来稿）
+- **W3 只检索**：三可选增强成员均不挂载（无 draft 无设计，scout 单线任务）
+- **W4 补图**：A→VISUALIZE→ASSEMBLE→DELIVER（**前置：draft.md 已存在且全审查通过，仅缺图表**）。★R3 配题挂 ASSEMBLE 照常触发（draft 已终审）；★R2/★R2b 属审查链，W4 已过审 ⇒ 不回补
 - **W3 只检索**：A→C→CONSOLIDATION（**前置：用户已明确检索主题与范围，无需设计/撰写**）
 - **W4 补图**：A→VISUALIZE→ASSEMBLE→DELIVER（**前置：draft.md 已存在且全审查通过，仅缺图表**）
-- **W5 全书**（多章成书，ADR-01）：`progress.py book init` → BOOK_SPEC（填 chapter-map.md）→ 逐章跑 W1（CHAPTER_SCHEDULE，每章 strict 过才进下一章）→ `check_book.py --strict`（5.1–5.5）→ `build_book.py`（合稿 md+docx）→ BOOK_DELIVER。全书相位/产物/门禁 SSOT 见 `skills/book-orchestration`；进度矩阵用 `progress.py book-status` 查看
+- **W5 全书**（多章成书，ADR-01）：`progress.py book init` → BOOK_SPEC（填 chapter-map.md）→ 逐章跑 W1（CHAPTER_SCHEDULE，每章 strict 过才进下一章）→ `check_book.py --strict`（5.1–5.5）→ `build_book.py`（合稿 md+docx）→ BOOK_DELIVER。全书相位/产物/门禁 SSOT 见 `skills/book-orchestration`；进度矩阵用 `progress.py book-status` 查看。**v2.18 runbook 挂载**：runbook 随每章 W1 逐章生效（★R1/★R2/★R2b/★R3 均按章触发，互不跨章）；**书级题库批量场景**——用户要求「成书后按章批量生成题库」时，BOOK_DELIVER 前逐章派 `assessment-generate`（每章独立 spawn、独立查重，禁止一次派全书——成员契约 timeout 与产物路径均按章），逐章验收后汇总题库清单交付
 
 ## 单 agent 直调路由表
 

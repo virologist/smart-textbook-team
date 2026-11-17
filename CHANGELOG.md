@@ -3,6 +3,27 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.1] — 2026-11-17 ★三成员跨工作流适配 + Markdown 链接有效性门禁
+
+### Added
+- **W2/W5 场景适配条款**：team-lead 的 W2 只审查 / W5 全书路径补三可选增强成员挂载说明
+  （施学露受众试读、傅标正课标勾稽、秦卷舒分章配题）；三成员 MD 增「W1/W2/W5 挂载点」反向锚节，
+  与 team-lead runbook 双向锚定——派工时机 SSOT 唯一，避免跨路径语义漂移。
+- **链接有效性门禁** `scripts/check_md_links.py`：全量核验包内 md 相对链接与反引号路径引用
+  （本次实测 49 md / 352 条 / 0 断链）。免疫设计：CHANGELOG / SKILL_CHANGELOG / docs 日期报告
+  （历史留档照抄旧引用）、tests/fixtures（测试夹具）、{占位符}（模板变量）、勘误行（声明不存在的提及）。
+- **CI + run_all 接入**：harness-gate.yml 加「Markdown 链接有效性门禁」step，tests/run_all.py 加
+  「链接核验」step——与 check_doc_consistency 同级守引用有效性，防 router_baseline / build_chapter.py
+  类虚构引用回潮。新增 tests/test_md_links.py 12 正反例（核心功能 / 免疫豁免 / 负例必抓）。
+
+### Fixed
+- 宿主版本缓存区（46MB / 5 个旧版本目录）备份至 OneDrive 归档后清空，消除双副本版本漂移风险；
+  真源 marketplaces 与 cache 目录骨架保留。
+
+### Verification
+- pytest 474 passed / 3 skipped；run_all 12 步全绿；红道 R1-R6、manifest 33/33、doc 7/7、
+  学科中立 FAIL 0 / WARN 6（基线持平）、router 61/61、链接核验 352 条零断链。
+
 ## [2.18.0] — 2026-11-17 ★三成员 runbook 化（W1 spawn 时机固化）+ 路由评测 47→61 实测样本
 
 ### W1 runbook（三可选增强成员 spawn 时机固化）

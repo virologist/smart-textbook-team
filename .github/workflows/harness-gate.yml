@@ -75,6 +75,14 @@ jobs:
       - name: 文档一致性门禁（计数/量纲/编号/归属）
         run: python3 scripts/check_doc_consistency.py --root . --verbose
 
+      # 链接有效性门禁（2026-11-17）：包内 md 相对链接 + 反引号路径引用逐条核验。
+      # 病史：router_baseline.md / build_chapter.py 等虚构引用各轮审计靠人眼修，
+      # 无门禁防回潮——本 step 与 check_doc_consistency 同级守「引用有效性」。
+      # 免疫：CHANGELOG / SKILL_CHANGELOG / docs 日期报告（历史留档照抄旧引用）、
+      # tests/fixtures（测试夹具）、{占位符}（模板变量）、勘误行（声明不存在的提及）。
+      - name: Markdown 链接有效性门禁
+        run: python3 scripts/check_md_links.py --pkg-root .
+
       # Skill 契约评测用例门禁（2026-11-10 批次 S1）：
       # 病史：10 个 skill 中只有 4 个有 test-prompts.json，其余 6 个缺失；
       #   且全仓 scripts/ tests/ .github/ 对 test-prompts **零消费方**——
