@@ -190,6 +190,33 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | "画一张疫区封锁的决策树" | `visual-spec` | 90 |
 | "按 gaps.md 把缺口逐条补证据" | `gap-retrieval` | 90 |
 
+> **v2.18.0 扩容（三可选增强成员实测样本）**：以下 10 条为 22 类枚举扩容后新增路由的实测样本——
+> 来源 = 三成员 MD 的「适用场景」原文问法 + W1 runbook 挂载点（★R1/★R2/★R3），非凭空构造。
+
+| 用户问法（原文） | task_type | 置信度 |
+|-----------------|-----------|--------|
+| "这是专业教学标准，帮我把知识点条目解析出来" | `standards-parse` | 90 |
+| "把 1+X 证书标准映射到各节" | `standards-parse` | 85 |
+| "对照课程标准逐条核查这章覆盖情况" | `standards-audit` | 90 |
+| "按 standards_checklist 做申报材料对齐核查" | `standards-audit` | 85 |
+| "学生读这章会不会吃力，帮我试读一下" | `review-learner` | 90 |
+| "从低学段新生视角过一遍可读性"（问法保留用户原话，实际受众档按 audience-profiles §0 枚举） | `review-learner` | 85 |
+| "给这章出一套节末自测题" | `assessment-generate` | 90 |
+| "按 Bloom 分布补齐章末思考题和岗位案例" | `assessment-generate` | 85 |
+| "审一下题库里题面语言难度超没超受众" | `assessment-review` | 85 |
+| "这批 1+X 对接题的考点等级对不对" | `assessment-review` | 85 |
+
+> **路由优先级约束（与 §2 Step1 触发词表一致）**：
+> ① `standards-parse` vs `retrieval-standard`——「解析/条目/映射」= 傅（本地文档加工）；
+> 「查/现行版次/最新版」= 粟（外网检索核验）；两者可同链先后（先粟核验真伪、再傅解析）。
+> ② `review-learner` vs `review-style`/`review-depth`——「学生/受众/试读/读得懂/吃力/认知负荷」= 施；
+> 「可读性」**须与受众词共现**（学生/受众/读者/新生/视角）才路由给施——否则被「文风可读性」（R4 风格意图）截胡（影子实现 61 用例实测）；
+> 纯风格/深度词无受众词 = 严的既有轮次不变。
+> ③ `assessment-generate` vs `review-score`——「出题/题库/自测卷/补题」= 秦；
+> 「打分/五维/质量分」（对正文）= 严的 R5 不变。
+> ④ `assessment-review` 对象是**题库**（`assessment/` 产物），与审正文的 R1-R5 区分——
+> 问法含「题/题库/考点」+「审/核」→ assessment-review。
+
 > **离线 eval 基线**：20+ 用例命中率应 ≥ 80%（Apollo 类比：首过 20%→80%）。低于此基线即判定 router 需升级。
 
 ---

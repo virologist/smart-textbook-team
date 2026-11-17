@@ -3,6 +3,30 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.0] — 2026-11-17 ★三成员 runbook 化（W1 spawn 时机固化）+ 路由评测 47→61 实测样本
+
+### W1 runbook（三可选增强成员 spawn 时机固化）
+- team-lead 四个 Phase 插入派工条款（★R1/★R2/★R2-补/★R2b/★R3 标记），触发式默认执行、用户跳过须 trace 留痕（`notes: <member>-skipped`）：
+  - **★R1 Phase A**：用户提供标准文档 → 默认派 `standards-parse` 产 `standards_checklist.md`（禁自拟红线不 变）；无文档不派不阻塞
+  - **★R2 Phase E**：R2 pass 且 audience 已声明 → 默认插单 `review-learner` 试读（与 R3 并行，只读无冲突）；blocking 并入当轮返修单**不双倍打回计数**；audience 未声明 → 先补声明不空派
+  - **★R2-补 PROOFREAD 前**：verdict 缺失且未跳过 → 最后一次提示并默认派工
+  - **★R2b PROOFREAD**：有 checklist → 默认派 `standards-audit` 勾稽；无 checklist → 3.5 按 N/A 口径放行不代造
+  - **★R3 ASSEMBLE**：PROOFREAD pass → 默认派 `assessment-generate`；⚠ 非幂等——重复派工前确认上轮收口，返修下发「只补缺失题型」；装配前查资源位占位与题库覆盖差集
+- W1 描述行更新挂载点总览；DELIVER 交付物含题库
+
+### task-router 实测样本扩容（47→61 用例，1.000）
+- skill §4 新增 10 条实测样本表（问法取自三成员「适用场景」原文 + runbook 挂载点，非凭空构造）
+- **路由优先级约束四条成文**（skill ↔ 影子实现双向锚定）：
+  ① standards-parse（解析/映射，本地加工）vs retrieval-standard（查/版次，外网检索）——可同链先后
+  ② review-learner 受众词优先定性；**「可读性」须与受众词共现**（否则截胡 R4「文风可读性」——61 用例实测抓到的真回归）
+  ③ assessment-generate（出题）vs review-score（对正文打分）分流
+  ④ assessment-review 对象是题库非正文（含「题/题库/考点」+「审/核」）
+- 影子实现新增 4 个路由分支（置于既有分支之前防截胡）+ KNOWN_SAMPLES +10 + EVAL_CASES +14（每类 ≥3）
+- **学科中立**：样例问法「高职新生」改写为受众档引用式（WARN 不回潮）；README 计数 47→61、主理人体积 30.2→35.7KB（runbook 增容实测）
+
+### 验证
+- router eval **61/61 = 1.000**（门槛 0.80）；静态契约 1.0 零失败；manifest 33/33（M10c 体积声明同步）；doc consistency D1-D7 全过；学科中立 FAIL 0 / WARN 6（基线持平）；版本 R1-R6 自洽（2.18.0）
+
 ## [2.17.0] — 2026-11-16 ★团队补位：3 名可选增强成员（学习者视角/课标对齐/习题考核）
 
 > 触发：用户「按设计稿落地，发 v2.17.0」。立项依据为前几轮审计的三个实证缺口（学习者视角零覆盖 / 门禁 3.5 条目无生产者 / 题库只有占位无实体），非凭空扩编。

@@ -48,7 +48,7 @@ def load_task_types() -> dict[str, str]:
 
 TASK_TYPES = load_task_types()
 
-# skill §4 已知样例(精确匹配 → 置信度加成; G3 同步 skill §4 的 11 条)
+# skill §4 已知样例(精确匹配 → 置信度加成; G3 同步 skill §4; v2.18.0 +10 条三成员实测样本)
 KNOWN_SAMPLES = {
     '设计第 6 章禽流感鉴别诊断': 'design-bloom',
     '查一下 GB 19438 的现行版次': 'retrieval-standard',
@@ -64,6 +64,17 @@ KNOWN_SAMPLES = {
     '单独核查第 5 节是否达标': 'review-section',
     '画一张疫区封锁的决策树': 'visual-spec',
     '按 gaps.md 把缺口逐条补证据': 'gap-retrieval',
+    # ── v2.18.0: 三可选增强成员实测样本（skill §4 v2.18 扩容表同步）──
+    '这是专业教学标准，帮我把知识点条目解析出来': 'standards-parse',
+    '把 1+X 证书标准映射到各节': 'standards-parse',
+    '对照课程标准逐条核查这章覆盖情况': 'standards-audit',
+    '按 standards_checklist 做申报材料对齐核查': 'standards-audit',
+    '学生读这章会不会吃力，帮我试读一下': 'review-learner',
+    '从高职新生视角过一遍可读性': 'review-learner',
+    '给这章出一套节末自测题': 'assessment-generate',
+    '按 Bloom 分布补齐章末思考题和岗位案例': 'assessment-generate',
+    '审一下题库里题面语言难度超没超受众': 'assessment-review',
+    '这批 1+X 对接题的考点等级对不对': 'assessment-review',
 }
 
 
@@ -94,6 +105,38 @@ def route(query: str) -> tuple[str | None, float, list[str]]:
     if '图' in q and any(kw in q for kw in ('一致', '相符', '对得上', '对齐')):
         signals.append('visual-review')
         return 'visual-review', conf(False), signals
+
+    # ── v2.18.0 三可选增强成员路由（优先级约束见 skill §4 v2.18 扩容表注）──
+    # ④ assessment-review：题库审查意图——「题/题库/考点」+「审/核/对不对」；
+    #   置于 assessment-generate 之前（含题词的审查问法不得被出题分支截胡）
+    if any(kw in q for kw in ('题库', '题面', '考点', '自测题', '思考题', '对接题', '出一套', '出题', '配题')) \
+            and any(kw in q for kw in ('审', '核', '对不对', '超没超', '难度')):
+        signals.append('assessment-review')
+        return 'assessment-review', conf(KNOWN_SAMPLES.get(q.strip()) == 'assessment-review'), signals
+
+    # ③ assessment-generate：出题意图——须在「写/审」通用词之前（含「出/补」+题型词）
+    if any(kw in q for kw in ('出题', '题库', '自测题', '自测卷', '思考题', '案例分析', '对接题',
+                              '出一套', '补齐章末', '配题', '补题')):
+        signals.append('assessment-generate')
+        return 'assessment-generate', conf(KNOWN_SAMPLES.get(q.strip()) == 'assessment-generate'), signals
+
+    # ② review-learner：受众视角试读——受众词（学生/受众/读者/试读/读得懂/吃力）优先定性；
+    #   「可读性」单放会截胡 review-style 的「文风可读性」（evo-16 实测）——须与受众词共现
+    #   （共现词含泛化学段+视角组合：「高职新生视角」「应用本科读者」等）
+    if any(kw in q for kw in ('试读', '读得懂', '读不懂', '吃力', '学生视角', '受众视角',
+                              '读者视角', '学生读', '受众适配', '受众画像', '认知负荷')) \
+            or ('可读性' in q and any(kw in q for kw in ('学生', '受众', '读者', '新生', '视角'))):
+        signals.append('review-learner')
+        return 'review-learner', conf(KNOWN_SAMPLES.get(q.strip()) == 'review-learner'), signals
+
+    # ① standards 双类型：解析/映射/条目（本地加工） vs 勾稽/覆盖核查（对照成稿）；
+    #   「查/版次/现行/最新」不进本分支（那是 retrieval-standard 的检索意图）
+    if any(kw in q for kw in ('standards_checklist', '课程标准', '教学标准', '证书标准',
+                              '人才培养方案', '标准条目', '条目解析', '申报材料', '解析成条目')):
+        signals.append('standards')
+        if any(kw in q for kw in ('核查', '勾稽', '覆盖', '对齐核查', '逐条查')):
+            return 'standards-audit', conf(KNOWN_SAMPLES.get(q.strip()) == 'standards-audit'), signals
+        return 'standards-parse', conf(KNOWN_SAMPLES.get(q.strip()) == 'standards-parse'), signals
 
     # ── 设计 ──
     if any(kw in q for kw in ('设计', 'Bloom', '大纲', '教学设计')):
@@ -236,6 +279,22 @@ EVAL_CASES = [
     # ── B1-3 新增(2026-11-04): R4+R5 合并派工路由 ──
     ('校对并给这章打五维质量分', 'review-proofread-score', 100),
     ('校稿并打分，一次做完', 'review-proofread-score', 70),
+
+    # ── v2.18.0 扩容: 三可选增强成员路由（skill §4 v2.18 实测样本表同步, 每类 ≥2）──
+    ('这是专业教学标准，帮我把知识点条目解析出来', 'standards-parse', 70),
+    ('把 1+X 证书标准映射到各节', 'standards-parse', 70),
+    ('用户给了人才培养方案, 解析成可判定条目', 'standards-parse', 70),
+    ('对照课程标准逐条核查这章覆盖情况', 'standards-audit', 70),
+    ('按 standards_checklist 做申报材料对齐核查', 'standards-audit', 70),
+    ('成稿后对照标准条目逐条勾稽', 'standards-audit', 70),
+    ('学生读这章会不会吃力，帮我试读一下', 'review-learner', 70),
+    ('从高职新生视角过一遍可读性', 'review-learner', 70),
+    ('按受众画像检查这章的认知负荷', 'review-learner', 70),
+    ('给这章出一套节末自测题', 'assessment-generate', 70),
+    ('按 Bloom 分布补齐章末思考题和岗位案例', 'assessment-generate', 70),
+    ('把资源位的题库占位填上', 'assessment-generate', 70),
+    ('审一下题库里题面语言难度超没超受众', 'assessment-review', 70),
+    ('这批 1+X 对接题的考点等级对不对', 'assessment-review', 70),
 
     # 边界用例: 模糊问法, 应触发升级
     ("帮我搞一下这章", None, 0),

@@ -30,6 +30,8 @@ maxTurns: 200
 | assessment-designer | 秦卷舒 | 习题与考核：Bloom 分层命题 + 四题型 + 评分要点（可选增强，填资源位） |
 
 > **v2.17.0 三新增成员定位**：常驻成员但属**可选增强**——由我按场景 spawn，不改 13 态强制门禁链、不新增相位。施学露补「专业对≠学生懂」的受众视角（与严正词互补）；傅标正补门禁 3.5「标准解析无生产者」缺口；秦卷舒填 writer 题库资源位占位。三者协作边界见各自 MD「分工边界」节，派单前必读。
+>
+> **v2.18.0 runbook（W1 spawn 时机固化）**：三成员的默认介入时机已固化进各 Phase 派工条款（★R1/★R2/★R3 标记）。**触发式≠默认关闭**：满足触发条件即默认派工，用户明说跳过 → trace 记 `notes: <member>-skipped` 后放行；用户主动要求 → 任何 Phase 均可插单（不受默认时机限制）。验收一律走 `contract_check.py`（新成员各自 `--task-type` 激活条件产物必查）。
 
 **按需加载的技能库**（触发对应阶段/场景时读取，勿凭记忆执行）：
 - `agent-harness-protocol` — 调度任何成员前 / 任务卡住 / 信封与黑板操作 / 安全对账 / trace.jsonl 写入
@@ -65,6 +67,8 @@ maxTurns: 200
 > 完整 13 态/门禁/介入协议/统稿 checklist 见 skill `textbook-pipeline-workflow`。
 
 ### Phase A: 需求澄清（我亲自执行）
+
+**★R1 课标解析派工（v2.18.0 runbook 固化）**：用户在本 Phase（或更早）提供了标准文档（专业教学标准 / 人才培养方案 / 课程标准 / 1+X 证书标准，落 `学科标准/` 下）→ **默认派** `spawn standards-alignment --task_type=standards-parse --input={标准文档路径},目标类型=设计对齐`，产出 `章节/{ch##}/standards_checklist.md`（四类可判定条目 + 1+X 映射）。验收：`contract_check.py --member standards-alignment --chapter {ch##}`；文档缺失时成员会回 `NEED_INPUT`，**不得让我或 architect 自拟条目**（伪造合规红线）。无标准文档 → 不派，不阻塞主流程。checklist 产出后转交 Phase B（陶靖衍设计对齐消费）。
 确认 WORK_ROOT、教材名、读者、章节、字数、时数；一轮问清（≤5 问）。**WORK_ROOT 由我确定并写入所有下游指令——成员不猜路径。**
 
 **续读判定（evo-15 增补）**：Phase A 第一步先执行 `python3 scripts/progress.py --work-root $WORK_ROOT show`。若 progress.md 存在且非 BOOTSTRAP 状态 → **续跑模式**：跳过已完成 phase，直接进入下一个 IN_PROGRESS phase；若 progress.md 不存在 → 新章节初始化（`python3 scripts/progress.py --work-root $WORK_ROOT init --chapter ch## --textbook ... --audience ...`）。
@@ -147,6 +151,8 @@ spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审�
 路径归属不同 ⇒ 无写冲突。R2/R3 收口后我跑 `parallel_gate.py visual-drift` 裁决，
 见 Phase VISUALIZE。
 
+**★R2 学习者试读派工（v2.18.0 runbook 固化）**：R2 pass 且 chapter_design `audience` 已声明 → **默认插单** `spawn learner-advocate --task_type=review-learner`（试读 R2 后稿，与 R3 引用核验并行——两者只读 draft，无写冲突），产出 `章节/{ch##}/review/learner_verdict.md`（四维裁决）。验收：`contract_check.py --member learner-advocate --chapter {ch##}`。blocking 清单按严重度并入当轮返修单转 writer（与 examiner 的专业 blocking 合并，同一轮修复，不双倍打回计数）；advisory 记录在案不阻塞。audience 未声明 → 不派（成员会 NEED_INPUT，浪费一轮 spawn——先按既有协议让 architect 补声明或按 SSOT §0 默认档走）。PROOFREAD 前若仍未试读且用户未跳过 → 提示一次「学习者视角未覆盖」。
+
 ### Phase PROOFREAD: R4 校稿 + R5 质量评分（独立于 E 之上，对应 13 态 PROOFREAD；E1 统一裁决 2026-10-31）
 **轮次归属 SSOT（pipeline §轮次归属）**：VERIFY 只跑 R1-R3（内容正确性）；**PROOFREAD 跑 R4+R5**（交付质量）——与 13 态表、examiner 契约三处对齐。
 **相位名以 `progress.py` `PHASE_ORDER` 为准**（唯一权威，本节不复述枚举）：R4/R5 落盘用 `PROOFREAD-R4`/`PROOFREAD-R5`。
@@ -156,6 +162,10 @@ spawn 严正词 R1 结构 / R2 内容深度 / R3 数据+引用核验 三轮审�
 按五维评分（chapter-structure §2）+ **80 分红线**：≥80 才进 CONSOLIDATION；<80 blocking，按维度定点退返修。结果双落盘：审查报告「质量评分」段 + `python3 scripts/progress.py --work-root "$WORK_ROOT" update --phase PROOFREAD-R5`。
 **为什么合并**：原 R4/R5 两次 spawn 读同一份 draft.md —— 一次多余的派工 + 一次多余的全稿重读。合并后省一轮，且两轮结论同源（同一 examiner 同一上下文，R5 紧接 R4 结论更连贯）。
 **串行硬约束**：PROOFREAD（R4+R5）不能与 E（R1-R3）并行；全 pass 才进下一态。
+
+**★R2-补 学习者试读收口（v2.18.0）**：PROOFREAD 开工前检查 `review/learner_verdict.md` 是否存在——未试读且用户未跳过（无 `notes: learner-skipped`）→ 此处最后一次提示并默认派工（此时试读的是 PROOFREAD 前稿，verdict 的 advisory 仍可并入 R4 校稿单）。已试读或已跳过 → 直接进 R4+R5。
+
+**★R2b 课标勾稽派工（v2.18.0 runbook 固化）**：`章节/{ch##}/standards_checklist.md` 存在（Phase A 产出）且 draft 已过 E → **默认派** `spawn standards-alignment --task_type=standards-audit`（成稿勾稽，对照终稿逐条核覆盖），产出 `章节/{ch##}/review/alignment_report.md`。验收：`contract_check.py --member standards-alignment --chapter {ch##} --task-type standards-audit`。缺失条目按「契约内缺失 = blocking」口径并入返修单；checklist 不存在 → 3.5 按现行 N/A 口径放行（不阻塞、不代造条目）。
 
 ### Phase CONSOLIDATION: 统稿（我亲自执行，checklist 见 pipeline skill）
 六项检查（术语/编号/引用格式/清洁/遗留表/净字数——以 `python3 scripts/count_net_words.py --target <目标> <文件>` 的 SSOT 脚本值为准（**file 是位置参数，缺它实跑报「缺少文件参数」**））→ 装配交付物 → present_files + 质量报告。**净字数以脚本值为唯一权威**，自报值 ≠ 脚本值 → advisory（以脚本值为准）。
@@ -205,6 +215,9 @@ python3 scripts/parallel_gate.py visual-drift \
 改的是相位内的子阶段编排；>50% 变更自动回退旧串行序作为保险。
 
 ### Phase ASSEMBLE: 装配（我亲自执行）
+
+**★R3 配题派工（v2.18.0 runbook 固化）**：PROOFREAD pass（draft 为终稿）→ **默认派** `spawn assessment-designer --task_type=assessment-generate --input={终稿路径,chapter_design 路径,题量配额}`，产出 `章节/{ch##}/assessment/`（四题型 + bloom_map）。验收：`contract_check.py --member assessment-designer --chapter {ch##}`。⚠ 成员**非幂等**（重复执行会增题）——重复派工前必须确认上轮已收口，返修场景下发「只补缺失题型」指令。Bloom 分布偏差超阈值 / `[待补充证据]` 题 → 按成员回传上报处置，不代答。装配前查 writer 资源位占位与 assessment/ 覆盖差集：未覆盖节号 → 资源位标记在交付 md 中改为「题库另册」说明（我不回写 draft 正文）。
+
 把 `章节/{ch##}/draft.md` + `figures/` + 审查 verdict 摘要 + 质量报告合并为 `交付/{教材名}_{ch##}.md`。
 
 **书稿双格式构建**（规格 SSOT = `skills/manuscript-delivery/SKILL.md`；v1.1.0 装配同时自动生成溯源表 + 转写校稿结论节）：
@@ -230,7 +243,7 @@ python3 scripts/build_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} \
 
 ### Phase DELIVER: 交付（我亲自执行）
 1. **先过门禁 4**：`python3 scripts/check_manuscript.py --work-root "$WORK_ROOT" --chapter {ch##} --strict`（判据族 4.0-4.13；FAIL 不得交付——判据 SSOT 见 manuscript-delivery §4）
-2. `present_files` 交付 **md + docx（+审阅版，含修订时）+ 溯源表** 多件套，附质量报告与缺口清单
+2. `present_files` 交付 **md + docx（+审阅版，含修订时）+ 溯源表** 多件套，附质量报告与缺口清单；`章节/{ch##}/assessment/` 已配题时一并交付（题库随交付，或按用户要求单独出卷）
 3. **质量报告必须显式列出**：「未栅格化图表数」（栅格化降级不静默丢图）+「修订计数」（插入/删除处数，判据 4.13b 口径）+「`[待核实]` 条数」（溯源表口径）
 
 ### Phase LEARN: 经验沉淀（我亲自执行，协议见 learn-protocol skill）
@@ -250,7 +263,7 @@ python3 scripts/check_cross_chapter.py --work-root "$WORK_ROOT" \
 
 ## 预设 Workflow
 
-- **W1 全流程**（默认）：A→B→C→D→E → PROOFREAD → CONSOLIDATION → VISUALIZE → ASSEMBLE → DELIVER → LEARN；交互点仅 A 确认 + DELIVER 交付。**B3 并行重叠（主序列不变）**：B 的 `SPECIFY-refine` 与 C 搭接；E 的 `VISUALIZE-spec` 与 VERIFY-R2/R3 重叠，`VISUALIZE-final` 仍在 CONSOLIDATION 之后；`>50%` 图表位变更自动回退旧串行序（见 Phase B / E / VISUALIZE）
+- **W1 全流程**（默认）：A→B→C→D→E → PROOFREAD → CONSOLIDATION → VISUALIZE → ASSEMBLE → DELIVER → LEARN；交互点仅 A 确认 + DELIVER 交付。**B3 并行重叠（主序列不变）**：B 的 `SPECIFY-refine` 与 C 搭接；E 的 `VISUALIZE-spec` 与 VERIFY-R2/R3 重叠，`VISUALIZE-final` 仍在 CONSOLIDATION 之后；`>50%` 图表位变更自动回退旧串行序（见 Phase B / E / VISUALIZE）。**v2.18 runbook 挂载点**：A 内 ★R1 课标解析（有标准文档才派）→ E 内 ★R2 学习者试读（R2 pass 后并行）→ PROOFREAD 前 ★R2-补收口 + ★R2b 课标勾稽（有 checklist 才派）→ ASSEMBLE 内 ★R3 配题（终稿后派）——触发式默认执行，用户明说跳过须 trace 留痕
 - **W2 只审查**：跳 B/C/D，E → PROOFREAD → CONSOLIDATION（**前置：用户已提供现成 draft.md，否则回退 W1**）
 - **W3 只检索**：A→C→CONSOLIDATION（**前置：用户已明确检索主题与范围，无需设计/撰写**）
 - **W4 补图**：A→VISUALIZE→ASSEMBLE→DELIVER（**前置：draft.md 已存在且全审查通过，仅缺图表**）
