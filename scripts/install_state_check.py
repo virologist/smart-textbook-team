@@ -86,7 +86,14 @@ from pathlib import Path
 #   却存在于本地工作副本 ⇒ 原先被算成「安装态缺失 294 项」= **假漂移**。
 #   运行态**不应**进安装态（分发包泄漏本机操作痕迹 + 与版本层口径漂移）。
 EXCLUDE_DIRS = {'.git', '.in_use', '.pytest_cache', '__pycache__', '.DS_Store',
-                '.workbuddy', '.versionctl'}
+                '.workbuddy', '.versionctl',
+                # v2.18.2（2026-11-18 内部测试实测）：00_archive 是**归档留痕目录**
+                # （git 跟踪、docs/00_archive/ 三个历史资产，2026-11-16 归档），
+                # package_release.sh 打包阶段有意排除（分发包 -876KB）——与 .git 同级
+                # 「源码留痕但不进分发包」。检查器原先按 git-ignored 语义排除，
+                # 但 `git ls-files --others --ignored` 不列 tracked 文件 ⇒ 归档三件
+                # 恒报 src_only 假漂移（即使安装态与分发包完全一致）。固定排除。
+                '00_archive'}
 
 # 排除的文件名（元数据，不是包内容）
 # .downloaded_at —— 宿主写入的「本次下载时间戳」。它**只存在于安装态**，

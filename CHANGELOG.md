@@ -3,6 +3,26 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.2] — 2026-11-18 ★专家团内部功能测试（6 项实测 + 2 处修复）
+
+### Fixed（实测发现并修复）
+- **路由误派**：fuzz 抓到「题库里那道题答案错了」误路由 `assessment-generate`（非幂等增题 +
+  quality-examiner 自审边界双违规）→ assessment-review 审查词表补「错/有误/答案不对/批改」，
+  SKILL.md §4 +2 样例 / 影子实现 +2 KNOWN_SAMPLES +2 EVAL_CASES（61→63，1.000）。
+- **安装态假漂移**：`install_state_check.py` 的 EXCLUDE_DIRS 补 `00_archive`——该目录 git 跟踪
+  但打包有意排除，`git ls-files --others --ignored` 不列 tracked 文件 ⇒ 恒报 src_only 假漂移。
+  修复后 src_only 0（剩余 diff 仅本次改动文件，属真实漂移）。
+
+### Verified（内部测试覆盖）
+- 40 个脚本 usage 冒烟零崩溃；contract_check 三级证据分级正反例（L2 trace / L3 内嵌写者声明）正确；
+- W1 沙盘 18 相位全推进 + 缺节恢复路径（RECOVERY_REQUIRED + BLOCK trace + spawn_hint）实测；
+- 三成员 spawn 链四方对账（契约/文件/plugin 声明/team-lead 引用）一致、task_type 激活链正反例正确；
+- 路由边界 fuzz 16 条（安全 NONE 走 ESC2、误派已修）；zip 解包 155 文件/版本 2.18.1、install.sh --dry-run 全绿；
+- 宿主 cache 从分发包重建 2.18.1（昨日清缓存副作用修复，注册表已备份），installState DRIFT 仅剩本次真实改动。
+
+### Verification
+- pytest 474 passed / 3 skipped；run_all 12 步全绿；全门禁绿；router 63/63；链接核验 353 条零断链。
+
 ## [2.18.1] — 2026-11-17 ★三成员跨工作流适配 + Markdown 链接有效性门禁
 
 ### Added

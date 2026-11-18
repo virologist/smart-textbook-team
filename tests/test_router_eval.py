@@ -75,6 +75,8 @@ KNOWN_SAMPLES = {
     '按 Bloom 分布补齐章末思考题和岗位案例': 'assessment-generate',
     '审一下题库里题面语言难度超没超受众': 'assessment-review',
     '这批 1+X 对接题的考点等级对不对': 'assessment-review',
+    '题库里那道题答案错了': 'assessment-review',
+    '这批自测题有个考点有误': 'assessment-review',
 }
 
 
@@ -107,10 +109,13 @@ def route(query: str) -> tuple[str | None, float, list[str]]:
         return 'visual-review', conf(False), signals
 
     # ── v2.18.0 三可选增强成员路由（优先级约束见 skill §4 v2.18 扩容表注）──
-    # ④ assessment-review：题库审查意图——「题/题库/考点」+「审/核/对不对」；
-    #   置于 assessment-generate 之前（含题词的审查问法不得被出题分支截胡）
+    # ④ assessment-review：题库审查意图——「题/题库/考点」+「审/核/对不对/错/有误」；
+    #   置于 assessment-generate 之前（含题词的审查问法不得被出题分支截胡）。
+    #   v2.18.2 fuzz 实测补：「题库里那道题答案错了」原误路由 assessment-generate
+    #   （非幂等会增题 + 秦卷舒自审违反分工边界）→ 补错/有误/答案不对至审查词表。
     if any(kw in q for kw in ('题库', '题面', '考点', '自测题', '思考题', '对接题', '出一套', '出题', '配题')) \
-            and any(kw in q for kw in ('审', '核', '对不对', '超没超', '难度')):
+            and any(kw in q for kw in ('审', '核', '对不对', '超没超', '难度',
+                                       '错', '有误', '答案不对', '批改')):
         signals.append('assessment-review')
         return 'assessment-review', conf(KNOWN_SAMPLES.get(q.strip()) == 'assessment-review'), signals
 
@@ -295,6 +300,8 @@ EVAL_CASES = [
     ('把资源位的题库占位填上', 'assessment-generate', 70),
     ('审一下题库里题面语言难度超没超受众', 'assessment-review', 70),
     ('这批 1+X 对接题的考点等级对不对', 'assessment-review', 70),
+    ('题库里那道题答案错了', 'assessment-review', 70),            # v2.18.2 fuzz 补：防误路由 generate 增题
+    ('这批自测题有个考点有误', 'assessment-review', 70),
 
     # 边界用例: 模糊问法, 应触发升级
     ("帮我搞一下这章", None, 0),

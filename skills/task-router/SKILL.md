@@ -205,17 +205,19 @@ description: "Structured task dispatch for the Smart Textbook Team. Defines task
 | "按 Bloom 分布补齐章末思考题和岗位案例" | `assessment-generate` | 85 |
 | "审一下题库里题面语言难度超没超受众" | `assessment-review` | 85 |
 | "这批 1+X 对接题的考点等级对不对" | `assessment-review` | 85 |
+| "题库里那道题答案错了" | `assessment-review` | 85 |
 
 > **路由优先级约束（与 §2 Step1 触发词表一致）**：
 > ① `standards-parse` vs `retrieval-standard`——「解析/条目/映射」= 傅（本地文档加工）；
 > 「查/现行版次/最新版」= 粟（外网检索核验）；两者可同链先后（先粟核验真伪、再傅解析）。
 > ② `review-learner` vs `review-style`/`review-depth`——「学生/受众/试读/读得懂/吃力/认知负荷」= 施；
-> 「可读性」**须与受众词共现**（学生/受众/读者/新生/视角）才路由给施——否则被「文风可读性」（R4 风格意图）截胡（影子实现 61 用例实测）；
+> 「可读性」**须与受众词共现**（学生/受众/读者/新生/视角）才路由给施——否则被「文风可读性」（R4 风格意图）截胡（影子实现 63 用例实测）；
 > 纯风格/深度词无受众词 = 严的既有轮次不变。
 > ③ `assessment-generate` vs `review-score`——「出题/题库/自测卷/补题」= 秦；
 > 「打分/五维/质量分」（对正文）= 严的 R5 不变。
 > ④ `assessment-review` 对象是**题库**（`assessment/` 产物），与审正文的 R1-R5 区分——
-> 问法含「题/题库/考点」+「审/核」→ assessment-review。
+> 问法含「题/题库/考点」+「审/核/错/有误/答案不对」→ assessment-review；
+> 「答案错了/考点有误」若误路由 `assessment-generate`（非幂等增题 + 秦卷舒自审）将双违规，影子实现实测堵住。
 
 > **离线 eval 基线**：20+ 用例命中率应 ≥ 80%（Apollo 类比：首过 20%→80%）。低于此基线即判定 router 需升级。
 
