@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -45,6 +46,7 @@ from pathlib import Path
 
 # 与 compute_metrics.py 同目录，直接 import（不复制指标计算逻辑）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import guard_cli  # noqa: E402
 import compute_metrics as cm  # noqa: E402
 
 EXIT_OK = 0
@@ -105,12 +107,10 @@ def current_metrics(work_root: Path, metrics_json: str | None = None) -> dict:
     return cm.compute(traces, work_root=work_root, bad_lines=bad)
 
 
-def load_rows(path: Path) -> tuple[list[dict], int]:
-    """读 JSONL；坏行单独计数返回，不静默吞掉。"""
+def load_rows_from_text(text: str) -> tuple[list[dict], int]:
+    """从已读文本解析 JSONL（R-B3：锁内复用，避免锁内二次打开文件）。"""
     rows, bad = [], 0
-    if not path.is_file():
-        return rows, bad
-    for line in path.read_text(encoding='utf-8').splitlines():
+    for line in text.splitlines():
         if not line.strip():
             continue
         try:
@@ -121,6 +121,13 @@ def load_rows(path: Path) -> tuple[list[dict], int]:
         except (json.JSONDecodeError, ValueError):
             bad += 1
     return rows, bad
+
+
+def load_rows(path: Path) -> tuple[list[dict], int]:
+    """读 JSONL；坏行单独计数返回，不静默吞掉。"""
+    if not path.is_file():
+        return [], 0
+    return load_rows_from_text(path.read_text(encoding='utf-8'))
 
 
 def active_rows(rows: list[dict]) -> list[dict]:
@@ -143,31 +150,42 @@ def cmd_record(args) -> int:
         return EXIT_INPUT_ERROR
 
     p = baseline_path(root)
-    rows, bad = load_rows(p)
-    if bad:
-        print(f'✗ 基线文件有 {bad} 条坏行，拒绝追加（先修复或显式 reset 分段）', file=sys.stderr)
-        return EXIT_BASELINE_CORRUPT
-    if any(r.get('chapter') == args.chapter for r in active_rows(rows)) and not args.force:
-        print(f'✗ chapter {args.chapter} 在当前基线分段中已存在；'
-              f'重复记录会污染 running mean，确需覆盖请加 --force', file=sys.stderr)
-        return EXIT_INPUT_ERROR
-
-    try:
-        metrics = current_metrics(root, args.metrics_json)
-    except (ValueError, OSError, json.JSONDecodeError) as e:
-        print(f'✗ 读取当前指标失败：{e}', file=sys.stderr)
-        return EXIT_INPUT_ERROR
-
-    row = {
-        'type': 'record',
-        'chapter': args.chapter,
-        'ts': _now(),
-        'protocol_version': args.protocol_version or '',
-        'metrics_snapshot': flatten_numbers(metrics),
-    }
+    # R-B3（2026-11-23）：查重→追加原为锁外查/锁内写的 TOCTOU——并发 record 同章
+    # 6 次全过查重写入 6 条重复行（running mean 被污染，串行则正确拒绝）。
+    # 现把「load → 查重 → append」整段收进 flock，查重判定基于锁内最新状态。
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open('a', encoding='utf-8') as f:
-        f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + '\n')
+    import fcntl
+    with p.open('a+', encoding='utf-8') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            f.seek(0)
+            rows, bad = load_rows_from_text(f.read())
+            if bad:
+                print(f'✗ 基线文件有 {bad} 条坏行，拒绝追加（先修复或显式 reset 分段）', file=sys.stderr)
+                return EXIT_BASELINE_CORRUPT
+            if any(r.get('chapter') == args.chapter for r in active_rows(rows)) and not args.force:
+                print(f'✗ chapter {args.chapter} 在当前基线分段中已存在；'
+                      f'重复记录会污染 running mean，确需覆盖请加 --force', file=sys.stderr)
+                return EXIT_INPUT_ERROR
+
+            try:
+                metrics = current_metrics(root, args.metrics_json)
+            except (ValueError, OSError, json.JSONDecodeError) as e:
+                print(f'✗ 读取当前指标失败：{e}', file=sys.stderr)
+                return EXIT_INPUT_ERROR
+
+            row = {
+                'type': 'record',
+                'chapter': args.chapter,
+                'ts': _now(),
+                'protocol_version': args.protocol_version or '',
+                'metrics_snapshot': flatten_numbers(metrics),
+            }
+            f.seek(0, os.SEEK_END)
+            f.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + '\n')
+            f.flush()
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
     print(f'✓ 已追加基线：{args.chapter}  ({len(row["metrics_snapshot"])} 个数值指标)')
     print(f'  {p}')
     return EXIT_OK
@@ -305,6 +323,7 @@ def cmd_reset(args) -> int:
     return EXIT_OK
 
 
+@guard_cli
 def main() -> int:
     ap = argparse.ArgumentParser(description='指标基线存储与对比（append-only）')
     sub = ap.add_subparsers(dest='cmd', required=True)

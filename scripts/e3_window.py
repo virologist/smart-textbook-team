@@ -60,8 +60,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
+
+# 并发安全原语复用 progress.py 的实现（2026-11-23 R-B1：此前 write_text 裸写，
+# 并发读-改-写丢记录 → 熔断器在最需要的并发场景静默失效，主理人+可靠性双复现）
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+from progress import _file_lock, _atomic_write  # noqa: E402
 
 # harness §4：滑动窗口 = 最近 3 次成员任务
 WINDOW_SIZE = 3
@@ -88,7 +96,7 @@ def _load(work_root: Path) -> dict:
 def _save(work_root: Path, data: dict) -> None:
     p = _path(work_root)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    _atomic_write(p, json.dumps(data, ensure_ascii=False, indent=2) + '\n')
 
 
 def _is_e3(outcome: str) -> bool:
@@ -123,6 +131,13 @@ def record(work_root: Path, correlation_id: str, outcome: str) -> int:
     「用户处置」用显式 `--probe` 标记——编排者不能在未经用户处置的情况下
     自行把 OPEN 降级为 HALF_OPEN，否则熔断就成了可绕过的软闸。
     """
+    # R-B1（2026-11-23）：读-改-写全段纳入文件锁，防止并发 record 丢窗口记录
+    with _file_lock(_path(work_root)):
+        return _record_locked(work_root, correlation_id, outcome)
+
+
+def _record_locked(work_root: Path, correlation_id: str, outcome: str) -> int:
+    """record 的锁内实现（原逻辑原样迁移，仅去掉函数级 docstring 重复）。"""
     data = _load(work_root)
     win = data.get(correlation_id, [])
     is_e3 = _is_e3(outcome)
@@ -189,6 +204,13 @@ def probe(work_root: Path, correlation_id: str) -> int:
 
     必须显式调用（编排者不可自行降级熔断，否则熔断成为可绕过的软闸）。
     """
+    # R-B1（2026-11-23）：与 record 同锁——probe 也做读-改-写（_probes 计数）
+    with _file_lock(_path(work_root)):
+        return _probe_locked(work_root, correlation_id)
+
+
+def _probe_locked(work_root: Path, correlation_id: str) -> int:
+    """probe 的锁内实现。"""
     data = _load(work_root)
     st = _load_state(work_root).get(correlation_id, {})
     state = st.get('state', 'CLOSED')
@@ -219,7 +241,7 @@ def _save_state(work_root: Path, data: dict, corr: str, state: str,
                 'window': data.get(corr, [])}
     p = _state_path(work_root)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(st, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    _atomic_write(p, json.dumps(st, ensure_ascii=False, indent=2) + '\n')
 
 
 def _load_state(work_root: Path) -> dict:

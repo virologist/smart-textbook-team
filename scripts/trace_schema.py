@@ -107,3 +107,32 @@ REVIEW_TASK_TYPES = (
     # B1-3（2026-11-04）：R4+R5 合并单次派工
     'review-proofread-score',
 )
+
+# ── 共享读端（2026-11-23 R-B2：坏行静默丢弃的根治）──────────────────────
+# 此前 H3 修复（2026-11-04）只落到 compute_metrics.py 一个读端；budget_guard /
+# record_trace tokens / contract_check 三个读端仍 `except JSONDecodeError: continue`
+# 静默丢行 ⇒ 300K token 报 STATUS=OK、硬上限不触发（可靠性工程师 BLOCKER 实测）。
+# 现把「返回 (records, bad)」模式收进 SSOT，四个读端统一调用。
+def read_trace_lines(path):
+    """读 trace.jsonl。返回 (有效记录列表, 坏行数)。
+
+    坏行 = 非 JSON 行（截断/损坏）。坏行不计入记录，但**必须显式返回计数**，
+    由调用方决定如何告警——预算判定须让「数据不完整」可感知，不得静默。
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    path = _Path(path)
+    if not path.is_file():
+        return [], 0
+    records, bad = [], 0
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(_json.loads(line))
+            except _json.JSONDecodeError:
+                bad += 1
+    return records, bad
+

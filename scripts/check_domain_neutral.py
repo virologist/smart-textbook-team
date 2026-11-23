@@ -239,9 +239,13 @@ def check_paths(root: Path) -> list[dict]:
             continue
         if p.suffix not in (".md", ".py", ".sh", ".yml", ".yaml", ".json"):
             continue
-        # 跳过 vendor 兜底副本（外部依赖，非本包编写）与 .git 与门禁自身
+        # 跳过 vendor 兜底副本（外部依赖，非本包编写）、.git、harness 运行态
+        # （.harness-kb/.wiki-creator）与 04-test/ 成员报告——报告是流程留档，
+        # 必然含宿主绝对路径（复现命令），与 docs/2026- 日期报告同性质不属包正文
+        # （2026-11-23 复测：04-test 两份报告使路径门禁误报 8 处）
         rel = p.relative_to(root).as_posix()
-        if rel.startswith(("vendor/", ".git/", "node_modules/")) or rel == SELF:
+        if rel.startswith(("vendor/", ".git/", "node_modules/",
+                           ".harness-kb/", ".wiki-creator/", "04-test/")) or rel == SELF:
             continue
         if p.name in PATH_SKIP_FILES:
             continue

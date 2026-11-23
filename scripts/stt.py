@@ -52,8 +52,18 @@ def _script(name: str) -> str:
 
 
 def _run(script: str, args: list[str], expert_dir: str | None = None) -> int:
-    """运行一个同包脚本，透传 stdout/stderr，返回其退出码。"""
-    cmd = [sys.executable, _script(script), *args]
+    """运行一个同包脚本，透传 stdout/stderr，返回其退出码。
+
+    R-B5（2026-11-23 复测）：被调脚本缺失（安装态被裁剪/宿主 cache 不完整）时
+    原先报解释器原话「can't open file ...」，定位成本高。现前置存在性检查，
+    给中文诊断 + 独立退出码 3（与 0/1/2 业务码区分）。
+    """
+    path = _script(script)
+    if not os.path.isfile(path):
+        print(f"ERROR  门禁脚本缺失: scripts/{script}（安装态不完整？请重装或"
+              f"校验安装态: python3 scripts/install_state_check.py）", file=sys.stderr)
+        return 3
+    cmd = [sys.executable, path, *args]
     env = dict(os.environ)
     if expert_dir:
         env["EXPERT_DIR"] = expert_dir

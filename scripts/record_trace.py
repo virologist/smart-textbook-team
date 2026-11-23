@@ -27,6 +27,7 @@ from pathlib import Path
 # 只借用 trace_schema 的 REQUIRED_TIMING_FIELDS / validate_timing /
 # TIMING_DEGRADED_FLAG；outcome 归一化仍走本文件既有实现（不重复搬移）。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import guard_cli  # noqa: E402
 import trace_schema as tsc  # noqa: E402
 
 # ── ADR-05（批次 B4）：信封全字段解析 ─────────────────────────────────────
@@ -115,6 +116,7 @@ def _is_known_phase(phase: str) -> bool:
 REJECT_INTERVENTION_THRESHOLD = 2
 
 
+@guard_cli
 def main() -> int:
     ap = argparse.ArgumentParser(description='trace.jsonl 写入器 + tokens 对账器')
     sub = ap.add_subparsers(dest='cmd')
@@ -458,20 +460,18 @@ def tokens_summary(work_root: Path) -> int:
         print('TOKENS_ESTIMATED=0')
         return 0
     total = estimated = 0
-    with open(trace_file, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue  # 坏行跳过（原子写入下不应出现，防御）
-            tin = int(rec.get('tokens_in') or 0)
-            tout = int(rec.get('tokens_out') or 0)
-            total += tin + tout
-            if rec.get('estimated'):
-                estimated += tin + tout
+    # R-B2（2026-11-23）：坏行不再静默——统一走 SSOT 共享读端，坏行计数显式告警
+    from trace_schema import read_trace_lines
+    recs, bad_lines = read_trace_lines(trace_file)
+    for rec in recs:
+        tin = int(rec.get('tokens_in') or 0)
+        tout = int(rec.get('tokens_out') or 0)
+        total += tin + tout
+        if rec.get('estimated'):
+            estimated += tin + tout
+    if bad_lines:
+        print(f'WARN  trace.jsonl 有 {bad_lines} 条坏行被跳过——token 对账分母偏小，'
+              f'结论可能失真', file=sys.stderr)
     print(f'TOKENS_USED={total}')
     print(f'TOKENS_ESTIMATED={estimated}')
     if estimated:

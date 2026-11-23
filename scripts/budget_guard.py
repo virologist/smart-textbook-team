@@ -77,20 +77,11 @@ CUT_PRIORITY = {
 }
 
 
-def _load_traces(work_root: Path) -> list[dict]:
-    f = work_root / '运行态' / 'trace.jsonl'
-    if not f.is_file():
-        return []
-    out = []
-    for line in f.read_text(encoding='utf-8').splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return out
+def _load_traces(work_root: Path) -> tuple[list[dict], int]:
+    """读 trace（R-B2 2026-11-23）：统一走 trace_schema.read_trace_lines，
+    返回 (records, bad_count)——坏行必须显式计数，预算判定不能对「日志坏了」沉默。"""
+    from trace_schema import read_trace_lines  # SSOT 共享读端
+    return read_trace_lines(work_root / '运行态' / 'trace.jsonl')
 
 
 def _blackboard_budget(work_root: Path) -> dict:
@@ -107,7 +98,7 @@ def _blackboard_budget(work_root: Path) -> dict:
 
 
 def compute_budget(work_root: Path) -> dict:
-    traces = _load_traces(work_root)
+    traces, bad_lines = _load_traces(work_root)
     bb = _blackboard_budget(work_root)
 
     per_phase: dict[str, int] = {}
@@ -162,6 +153,7 @@ def compute_budget(work_root: Path) -> dict:
         'total_tokens': total,
         'estimated_tokens': estimated,
         'unknown_phase_tokens': unknown_phase,
+        'bad_trace_lines': bad_lines,
         'hard_limit': hard_limit,
         'ratio': round(ratio, 3),
         'status': status,
@@ -218,6 +210,15 @@ def main() -> int:
             print(f"[预算耗尽] 已达章节硬上限 —— 按 harness §3「保存现场上报，"
                   f"不静默丢弃」，禁止继续派工", file=sys.stderr)
 
+    # R-B2（2026-11-23）：坏行 > 0 ⇒ trace 数据不完整。设计语义：不因坏行直接
+    # 判超限（那会把「日志坏了」误当「预算爆了」），但也不能静默——告警 + 在
+    # 原本 OK 的结论上抬一级为「需处置」退出码 1，让编排者感知数据不可信。
+    if r.get('bad_trace_lines'):
+        print(f"[数据不完整] trace.jsonl 有 {r['bad_trace_lines']} 条坏行被跳过"
+              f"——token 统计分母偏小，预算结论可能失真；建议修复 trace 后重跑",
+              file=sys.stderr)
+        if r['status'] == 'OK':
+            return 1  # OK 但数据不完整 ⇒ 抬到「需处置」（与超软上限同级）
     if r['status'] == 'HARD_LIMIT_REACHED':
         return 2
     if r['status'] == 'DEGRADE_SUGGESTED' or any(x['over'] for x in r['per_phase']):

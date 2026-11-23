@@ -337,7 +337,7 @@ jobs:
       # A1（2026-11-16）：此前 CI 只单跑 6 个 pytest 文件，tests/ 下 23 个新增用例
       # 在 CI 上 0 收集却全绿 = 假绿。补全量 pytest step，与本地 run_all.py 同口径
       # （独立 --basetemp + 收集数自洽校验），确保远端真正执行全部用例。
-      - name: pytest 全量回归（458 用例 · 收集数自洽校验）
+      - name: pytest 全量回归（收集数自洽校验）
         run: |
           set -e
           # 全量用例依赖 pandoc / python-docx / PyYAML（test_check_book 构建链、

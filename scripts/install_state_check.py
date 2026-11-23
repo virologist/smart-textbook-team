@@ -93,7 +93,11 @@ EXCLUDE_DIRS = {'.git', '.in_use', '.pytest_cache', '__pycache__', '.DS_Store',
                 # 「源码留痕但不进分发包」。检查器原先按 git-ignored 语义排除，
                 # 但 `git ls-files --others --ignored` 不列 tracked 文件 ⇒ 归档三件
                 # 恒报 src_only 假漂移（即使安装态与分发包完全一致）。固定排除。
-                '00_archive'}
+                '00_archive',
+                # 2026-11-20 全量复测：专家团 SOP 项目级运行态目录（断点状态机/
+                # wiki 底座），agent-harness 流程写入被测仓时会真实出现，
+                # 内容可由流程重建——不属包内容，不报 src_only 假漂移
+                '.harness-kb', '.wiki-creator'}
 
 # 排除的文件名（元数据，不是包内容）
 # .downloaded_at —— 宿主写入的「本次下载时间戳」。它**只存在于安装态**，

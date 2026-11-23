@@ -33,8 +33,14 @@ from pathlib import Path
 
 # 历史留档（免疫）：这些文件里的旧引用不核验
 IMMUNE_FILES = {"CHANGELOG.md", "SKILL_CHANGELOG.md"}
-IMMUNE_DIR_PREFIXES = ("docs/2026-", "tests/fixtures/")   # 审计报告 + 测试夹具
-SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", "docs/00_archive"}
+# 审计报告（docs 日期留档 + harness 流程的 04-test/ 成员报告）+ 测试夹具。
+# 04-test/ 报告会引用 agent-harness-expert 专家包的路径（如 agents/_harness_kb_init.py），
+# 跨包引用按本包根解析必然断——报告是流程留档非包文档，豁免（2026-11-23 复测）
+IMMUNE_DIR_PREFIXES = ("docs/2026-", "tests/fixtures/", "04-test/")
+# 运行态目录（agent-harness-expert SOP 项目级状态机/wiki 底座）不属包文档，不参与核验
+# （2026-11-20 复测：.harness-kb/learnings.md 跨包引用 agents/_harness_kb_init.py 造成假断链）
+SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", "docs/00_archive",
+             ".harness-kb", ".wiki-creator"}
 PATH_PREFIXES = ("skills/", "references/", "agents/", "scripts/", "docs/", "vendor/")
 EXTS = (".md", ".py", ".sh", ".ps1", ".json", ".yml", ".yaml")
 

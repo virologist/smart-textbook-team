@@ -3,6 +3,69 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.0] — 2026-11-23 ★全面复测闭环（13 缺陷修复 · 双 BLOCKER 并发安全根治）
+
+### 背景
+管家节点指令「全面复测：覆盖主要功能/关键流程/条件分支/边界/异常路径，迭代修复至全部稳定」。团队四维实测
+（tester 380+ 用例 / reliability 故障注入 / 主理人 11 路独立核验）+ 主理人独立复现确认，共 13 项真缺陷。
+
+### Fixed — 并发安全（2 BLOCKER，可靠性工程师发现、主理人双复现）
+- **R-B1** `e3_window.py` 并发下熔断器静默失效：`_save/_save_state` 裸 `write_text`，并发读-改-写
+  丢窗口记录——并发 3 次 E3 只记 1（STATE=CLOSED），串行则正确 OPEN。「最后一道安全闸」恰在
+  并发常态（章节级并行调度）失效。修复：复用 `progress.py` 的 `_file_lock`(fcntl flock)+
+  `_atomic_write`(tmp+os.replace)，record/probe 读-改-写全段纳锁，退出码经壳函数透传。
+- **R-B2** trace 坏行静默丢弃（修复未传播）：H3 修复（2026-11-04）只落 `compute_metrics.py`
+  一个读端；`budget_guard`/`record_trace tokens`/`contract_check` 仍 `except: continue`——
+  300K token 报 STATUS=OK、硬上限不触发。修复：`trace_schema.read_trace_lines()` 共享读端
+  （SSOT），4 读端统一；`budget_guard` 坏行>0 时 stderr 告警 + OK 结论抬一级 exit 1。
+
+### Fixed — 状态机与语义（6 BUG）
+- **R-B3** `metrics_baseline` 查重/追加 TOCTOU（锁外查锁内写）：并发 6 次 record 写 6 条重复
+  ch01 污染 running mean。修复：flock 内完成 load→查重→append。
+- **BUG-3** `progress.py book init --word-budget -200` 静默接受 → 下游 \d+ 解析整章消失、
+  5.1 字数判据静默跳过。修复：入口拒绝负数（exit 2）。
+- **BUG-1** `progress.py block/resolve` 缺 progress.md 时裸 FileNotFoundError 栈。修复：
+  对齐 update/show/migrate 范式（中文诊断 + exit 2）。
+- **BUG-2** `progress.py rejects` work-root 不存在时静默报 0（唯一违反「不得静默成功」）。
+  修复：区分「路径不存在（exit 2）」与「已初始化无记录（合法 0）」。
+- **#5** `watchdog --list` 只回显登记态（恒 RUNNING）不套超时阈值，与 `check_task` 矛盾
+  （同任务一 RUNNING 一 DEAD），僵尸任务漏判。修复：增量 `timed_out=` 字段（check_task
+  同语义），保留原字段不破坏下游解析。
+- **#3** `progress.py show` 的「下次恢复」空指引（无下一相位，跳相位续跑必错）。修复：
+  `NEXT_PHASE=` 按 PHASE_ORDER 推进语义推导（最后完成相位之后首个未完成；W2 跳相位
+  实测 PROOFREAD-R4 DONE → NEXT=PROOFREAD-R5）。
+
+### Fixed — 健壮性与声明（5 项）
+- **R-B5** `stt.py _run()` 被调脚本缺失报解释器原话。修复：存在性前置检查 + 中文诊断 + exit 3。
+- **R-B4** 只读目录/依赖缺失裸 Traceback。修复：`_common.guard_cli()` 兜底装饰器
+  （PermissionError→exit 2 中文诊断、ModuleNotFoundError→exit 3 提示重装），已套
+  record_trace/metrics_baseline/compute_metrics 三个本组入口。
+- **BUG-4** `check_book.py` 5.3 detail 恒取分隔线 `====`（真实 FAIL/WARN 计数丢失）。修复：
+  语义行提取（优先「FAIL N |」统计行）。
+- **R-B7** install.sh/install.ps1 无 Python 版本闸门（声明 >=3.10 无检查，py3.9 装完即崩）。
+  修复：双脚本入口闸门 + 安装建议。
+- **R-B6** `progress.py` 半写行不识别 upsert 产生重复 phase 行。修复：upsert 前检测残行
+  显式报错不静默新增。
+
+### Fixed — 运行态目录声明与门禁口径（4 项）
+- `.harness-kb/`/`.wiki-creator/`（agent-harness SOP 项目级运行态）四处声明：.gitignore /
+  package_release.sh 排除（此前 zip 带入 5 条目泄漏内部流程状态）/ install_state_check
+  EXCLUDE_DIRS / check_md_links SKIP_DIRS；`04-test/` 成员报告（流程留档，跨包引用）加入
+  链接核验免疫与学科中立路径豁免。
+- **MINOR-1** scheduler 章级模式不提示单章超预算（与节级 budget_degraded 口径不一致）→
+  notes 告警。**MINOR-2** watchdog timeout 边界（timeout_s<=0 → timed_out=None 不可判定）。
+  **MINOR-3** package_release.sh 加 --help。**R-M3** scheduler PHASE_ORDER 降级加 stderr 告警。
+  **R-M4** 新增 requirements.txt（python-docx/PyYAML 软依赖 + pytest，分级注释）。
+  **D4** CI step 名过时用例数标签改为动态表述（校验逻辑本就动态自洽）。
+
+### Verification
+- pytest 474 passed / 3 skipped（477 collected，run_all 收集数自洽 ✓）
+- tests/run_all.py 12 步全绿；静态契约 1.0（score 0.9977→1.0）；学科中立 FAIL 0/WARN 6；
+  链接核验 0 断链；红道 R1-R6 全 PASS；打包零混入（harness-kb/wiki-creator/00_archive/pycache=0）
+- 13 项缺陷逐一负向复测转绿（原复现命令原样执行）；R-B1 三态机（CLOSED/OPEN/HALF_OPEN）
+  冒烟无损；R-B2 四读端统一走 SSOT；vendor/shared-core C19 同步（11-22 另一工作流产物）
+  经 sha256+防漂移门禁+上游逐字节三重验证后一并纳入。
+
 ## [2.18.2] — 2026-11-18 ★专家团内部功能测试（6 项实测 + 2 处修复）
 
 ### Fixed（实测发现并修复）

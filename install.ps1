@@ -18,13 +18,30 @@ param(
     [switch]$Help
 )
 
-$VERSION = '2.18.2'
+$VERSION = '2.19.0'
 # 仓库根 = 本脚本所在目录（install.ps1 就在仓库根，不要再取父目录）。
 # 2026-10-30 修复：原实现多取一次 -Parent 指向了仓库的**父目录**，
 # 导致所有 Test-Path 判假 → 逐个静默跳过，WorkBuddy 安装态实际什么都不装且不报错。
 $REPO_DIR = $PSScriptRoot
 if (-not $REPO_DIR) { $REPO_DIR = (Get-Location).Path }
 $HOME_DIR = $HOME
+
+# R-B7（2026-11-23 复测）：Python 版本闸门（与 install.sh 同语义）——
+# 硬依赖 python3 >= 3.10，缺失或过低时给中文诊断 + 安装建议后退出。
+$pyCmd = Get-Command python3 -ErrorAction SilentlyContinue
+if (-not $pyCmd) {
+    Write-Err "未找到 python3——本包硬依赖 Python >= 3.10。"
+    Write-Err "请先安装 Python 3.10+（https://www.python.org/downloads/）后重试。"
+    exit 2
+}
+$pyVer = & python3 -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
+if (-not $pyVer) { $pyVer = 'unknown' }
+$pyOk = & python3 -c "import sys; print(1 if sys.version_info >= (3, 10) else 0)" 2>$null
+if ($pyOk -ne '1') {
+    Write-Err "python3 版本过低（当前 $pyVer）——本包硬依赖 Python >= 3.10"
+    Write-Err "（scripts/*.py 使用 3.10+ 语法，低版本安装后首次运行即崩）。请升级后重试。"
+    exit 2
+}
 
 function Write-Log  { param([string]$m) Write-Host "[install] $m" -ForegroundColor Cyan }
 function Write-Warn { param([string]$m) Write-Host "[warn] $m" -ForegroundColor Yellow }

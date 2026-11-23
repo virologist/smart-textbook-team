@@ -83,7 +83,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
     from progress import PHASE_ORDER  # type: ignore
 except Exception:  # pragma: no cover - progress.py 缺失时降级
+    # R-M3（2026-11-23 复测）：降级可接受（安装态自愈兜底），但必须可感知——
+    # 单元素枚举会让 _furthest_phase 的排序退化为「恒 DELIVER」，调度判定失真。
+    # stderr 告警让运维定位包完整性问题，不静默。
     PHASE_ORDER = ['DELIVER']
+    print('[WARN] progress.py 缺失或导入失败——PHASE_ORDER 降级为单元素枚举，'
+          '相位排序判定不可信；请校验安装态完整性'
+          '（python3 scripts/install_state_check.py）', file=sys.stderr)
 
 # ── 协议硬上限（SSOT = skills/multi-agent-patterns §模式五「分支数 ≤ 5」）──
 # 注意：这是**单批次内 fan-out 分支数**的协议上限，与「跨章并发批次大小」
@@ -405,6 +411,11 @@ def compute_plan(work_root: Path, max_concurrency: int | None = None,
         if budget is not None and cur and (cur_tokens + need) > budget:
             batches.append({'chapters': cur, 'estimated_tokens': cur_tokens})
             cur, cur_tokens = [], 0
+        # 章级预算降级告警（2026-11-23 复测 MINOR-1：与节级 budget_degraded 口径对齐）——
+        # 单章自身估 token 超预算时无法再切分，提示降为串行观察，不静默放行
+        if budget is not None and need > budget:
+            notes.append(f'章 {c["id"]} 单章估 {need} tok > 预算 {budget}'
+                         f' ⇒ 已独立成批，建议按节级模式切批或调高预算')
         cur.append(c)
         cur_tokens += need
         if len(cur) >= concurrency:

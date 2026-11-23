@@ -386,19 +386,21 @@ def _is_pathlike(s: str) -> bool:
 
 
 def _trace_records(work_root: Path) -> list[dict]:
-    """读 运行态/trace.jsonl（真实运行的权威执行记录）。"""
+    """读 运行态/trace.jsonl（真实运行的权威执行记录）。
+
+    R-B2（2026-11-23）：坏行统一走 SSOT 共享读端，计数 >0 时 stderr 告警——
+    证据分母被动缩小须可感知，不得静默。
+    """
+    from trace_schema import read_trace_lines
     p = work_root / '运行态' / 'trace.jsonl'
     if not p.is_file():
         return []
-    recs: list[dict] = []
-    for line in p.read_text(encoding='utf-8').splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            d = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    recs_raw, bad_lines = read_trace_lines(p)
+    if bad_lines:
+        print(f'WARN  trace.jsonl 有 {bad_lines} 条坏行被跳过——执行记录证据不完整',
+              file=sys.stderr)
+    recs = []
+    for d in recs_raw:
         if isinstance(d, dict):
             recs.append(d)
     return recs

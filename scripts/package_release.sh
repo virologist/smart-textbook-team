@@ -22,6 +22,12 @@ if [[ "${1:-}" == "--check" ]]; then
     MODE="check"; OUT="$DEFAULT_OUT"
 fi
 
+# 用法帮助（2026-11-23 复测 MINOR-3：--help/-h 曾被当输出路径，还引发 rm 报错）
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 0
+fi
+
 log()  { printf '\033[1;34m[package]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m[ok]\033[0m %s\n' "$*"; }
 err()  { printf '\033[1;31m[err]\033[0m %s\n' "$*" >&2; }
@@ -81,6 +87,9 @@ find "$STAGE/smart-textbook-team" -name '*.pyc' -delete 2>/dev/null || true
 # 归档资产不进分发包（2026-11-16：00_archive 收纳零功能引用的孤儿资产，
 # 仓库内保留可追溯，分发包瘦身——孤儿头像 876KB 即此来源）
 rm -rf "$STAGE/smart-textbook-team/docs/00_archive" 2>/dev/null || true
+# 专家团项目级运行态目录（agent-harness-expert SOP：断点状态机 / wiki 底座）
+# 不进分发包（2026-11-20 复测：zip 曾带入 .harness-kb 5 条目，泄漏内部流程状态）
+rm -rf "$STAGE/smart-textbook-team/.harness-kb" "$STAGE/smart-textbook-team/.wiki-creator" 2>/dev/null || true
 
 rm -f "$OUT"
 (cd "$STAGE" && zip -r -q "$OUT" smart-textbook-team)

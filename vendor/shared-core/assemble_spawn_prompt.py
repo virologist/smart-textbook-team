@@ -280,14 +280,21 @@ def resolve_skill_paths(expert_dir: Path, skills: list[str] | None) -> list[str]
     """
     把 skills 名称解析为 references/skill 的绝对路径清单。
     只做路径解析（确定性），不做「该不该加载」的语义判断——那归成员自己按需。
+
+    A-2/N1（C19 跨包根治）：未知技能 fail-loud。声明的技能若在 skills/<name>/
+    目录与扁平 <name>.md 两处都找不到，显式报错退出（exit 3，与 resolve_expert_dir /
+    load_member_md 的「资源缺失」口径一致），不再静默跳过——否则 preflight 已判红、
+    直接调装配器却仍静默空注入，判别力分裂。合法技能的解析结果与顺序逐字不变。
     """
     if not skills:
         return []
     paths: list[str] = []
     for sk in skills:
+        found = False
         # 技能目录可能在 skills/<name>/ 下
         base = expert_dir / "skills" / sk
         if base.is_dir():
+            found = True
             paths.append(str(base / "SKILL.md"))
             ref_dir = base / "references"
             if ref_dir.is_dir():
@@ -295,8 +302,15 @@ def resolve_skill_paths(expert_dir: Path, skills: list[str] | None) -> list[str]
                     paths.append(str(f))
         else:
             # 退化为 skills 根目录同级扫描（兼容扁平布局）
-            for f in sorted((expert_dir / "skills").rglob(f"{sk}.md")):
+            flat = sorted((expert_dir / "skills").rglob(f"{sk}.md"))
+            if flat:
+                found = True
+            for f in flat:
                 paths.append(str(f))
+        if not found:
+            log(f"❌ 未知技能 {sk!r}：包根 {expert_dir} 下 skills/{sk}/ 目录与 "
+                f"skills/**/{sk}.md 均未找到，拒绝静默空注入")
+            sys.exit(3)
     # 去重保序
     seen, out = set(), []
     for p in paths:

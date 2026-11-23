@@ -25,3 +25,33 @@ def log(msg: str, level: str = "INFO") -> None:
 
 
 __all__ = ["log"]
+
+# ── CLI 兜底（R-B4 2026-11-23 复测）──────────────────────────────────────
+# 只读目录 / 依赖缺失是长期运行态最高频故障；此前这些场景抛裸 Python 栈，
+# 违反「失败也要留痕 + 可读诊断」。装饰器统一兜底：OSError → 中文诊断 + 退出 2，
+# ModuleNotFoundError → 提示重装 + 退出 3。按需包在 CLI 入口函数上，不全局 try。
+def guard_cli(fn):
+    """CLI 入口兜底装饰器：环境类异常转可读诊断，业务异常照常透出。"""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except ModuleNotFoundError as e:
+            print(f"[ERROR] 包内模块缺失: {e.name}——安装态不完整，"
+                  f"请重新安装或校验安装态（install_state_check.py）", file=sys.stderr)
+            return 3
+        except PermissionError as e:
+            print(f"[ERROR] 无写权限（目录只读或属主不符）: {e.filename or e}——"
+                  f"请检查 WORK_ROOT 权限后重试", file=sys.stderr)
+            return 2
+        except OSError as e:
+            print(f"[ERROR] 系统级 I/O 错误: {e}——请检查磁盘/路径后重试",
+                  file=sys.stderr)
+            return 2
+    return wrapper
+
+
+__all__ = ["log", "guard_cli"]
+

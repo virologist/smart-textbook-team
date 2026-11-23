@@ -1,0 +1,11 @@
+# smart-textbook-team 依赖声明（R-M4 2026-11-23 复测：此前无机器可读依赖清单）
+# 分级依据：install.sh §运行时依赖注释 + CI（harness-gate.yml「安装书稿链依赖」step）
+# 全部第三方依赖均为**软依赖**——包内脚本全部 try/except 导入并按行内降级链处理，
+# 缺失不阻塞安装，但对应功能降级（缺失处会显式报 FAIL/WARN，不静默）。
+#
+# 运行时（书稿交付链 + 黑板 YAML + 术语依赖图）：
+python-docx>=1.1.0     # build_manuscript / check_manuscript 的 docx 生成与校验
+PyYAML>=6.0            # budget_guard 黑板 budget 段 / check_cross_chapter 术语依赖图 / scheduler
+#
+# 测试（tests/ 全量 pytest；CI step「pytest 全量回归」）：
+pytest>=7.0

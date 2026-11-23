@@ -11,3 +11,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# 专家团项目级运行态目录（agent-harness-expert SOP：断点状态机 / wiki 底座），
+# 内容可由流程重建，不入 git、不进分发包（2026-11-20 全量复测 BUG-5/R-M1/R-M2）
+.harness-kb/
+.wiki-creator/

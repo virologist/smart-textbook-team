@@ -274,8 +274,22 @@ def list_tasks(work_root: Path) -> int:
     for tid, h in sorted(handles.items()):
         age = now - float(h.get('last_heartbeat') or h.get('started_at') or now)
         alive = _pid_alive(h.get('pid'))
+        # 2026-11-23 复测 #5/R-M2：--list 原先只回显登记态 state（恒 RUNNING），
+        # 不套用超时阈值 ⇒ 僵尸任务漏判，与 check_task 结论矛盾（同任务一 RUNNING
+        # 一 DEAD）。现按 check_task 同一语义（age <= timeout 为活）增量给出
+        # timed_out 字段；state 字段保留原值不破坏下游解析。
+        try:
+            task_timeout = int(h.get('timeout_s') or 0)
+        except (TypeError, ValueError):
+            task_timeout = 0
+        if task_timeout <= 0:
+            timed_out = None       # 无有效阈值 ⇒ 无法判定（check_task 同口径）
+        else:
+            timed_out = age > task_timeout
+        to_s = '-' if timed_out is None else ('1' if timed_out else '0')
         print(f"{tid}  state={h.get('state')}  heartbeat_age={age:.0f}s  "
-              f"pid={h.get('pid')}  pid_alive={alive}  timeout_s={h.get('timeout_s')}")
+              f"pid={h.get('pid')}  pid_alive={alive}  timeout_s={h.get('timeout_s')}  "
+              f"timed_out={to_s}")
     return 0
 
 

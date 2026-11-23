@@ -17,8 +17,28 @@ set -euo pipefail
 # ★M3 v2.11.4：挂载执行体 scripts/check_external_skills.py + 规范 references/skill-mounting.md
 #   须随包分发（含 claude-code/desktop/cursor 目标）；PyYAML 为 5.4 第 7 项（术语依赖图）
 #   解析 exports/imports 的可选依赖（缺失按「不静默」升 FAIL，见 check_cross_chapter.py）
-VERSION="2.18.2"
+VERSION="2.19.0"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# R-B7（2026-11-23 复测）：Python 版本闸门——此前仅注释声明 >= 3.10，无实际检查，
+# 干净机 python3.9 会装完即崩（f-string | 联合类型等语法）。入口即拦，给安装建议。
+PY_BIN="$(command -v python3 || true)"
+if [[ -z "$PY_BIN" ]]; then
+    echo "ERROR  未找到 python3——本包硬依赖 Python >= 3.10。" >&2
+    echo "       请先安装 Python 3.10+（https://www.python.org/downloads/ 或系统包管理器）后重试。" >&2
+    exit 2
+fi
+PY_VER="$("$PY_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo 0)"
+if [[ "$(python3 - <<'PYEOF'
+import sys
+print(1 if sys.version_info >= (3, 10) else 0)
+PYEOF
+)" != "1" ]]; then
+    echo "ERROR  python3 版本过低（当前 $PY_VER）——本包硬依赖 Python >= 3.10" >&2
+    echo "       （scripts/*.py 使用 3.10+ 语法，低版本安装后首次运行即崩）。" >&2
+    echo "       请升级 Python 3.10+ 后重试。" >&2
+    exit 2
+fi
 TARGET="all"
 DRY_RUN=0
 

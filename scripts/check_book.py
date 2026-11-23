@@ -180,8 +180,15 @@ def check_5_3_per_chapter(work_root: Path, chapters: list[str]) -> list[dict]:
              "--chapter", ch, "--strict"],
             capture_output=True, text=True)
         if proc.returncode != 0:
-            tail = (proc.stderr or proc.stdout or "").strip().splitlines()
-            last = tail[-1] if tail else f"exit {proc.returncode}"
+            # BUG-4（2026-11-23 复测）：原先取输出最后一行——check_manuscript 的
+            # 汇总格式是「FAIL N | WARN N | PASS ...」统计行后跟 `===` 分隔线，
+            # tail[-1] 恒取到分隔线，真实失败计数丢失。改为按语义行提取：
+            # 优先取「FAIL N |」统计行，退而取最后一条非分隔线。
+            lines_ = (proc.stderr or proc.stdout or "").strip().splitlines()
+            summary = next((l for l in lines_ if re.search(r"FAIL \d+\s*\|", l)), "")
+            non_sep = [l for l in lines_
+                       if l.strip() and not set(l.strip()) <= set("=-─═")]
+            last = summary or (non_sep[-1] if non_sep else f"exit {proc.returncode}")
             issues.append({"type": "5.3 单章门禁", "term": ch,
                            "detail": f"{ch} check_manuscript --strict 未通过（{last}）",
                            "severity": "FAIL"})

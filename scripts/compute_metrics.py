@@ -72,6 +72,9 @@ def load_traces(work_root: Path) -> tuple[list[dict], int]:
     return out, bad
 
 
+_guard_applied = False
+
+
 def compute(traces: list[dict], work_root: Path | None = None,
             bad_lines: int = 0) -> dict:
     base = {
@@ -374,6 +377,14 @@ def _product_quality(work_root: Path) -> dict | None:
     _scripts_dir = str(Path(__file__).resolve().parent)
     if _scripts_dir not in sys.path:
         sys.path.insert(0, _scripts_dir)
+    # R-B4（2026-11-23）：main 内环境异常兜底（sys.path 就绪后才能 import _common）
+    global _guard_applied
+    try:
+        from _common import guard_cli as _g
+        if not _guard_applied:
+            _guard_applied = True
+    except Exception:
+        _g = None
     if importlib.util.find_spec("count_net_words") is None:
         return None
 

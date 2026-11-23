@@ -431,6 +431,19 @@ def _upsert_chapter_phase(text: str, chapter: str, phase: str,
     if pattern.search(seg):
         seg = pattern.sub(new_row, seg)
     else:
+        # R-B6（2026-11-23）：半写行防御——截断行不匹配上行完整正则也不匹配
+        # 「新增行」锚（rows 正则同样要求 4 列），会静默 append 造成同 phase 重复行。
+        # upsert 前显式检测「以 | PHASE | 开头但列数不足」的残行，报错让运维先修复。
+        half = re.compile(
+            rf'^\| {re.escape(phase)} \| (?!.*\|.*\|.*\|\s*$).*$',
+            re.MULTILINE,
+        )
+        m_half = half.search(seg)
+        if m_half:
+            raise ValueError(
+                f'progress.md 存在半写行（{phase}，行内容: '
+                f'{m_half.group(0)[:60]!r}）——上次写入可能被中断，'
+                f'请先手动修复或删除该行再重试 update')
         # 插入到本段「阶段进度」表的最后一行之后
         # （不能沿用全局的「## 阻塞清单」锚点——那会插到别的章段里）
         rows = list(re.finditer(r'^\| [A-Z][A-Z0-9-]* \| .*? \|.*? \|.*? \|$',
@@ -565,6 +578,12 @@ def resolve_blocking(work_root: Path, item: str, note: str = '') -> Path:
 
 def _mutate_blocking(work_root: Path, item: str, source: str, resolve: bool) -> Path:
     p = progress_file(work_root)
+    # BUG-1（2026-11-23 复测）：block/resolve 此前缺存在性检查，progress.md 缺失时
+    # 抛裸 FileNotFoundError 栈——update/show/migrate 均有可读错误，同一文件内统一
+    if not p.is_file():
+        print(f'ERROR  progress.md 不存在: {p}（先 init，或确认 --work-root 是否正确）',
+              file=sys.stderr)
+        sys.exit(2)
     text = p.read_text(encoding='utf-8')
     ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
 
@@ -621,6 +640,12 @@ def rejects_status(work_root: Path) -> int:
     import json
     counts_file = work_root / '运行态' / 'reject-counts.json'
     if not counts_file.is_file():
+        # BUG-2（2026-11-23 复测）：work-root 本身不存在时静默报 0 违反「不得静默成功」
+        # ——与「已初始化但尚无打回记录」区分，后者才是合法的 0
+        if not work_root.is_dir():
+            print(f'ERROR  work-root 不存在: {work_root}（确认路径是否正确）',
+                  file=sys.stderr)
+            return 2
         print('REJECTS=0（无打回记录）')
         print('INTERVENTION=0')
         return 0
@@ -646,12 +671,51 @@ def rejects_status(work_root: Path) -> int:
     return 0
 
 
+def _next_pending_phase(text: str) -> str | None:
+    """按 PHASE_ORDER 推导「下一个待执行相位」（2026-11-23 复测 #3）。
+
+    PHASE_ORDER 是续跑推进顺序的唯一权威（本文件头注释），但此前全链路
+    无任何机制计算下一相位，show 只有「进入下一个 phase」的空指引——
+    跳相位（如 W2 只审查）后续跑者据此推导必然错。判定语义：PHASE_ORDER
+    顺序扫描，首个「未记录或状态非 DONE/SKIPPED」的章级相位即下一步
+    （DONE=完成、SKIPPED=合法跳过；IN_PROGRESS/BLOCKED 视为未完成，
+    续跑应从它继续）。
+    """
+    done_rows = re.findall(r'^\| ([A-Z][A-Z0-9-]*) \| (DONE|SKIPPED) \|', text, re.M)
+    finished = {ph for ph, _ in done_rows}
+    if not finished:
+        return 'INTAKE'  # 无任何完成记录 → 从流程起点开始
+    # 书层相位集合：BOOK_* 前缀 + CHAPTER_SCHEDULE（书层排程，不属章域——
+    # 若按 startswith('BOOK_') 过滤会漏掉它，跳章场景误报 NEXT=CHAPTER_SCHEDULE）
+    book_phases = set(BOOK_PHASES) | {'CHAPTER_SCHEDULE'}
+    # 「下一个」= 最后一个已完成相位之后的首个未完成相位（推进语义）。
+    # 不能从头扫描首个未完成——跳相位（W2 只审查直进 PROOFREAD）时中间相位
+    # 永远不会补跑，从头扫描会永远误报早期相位。
+    chapter_order = [ph for ph in PHASE_ORDER if ph not in book_phases]
+    last_done_pos = max(chapter_order.index(ph) for ph in finished if ph in chapter_order)
+    for ph in chapter_order[last_done_pos + 1:]:
+        if ph not in finished:
+            return ph
+    return None  # 全部完成
+
+
 def show(work_root: Path) -> int:
     p = progress_file(work_root)
     if not p.exists():
         print('(progress.md 不存在 — 章节未初始化)')
         return 1
-    print(p.read_text(encoding='utf-8'))
+    text = p.read_text(encoding='utf-8')
+    print(text)
+    # 缺陷 #3：在「下次恢复」空指引后增量附上推导出的下一相位（不改动既有段落）
+    nxt = _next_pending_phase(text)
+    if nxt:
+        print(f'## 下一个待执行相位（按 PHASE_ORDER 推导）')
+        print(f'')
+        print(f'NEXT_PHASE={nxt}')
+    else:
+        print(f'## 下一个待执行相位（按 PHASE_ORDER 推导）')
+        print(f'')
+        print(f'NEXT_PHASE=（全部章域相位已 DONE/SKIPPED — 章已完成）')
     return 0
 
 
@@ -722,6 +786,12 @@ def main() -> int:
             if err:
                 print(f'ERROR  {err}', file=sys.stderr)
                 return 2
+            # BUG-3（2026-11-23 复测）：负数 word-budget 静默接受 → 下游 \d+ 解析
+            # 整章消失、5.1 字数判据静默跳过。字数预算非负，入口即拒绝
+            if args.word_budget < 0:
+                print(f'ERROR  --word-budget 不能为负数: {args.word_budget}',
+                      file=sys.stderr)
+                sys.exit(2)
             init_book(wr, args.textbook, chapters, args.audience, args.word_budget)
             print('OK  book initialized')
     elif args.cmd == 'update':
