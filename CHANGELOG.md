@@ -3,6 +3,30 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.1] — 2026-11-24 P3.5 一致性审计收口（撞限重跑完成）
+
+### 背景
+v2.19.0 发布后按团队 SOP 补跑 P3.5 发布门禁审计（上轮撞限）+ 知识底座编译 + curator 语义审计。
+
+### Fixed（审计发现，主理人核实后处置 4 项 / 驳回 1 项误报）
+- **DEF-1** README 体积声明漂移：team-lead 35.7KB（v2.18.0 声明）→ 实测 36.9KB，更新声明。
+- **DEF-4** CI 计数漂移两处：README「26 步全绿」→ 实际 30 步；workflow 注释「199 计分项」
+  → 实际 330（test_smart_textbook_team.py total_checks 实测）。
+- **DEF-3** 三份 04-test 成员报告含 `/Users/biodog` 宿主绝对路径（默认假设：脱敏入库保留
+  流程证据，路径相对化为 `<PKG_ROOT>`/`~`；可推翻）。
+- **驳回 DEF-5**：审计员称「§1 表 17 类 vs 声明 22」与实物不符——实测表 22 行 = 声明 22 类，
+  判误报。
+
+### Added — 知识底座（SOP §7 首次编译）
+- `.wiki-creator/` 建立：2 主题页（retest-2026-11 事件 + concurrency-write-paradigm 方法，
+  互链合规）+ 3 raw 源；lint 全清（0 orphans / 0 nonconforming / 0 schema drift）。
+- curator 语义审计：0 矛盾 / 0 陈旧 / 3 不对题引用（F1「复用原语」以偏概全 / F2 退出码
+  透传归属 / F3 learnings 同款措辞）——全部修正并记处置台账
+  （`.harness-kb/knowledge-audit.md`）。
+
+### Verification
+- 版本七处 2.19.0→2.19.1；wiki lint 全清；三报告脱敏后仍为有效流程证据；
+  DEF-5 驳回理由与实物证据（§1 表 22 行）已记录。
 ## [2.19.0] — 2026-11-23 ★全面复测闭环（13 缺陷修复 · 双 BLOCKER 并发安全根治）
 
 ### 背景
