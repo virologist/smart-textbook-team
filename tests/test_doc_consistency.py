@@ -56,6 +56,19 @@ def sandbox_pkg():
             src = PKG_ROOT / f
             if src.is_file():
                 shutil.copy2(src, Path(d) / f)
+        # ★P3.5 v2.20.2：D8 需要两处 SSOT —— CI workflow 的 step 数与
+        #   本地机械门禁条数（tests/run_all.py 的 STEPS 长度）。
+        #   不复制它们 ⇒ D8 在沙箱里会因「判据失效」直接报红，
+        #   负向用例就变成了「测的是 SSOT 缺失」而非「测的是计数漂移」。
+        wf_src = PKG_ROOT / ".github" / "workflows" / "harness-gate.yml"
+        if wf_src.is_file():
+            wf_dst = Path(d) / ".github" / "workflows"
+            wf_dst.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(wf_src, wf_dst / "harness-gate.yml")
+        ra_src = PKG_ROOT / "tests" / "run_all.py"
+        if ra_src.is_file():
+            (Path(d) / "tests").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ra_src, Path(d) / "tests" / "run_all.py")
         yield Path(d)
     finally:
         shutil.rmtree(d, ignore_errors=True)
@@ -92,14 +105,16 @@ def test_real_package_is_clean():
     assert not failed, f"真实包被误判，失败判据：{sorted(failed)}"
 
 
-def test_gate_has_seven_criteria():
-    """门禁必须恰好有 7 条判据（少一条 = 有判据失效且无人知道）。
+def test_gate_has_eight_criteria():
+    """门禁必须恰好有 8 条判据（少一条 = 有判据失效且无人知道）。
 
     ★I-2（v2.10.2）：D6 → D7 增补——task_type_required ⊆ router 枚举
-    + 工具编排总表锚计分（G5 声明的一致性计分落地）。"""
+    + 工具编排总表锚计分（G5 声明的一致性计分落地）。
+    ★P3.5（v2.20.2）：D7 → D8 增补——计数类事实声明与 SSOT 一致
+    （CI 步数 / 本地机械门禁条数），根治 v2.20.0 遗留的「CI 23 步」漂移复发。"""
     _failed, items = _run_gate(PKG_ROOT)
     ids = {i[0] for i in items}
-    assert ids == {"D1", "D2", "D3", "D4", "D5", "D6", "D7"}, ids
+    assert ids == {"D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8"}, ids
 
 
 def test_d7_catches_unknown_task_type_key(sandbox_pkg):
@@ -123,6 +138,119 @@ def test_d7_catches_unknown_task_type_key(sandbox_pkg):
         assert "D7" in failed, "D7 未拦截枚举外的 task_type_required 键（判据恒真）"
     finally:
         contract.write_text(original, encoding="utf-8")
+
+
+# ── D8：计数类事实声明的 SSOT 一致（★P3.5 v2.20.2）──────────────────────
+
+def test_d8_catches_stale_ci_step_count(sandbox_pkg):
+    """D8 负向例（8a）：把「CI 门禁 30 步」改回「CI 23 步」必须被拦。
+
+    ★负样本用的是**真实历史病灶形态**：`references/decision-lanes.md:46`
+    的原话「CI 23 步全绿」（自 v2.11.0 引入后从未更新，实测真值 30 步）。
+
+    ⚠️ 形态必须写成「**CI 23 步全绿**」而不是「CI 门禁 23 步」——
+    后者恰好落在「CI」与「23 步」之间有语境词的**宽松**形态上；
+    若只用宽松形态做负控制，判据里那条「语境主语 vs 编号」的严格规则
+    即使失效（漏判真实病灶）本用例也照样绿 ⇒ **负控制失真**。
+    真实病灶是紧邻形态，必须用紧邻形态做负控制。
+    """
+    p = sandbox_pkg / "references" / "decision-lanes.md"
+    t = p.read_text(encoding="utf-8")
+    # 真实病灶形态：紧邻的「CI N 步」
+    p.write_text(t + "\nCI 23 步全绿\n", encoding="utf-8")
+
+    failed, items = _run_gate(sandbox_pkg)
+    assert "D8" in failed, "D8 未拦截陈旧的 CI 步数声明（判据恒真）"
+    detail = _detail(items, "D8")
+    assert "23" in detail and "步" in detail, f"D8 报错信息未点出 23 步：{detail}"
+
+
+def test_d8_catches_stale_local_gate_count(sandbox_pkg):
+    """D8 负向例（8b）：把「本地机械门禁 10 条」改回「本地机械门禁 11 条」必须被拦。
+
+    ★SSOT 口径 = `len(STEPS) - 1`（与 run_all.py:60 的运行时 print 同源）。
+    负样本刻意用**+1**（11）而非别的数——因为 11 = `len(STEPS)` 本身，
+    是最容易因口径没对齐而**误报红**的那个值：若 D8 取 `len(STEPS)`，
+    则真实值 10 会被判红、「11 条」反而被当成正确 ⇒ 本用例正好卡住
+    「口径未对齐」这个缺陷（它会表现为 D8 对真实包报红）。
+    """
+    p = sandbox_pkg / "references" / "decision-lanes.md"
+    t = p.read_text(encoding="utf-8")
+    p.write_text(t + "\n本地机械门禁 11 条全绿\n", encoding="utf-8")
+
+    failed, items = _run_gate(sandbox_pkg)
+    assert "D8" in failed, "D8 未拦截陈旧的本地门禁条数声明（判据恒真）"
+    detail = _detail(items, "D8")
+    assert "11" in detail and "条" in detail, f"D8 报错信息未点出 11 条：{detail}"
+
+
+def test_d8_accepts_correct_counts(sandbox_pkg):
+    """D8 正向例：与 SSOT 一致的计数声明**不得**被拦（防误伤）。"""
+    p = sandbox_pkg / "references" / "decision-lanes.md"
+    t = p.read_text(encoding="utf-8")
+    p.write_text(t + "\nCI 30 步全绿\n本地机械门禁 10 条全绿\n", encoding="utf-8")
+
+    failed, _items = _run_gate(sandbox_pkg)
+    assert "D8" not in failed, "D8 误伤了与 SSOT 一致的正确声明"
+
+
+def test_d8_ignores_non_factual_number_patterns(sandbox_pkg):
+    """D8 正向例（防误伤）：编号形态**不得**被当成计数声明。
+
+    这批形态是实测中真实出现过的误伤候选——它们都有「数字+量词」，
+    但那个数字是**编号的一部分**，不是事实声明。
+    """
+    p = sandbox_pkg / "references" / "decision-lanes.md"
+    t = p.read_text(encoding="utf-8")
+    p.write_text(
+        t
+        + "\n§2.3 23 步\n"          # 章节编号
+        + "F41a 23 步\n"            # 判据编号
+        + "第 4.2 23 步\n"          # 编号条款
+        + "4.10 23 步\n"            # 纯数字编号
+        + "Step 23 步\n"            # 英文 Step 写法
+        + "13 态强制门禁链\n"       # 「态」不在量词表
+        + "check_cross_chapter.py（共 6 项）\n",  # 「项」不在量词表
+        encoding="utf-8")
+
+    failed, _items = _run_gate(sandbox_pkg)
+    assert "D8" not in failed, "D8 误伤了编号形态的合法内容"
+
+
+def test_d8_ssot_is_not_hardcoded(sandbox_pkg):
+    """D8 的 SSOT 必须来自实测，不得硬编码。
+
+    往沙箱的 workflow 里加一个 step ⇒ D8 的真值必须随之 +1；
+    追加一条 STEPS ⇒ 本地门禁条数必须随之 +1。
+    """
+    mod = _load_gate(sandbox_pkg)
+    ci_before = sum(mod.count_workflow_steps_per_job(
+        mod._read(sandbox_pkg / ".github" / "workflows" / "harness-gate.yml")).values())
+    gate_before = mod.count_run_all_steps(sandbox_pkg)
+
+    # ① workflow 加一个 step（复制一条已有 step 的文本块）
+    wf = sandbox_pkg / ".github" / "workflows" / "harness-gate.yml"
+    txt = wf.read_text(encoding="utf-8")
+    marker = "      - name: "
+    idx = txt.find(marker)
+    assert idx != -1, "前置条件：workflow 应含带 name 的 step"
+    line_end = txt.find("\n", idx)
+    wf.write_text(txt[:line_end + 1] + "      - name: D8 自证追加步\n"
+                 + "        run: echo hi\n" + txt[line_end + 1:], encoding="utf-8")
+    ci_after = sum(mod.count_workflow_steps_per_job(mod._read(wf)).values())
+    assert ci_after == ci_before + 1, f"workflow step 数未随实测变化：{ci_before} → {ci_after}"
+
+    # ② run_all.py 追加一条 STEPS
+    ra = sandbox_pkg / "tests" / "run_all.py"
+    ratxt = ra.read_text(encoding="utf-8")
+    anchor = '    ("静态契约", [sys.executable, "tests/test_smart_textbook_team.py"]),\n'
+    assert anchor in ratxt, "前置条件：run_all.py 应含末位「静态契约」步"
+    ra.write_text(ratxt.replace(
+        anchor, anchor + '    ("D8 自证追加步", [sys.executable, "-c", "pass"]),\n'),
+        encoding="utf-8")
+    gate_after = mod.count_run_all_steps(sandbox_pkg)
+    assert gate_after == gate_before + 1, \
+        f"本地门禁条数未随实测变化：{gate_before} → {gate_after}"
 
 
 def test_task_type_count_parsed_from_ssot():

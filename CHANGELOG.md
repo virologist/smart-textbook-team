@@ -3,6 +3,112 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.20.2] — 2026-11-27 ★P3.5 遗留闭环（计数类事实声明门禁 D8 + 并发安全原语回归用例 + PK-TEST-01 晋升）
+
+### 背景
+v2.20.1 发布后主理人按 SOP 做遗留裁决，本轮闭环 v2.20.1 `open_items` 的两项具体缺口：
+
+1. **计数类事实声明仍无机械门禁** —— v2.20.0 的 `references/decision-lanes.md:46`
+   「CI 23 步全绿」自 v2.11.0 引入后从未更新（实测真值 30 步），长期靠人工复核拦截。
+   D1 门禁只管 `task_type` 计数，管不到「CI 步数 / 本地门禁条数」这类计数声明。
+2. **并发安全原语零回归用例** —— `e3_window` / `metrics_baseline` / `budget_guard`
+   三个脚本承载运行态写入，v2.19.0 修过三类真实并发缺陷（R-B1 丢记录 / R-B3 TOCTOU
+   重复基线 / R-B2 静默吞坏行），但**修复本身零回归用例** ⇒ 一旦被改坏（锁被摘除、
+   语义被放宽），无任何门禁会红。
+
+### Added — D8 判据：计数类事实声明与 SSOT 一致（`scripts/check_doc_consistency.py`）
+- **8a「CI/门禁 N 步」→ `.github/workflows/harness-gate.yml` 的 step 数**；
+  **8b「本地机械门禁 N 条」→ `tests/run_all.py` 的 STEPS 长度 − 1**。
+- **零依赖取数（关键约束）**：CI 的「文档一致性门禁」step 是**裸跑的**（该 step 无任何
+  `pip install` 前置，PyYAML 装在后面的 step）⇒ 顶层 `import yaml` 会让 CI 直接
+  ImportError 崩掉。两个取数器（`count_workflow_steps_per_job` /
+  `count_run_all_steps`）全部用纯文本/AST 解析，**不依赖任何第三方库**。
+- **取数本身也会漂移（实测教训）**：`^\s*- name:` 正则计 step 数会**漏计 2 步**——
+  workflow 前两步是 `- uses: actions/checkout@v5` / `- uses: actions/setup-python@v6`，
+  **没有 `name:` 字段** ⇒ 该正则只数到 28，真值 30（仓库 `04-test/一致性审计报告.md:63`
+  早已记载此陷阱但未被继承）。改用**按 `jobs.<job>.steps` 分块计数**，实测与
+  `yaml.safe_load` 在单 job 与多 job 模拟下完全一致。
+- **强语义绑定（可靠性优先于覆盖面）**：只认「主题词 + 计数」**成对固定搭配**，
+  而非「行内有数字 + 行内有 CI 词」。实测扫描面内 12 行命中，**仅 1 行是真目标**
+  （`README.md:5`），其余 11 行是误伤候选（「§2 Step 4」「门禁 4.11」「checklist（7 项）」
+  「13 态强制门禁链」「check_cross_chapter.py（共 6 项）」…）⇒ 粗匹配必然误伤。
+- **⚠️ 一次致命的假门禁（已修，附回归护栏）**：prefix 判定初版用 `[A-Za-z]\d*\s*$`，
+  而 `\d*` **可为空** ⇒「CI 」「ci 」「run_all 」这类**语境主语**被误判成编号而滤掉
+  ⇒ **真实病灶原文「CI 23 步全绿」根本抓不到**，门禁沦为假绿。改为
+  `_d8_is_number_prefix()` + 语境词白名单（`_RE_D8_CTX_WORDS`）。**独立验证**：注入
+  原始粗规则后，负控制用例立即立红（`test_d8_catches_stale_ci_step_count` FAILED）。
+
+### Added — 并发安全原语的负向回归用例（`tests/test_concurrency_regression.py`，20 例）
+- 覆盖三个原语的并发语义：`e3_window`（同 cid 窗口不丢记录）、`metrics_baseline`
+  （同章不写重复基线）、`budget_guard`（坏行计数不被吞）。
+- **每个用例都配负控制**：只有正向断言的用例证明不了门禁有牙齿——断言可能恒真。
+  负控制让**同一段判据**在「机制被破坏」时明确失败。
+- **负控制用沙箱副本，绝不改生产代码**：改真实包 + `try/finally` 还原的坑——进程被
+  SIGTERM 杀死时 finally 不执行，破坏样本会**永久留在生产资产里**（本仓已实际发生过）。
+  一律把整个 `scripts/` 复制到 `/tmp` 沙箱下再改，物理上不可能污染生产资产。
+- **并发必须确定性，不能靠运气**：「跑得够多总能碰上竞态」是错误做法（实测：去 flock
+  后单轮约 40% 概率凑巧只写 1 行 ⇒ 负控制时红时绿）。本文件用**跨进程文件屏障** +
+  进程内 `threading.Barrier` + **人为放宽竞态窗口**（正例与负控制注入同一个放宽）
+  ⇒ 被测变量恒为「有没有锁」这**一个**。
+- **D 组「负控制自证」**：把负控制本身当作被测对象。若负控制注入后正例仍通过，说明
+  **负控制是空的**（比没有负控制更糟——给人「已覆盖」的错觉），本组让这种情况显式失败。
+
+### Fixed — D8 的 SSOT 口径与 `run_all.py` 运行时输出对齐（主理人复核发现）
+- **判据自身会制造假红**：8b 初版取 `len(STEPS)`=11，而 `tests/run_all.py:60` 的运行时
+  print 输出 `len(STEPS) - 1`=**10**（末位「静态契约」步按 run_all.py docstring 计入
+  ②「静态契约评测」而非 ③「机械门禁」）⇒ 两个 SSOT 口径不一致 ⇒ 文档写
+  「本地机械门禁 10 条」（与 run_all.py 自述一致的**正确**表述）会被 D8 误判红。
+- **裁决**：8b 取 `len(STEPS) - 1`，与运行时 print **完全同源**；并在
+  `tests/test_doc_consistency.py` 补「口径未对齐」负控制（注入 `len(STEPS)` 后必须立红）。
+
+### Fixed — 新增判据必须同步「判据条数断言」（D13 信号第 8 类）
+- D8 引入后 `tests/test_doc_consistency.py` 的 `test_gate_has_seven_criteria` 仍写死
+  7 条 ⇒ 全量 pytest 因 `Extra items in the left set: 'D8'` 报红。断言已改为 8 条，
+  并补 D8 的 5 个用例（负向×2 + 正向防误伤×2 + SSOT 非硬编码×1）。
+- **负控制必须用真实病灶形态**：若写成「CI 门禁 23 步」（语境词在中间）而非真实病灶
+  「**CI 23 步全绿**」（紧邻），则判据里「语境主语 vs 编号」那条严格规则即使失效
+  也照样绿 ⇒ **负控制失真**。已实测验证两种形态的红绿差异。
+
+### Changed — 知识底座（`.harness-kb/`，gitignored 本地底座，不入库不进分发包）
+- **`PK-TEST-01` 由 candidate 晋升 promoted**（复现 6 → 8）：原裁决的阻塞项是
+  「首条 D13『并发用例仍缺』至今未闭环」——现已补 `tests/test_concurrency_regression.py`
+  （20 例，每例配负控制，含 D 组自证与 A7 生产代码零污染守护）。
+- **`_state.json` 的 `open_items` 更正**：原表述「计数类事实声明仍无机械门禁守护」**过宽**
+  （静态契约计分项已由 F32a 守护、版本号/技能数/体积已由 M10a/b/c 守护）⇒ 改为
+  记录三个**具体**的已知边界：D8 覆盖面边界（只扫活资产 `.md`，中文数词不在量词表）、
+  与既有守护的分工边界、以及 8b 口径与 `run_all.py` 的耦合目前无机械守护。
+
+### Verification
+- **门禁自测**：`tests/test_doc_consistency.py` 24 passed；D8 负控制独立注入验证有牙齿
+  （注入原始粗规则 ⇒ 立红；注入口径未对齐 ⇒ 2 例立红）。
+- **并发用例**：20 passed，**8/8 连续连跑全绿**（每次 24–37s）。
+- **三组负控制独立验收**（主理人亲自注入生产代码副本，非采信自报）：
+  摘 e3_window 的 `with _file_lock(...)` ⇒ **8 failed**；摘 metrics_baseline 的
+  `fcntl.flock` ⇒ **5 failed**；摘 trace_schema 的 `bad += 1` ⇒ **4 failed**。
+  注入后生产文件 md5 全部还原一致。
+- **D1–D7 输出逐字节不变**：D8 落地前后对比（git stash）门禁输出一致 ⇒ 零回归。
+
+### Known Limits（如实声明，不掩饰）
+- **★新发现的活跃缺陷（本轮不修，交下一轮闭环）**：`scripts/trace_schema.py` 的
+  `read_trace_lines` 只把**非 JSON 行**计为坏行（`except JSONDecodeError: bad += 1`）；
+  **合法 JSON 但非 dict 的行**（`123` / `"abc"` / `null` / `[1,2]`）**既不计坏行、
+  也不被剔除**，仍被 append 进 records ⇒ 下游按 dict 取键时
+  `AttributeError: 'int' object has no attribute 'get'` **崩溃**。实测复现
+  （5 行混合输入 ⇒ `bad=1`、records 含 4 个非 dict）。属独立缺陷类，超出本轮
+  「D8 + 并发用例」两项任务范围 ⇒ 本轮只记录不修（避免扩大变更面），
+  已记入 `.harness-kb/mode2-log.md` 与 `_state.json` 的 `open_items`。
+- **D8 覆盖面**：只扫 `_iter_md` 覆盖的**活资产 `.md`**（agents/skills/references/scripts
+  + README/CONTRIBUTING/AGENTS.md），**不含** `tests/*.py`、`docs/`、`04-test/`；
+  `CHANGELOG.md` / `skills/SKILL_CHANGELOG.md` 走免检通道（照抄旧数字是证据要求）。
+  ⇒ 中文数词形态（如「十道机械门禁」）不在量词表（计分项/步/条）内 ⇒ 抓不到。
+  若将来扩到 `.py` 扫描面，须先给 `scripts/check_doc_consistency.py` 自身加豁免——
+  其注释里有 4 处「CI 23 步全绿」反例文本，会自指误伤。
+- **`progress.py:187` `_atomic_write` 潜在加固项**：tmp 文件名只含 `os.getpid()`、
+  **不含线程 id** ⇒ 同进程多线程并发写同一目标时撞名（实测 8 线程 7 例抛
+  `OSError: [Errno 5]`）。**生产路径不可达**（`_atomic_write` 全部 5 个调用点均在
+  `_file_lock` 内，锁内单线程）⇒ 定级「潜在加固项」非活跃缺陷；但它使「用线程测
+  e3_window」不可行（并发用例必须用多进程）。
+
 ## [2.20.1] — 2026-11-27 ★P3.5 遗留裁决闭环（注释影响面更正 + 红道链事实漂移 + 测试数字勘误）
 
 ### 背景与勘误（实测）

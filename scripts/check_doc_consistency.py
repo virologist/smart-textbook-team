@@ -16,7 +16,7 @@ check_doc_consistency.py — 文档计数/量纲/编号/归属一致性门禁（
   · check_phase_consistency 守「相位字面量」这一类（枚举值本身）
   · 本脚本守「**引用计数与量纲**」这一类（枚举的个数、阈值的数值、编号序列）
 
-六条判据
+八条判据
 ------------------------------------------------------------------------------
   D1  task_type 计数一致：文档声明的「N 类 task_type」必须等于
       `skills/task-router/SKILL.md` §1 表实际行数（SSOT 解析，非硬编码）。
@@ -35,6 +35,31 @@ check_doc_consistency.py — 文档计数/量纲/编号/归属一致性门禁（
       唯一例外是显式标注「双写者」并给出仲裁规则的路径（当前：`{图号}.png`）。
   D6  路径无主：path-ownership 表中出现的**扩展名**必须在表内有归属行，
       不允许「表里提到但无归属」（如 `.pdf` 被删归属后成为无主路径）。
+  D7  契约键闭合：成员契约 `task_type_required` 的键必须 ⊆ router §1 枚举，
+      且 scout/examiner 成员 MD 必须含工具编排总表锚引用行。
+  D8  计数类事实声明与 SSOT 一致：文档里的「CI 门禁 N 步」「本地机械门禁 N 条」
+      必须等于实测值（`.github/workflows/harness-gate.yml` 的 step 数、
+      `tests/run_all.py` 的 STEPS 长度 − 1）。
+      ⚠️ SSOT 口径：本地机械门禁条数 = `len(STEPS) - 1`——**与 run_all.py:60
+      的运行时 print 完全同源**（末位「静态契约」步按 run_all.py docstring
+      计入 ②「静态契约评测」而非 ③「机械门禁」）。若 D8 取 `len(STEPS)`
+      而 run_all.py 打印 `len(STEPS)-1`，则「本地机械门禁 10 条」这种
+      **正确表述**会被误判红 ⇒ 判据自身制造假红。
+      ★设计取舍（可靠性优先于覆盖面）：只认**固定搭配**且**强语义绑定**——
+      实测扫描面内 12 行命中，仅 1 行是真目标（README.md:5），其余 11 行是
+      误伤候选（「§2 Step 4」「门禁 4.11」「checklist（7 项）」「13 态强制门禁链」
+      「check_cross_chapter.py（共 6 项）」…）⇒ 粗匹配必然误伤。
+      ★与既有守护的分工：静态契约**计分项**声明已由
+      `tests/test_smart_textbook_team.py` 的 F32a 守护（它自己知道真实计分），
+      版本号/技能数/体积由 `tests/test_manifest_sync.py` 的 M10a/b/c 守护
+      ⇒ **D8 不重复造这两道门禁**，只补 CI 步数与本地门禁条数这两个缺口。
+      ★覆盖面边界（诚实声明）：当前扫描面为 `_iter_md` 覆盖的**活资产
+      `.md`**（agents/skills/references/scripts 下 + README/CONTRIBUTING/
+      AGENTS.md），**不含** `tests/*.py`、`docs/`、`04-test/` 等；
+      CHANGELOG.md / SKILL_CHANGELOG.md 走免检通道（照抄旧数字是证据要求）。
+      ⇒ 若历史上「十道机械门禁」这类**中文数词**表述出现在 `.py` 注释里
+      （如 tests/run_all.py docstring），D8 **抓不到**——中文数词「十道」
+      不在量词表（计分项/步/条）内。此为已知覆盖缺口，非缺陷伪装。
 
 免检通道
 ------------------------------------------------------------------------------
@@ -296,6 +321,187 @@ def _tt_count_claims(line: str):
         if RE_TT_EN_ANCHOR.search(back):
             _add(m.start(), int(m.group(1)), "type(s)", m.end())
     return claims
+
+
+# ── D8：计数类事实声明的强语义绑定 ─────────────────────────────────────────
+# 设计原则：**主题词 + 计数必须成对出现且相邻**，而不是「行内有数字 + 行内有
+# CI 词」的粗匹配。后者在本仓实测 12 行命中里误伤 11 行。
+_RE_D8_CLAIM = re.compile(r"(\d+)\s*(计分项|步|条)")
+# 「CI 语境」锚：须在同一搭配窗口内出现 CI / 门禁 / 全绿 之一
+_RE_D8_CI_CTX = re.compile(r"(?:CI|ci\b|门禁|workflow|流水线|全绿)", re.I)
+# 「本地门禁语境」锚：须明确指向**本地机械门禁条数**
+_RE_D8_LOCAL_CTX = re.compile(r"(?:本地|run_all|机械门禁|门禁条数|回归入口)", re.I)
+# ★语境词白名单：这些词出现在计数**前面**时，是「主语/语境」而非「编号」，
+#   计数必须照常参与判定。
+#   （v2.20.2 实测教训：原前缀规则用 `[A-Za-z]\d*\s*$`，而 `\d*` 可为空
+#   ⇒ 「CI 」「run_all 」这类纯字母词也被当成编号而滤掉 ⇒ **真实病灶原文
+#   「CI 23 步全绿」根本抓不到**，门禁沦为假绿。）
+_RE_D8_CTX_WORDS = {
+    "CI", "ci", "Ci", "E2E", "e2e", "CI/CD", "workflow", "Workflow", "WORKFLOW",
+    "run_all", "runall", "harness-gate", "harness", "门禁", "全绿", "pipeline",
+    "Pipeline", "step", "Step", "STEP", "steps", "Steps", "gate", "Gate",
+}
+
+
+def _d8_is_number_prefix(prefix: str) -> bool:
+    """判断计数前面的内容是否为「编号」而非「语境主语」。
+
+    返回 True ⇒ 该计数是编号的一部分（如「§2.3 23 步」「F41a 23 步」），
+    应**排除**在事实声明之外。
+    """
+    if not prefix:
+        return False
+    # ① §N.N / 第 N.N
+    if re.search(r"(?:§\s*[\d.]+|第\s*[\d.]+)\s*$", prefix):
+        return True
+    # ② 末尾的标识符 token
+    m = re.search(r"([A-Za-z0-9][A-Za-z0-9_\-.]*)\s*$", prefix)
+    if not m:
+        return False
+    tok = m.group(1)
+    # 语境词白名单 ⇒ 是主语不是编号
+    if tok in _RE_D8_CTX_WORDS:
+        return False
+    # 纯数字形态（4.10 / 4.2）⇒ 编号
+    if re.fullmatch(r"[\d.]+", tok):
+        return True
+    # 含数字的标识符（F41a / ESC1 / R-B1 / M10a / E3）⇒ 编号
+    if re.search(r"\d", tok):
+        return True
+    return False
+
+
+def _d8_claims(line: str, quant: str, require_ci_ctx: bool = False,
+               require_local_ctx: bool = False):
+    """产出一行里属于「计数类事实声明」的计数（强语义绑定）。
+
+    ``quant`` 为目标量词（"计分项" / "步" / "条"）。
+
+    绑定规则（逐条都是为排除实测误伤而设）：
+      · 数字必须**紧邻**量词（``30 步``），中间不得隔词
+      · 量词前不得出现 § / 第 / 第N 条 / 编号形态（排除「§2 Step 4」「4.10 判据」）
+      · 「步」还须排除英文 Step 写法（``Step 4``）——中文「步」天然满足
+      · ``require_ci_ctx``：搭配窗口内须有 CI/门禁 语境锚
+      · ``require_local_ctx``：搭配窗口内须有本地门禁语境锚
+    """
+    out = []
+    for m in _RE_D8_CLAIM.finditer(line):
+        if m.group(2) != quant:
+            continue
+        start = m.start()
+        # 量词后紧跟汉字时，只排除**构成更长量词**的情况（如「330 计数项」
+        # 的「计分项」被「计」抢先匹配）。注意不可一律排除——「23 步全绿」
+        # 的「全」是搭配后续词，不是更长量词的一部分，必须放行。
+        tail = line[m.end():m.end() + 2]
+        if re.match(r"[\u4e00-\u9fff]", tail):
+            longer_quant = re.match(r"(计数项|分项|项数|步数|条数|条款|条目|步幅)", tail)
+            if longer_quant:
+                continue
+        # 量词前若紧邻编号（形如 "§4.10 步"）→ 是编号不是计数。
+        # ⚠️ 不能用「字母+数字」的粗规则：`\d*` 可为空会把「CI 」「run_all 」
+        # 这类**语境主语**误判成编号 ⇒ 连真实病灶「CI 23 步全绿」都抓不到。
+        prefix = line[max(0, start - 12):start]
+        if _d8_is_number_prefix(prefix):
+            continue
+        # 语境窗口取**整行**（README 那类 458 字的长行里，主题词可能远在数十字外）
+        if require_ci_ctx and not _RE_D8_CI_CTX.search(line):
+            continue
+        if require_local_ctx and not _RE_D8_LOCAL_CTX.search(line):
+            continue
+        out.append(int(m.group(1)))
+    return out
+
+
+# ── D8：计数类事实声明的 SSOT 取数（零依赖） ──────────────────────────────
+# ⚠️ 禁顶层 `import yaml`：**CI 的「文档一致性门禁」step 是裸跑的**
+# （.github/workflows/harness-gate.yml 里该 step 无任何 `pip install` 前置，
+# PyYAML 装在后面的 step）⇒ 顶层 import yaml 会让 CI 直接 ImportError 崩掉。
+# 故下面两个取数器都用**纯文本解析**，不依赖任何第三方库。
+
+def count_workflow_steps_per_job(text: str) -> dict:
+    """按 ``jobs.<job>.steps`` 分块统计每个 job 的 step 数（零依赖）。
+
+    为何不能用「`- name:` 正则」计数——**实测会漏计 2 步**：
+    workflow 的前两步是 ``- uses: actions/checkout@v5`` /
+    ``- uses: actions/setup-python@v6``，**没有 ``name:`` 字段** ⇒
+    ``^\\s*- name:`` 只数到 28，真值是 30。
+    仓库自己的 ``04-test/一致性审计报告.md:63`` 早已记载此陷阱
+    （「具名 `- name:` step = 28 个，另 checkout/setup-python 两个 `uses:`」）。
+
+    为何要**按 job 分块**而非全文正则——全文正则会把多个 job 的 step 混算。
+    本函数与 ``yaml.safe_load`` 的取值在本仓实测完全一致（单 job 30、多 job
+    模拟 30+2 均一致），但**不依赖 PyYAML**，可在 CI 裸跑环境工作。
+
+    返回 ``{job_name: step_count}``；解析不出任何 job 时返回空 dict。
+    """
+    jobs: dict = {}
+    cur_job = None
+    in_steps = False
+    item_indent = 0
+    in_on_block = False
+    for ln in text.splitlines():
+        # 顶层 `on:` 块里的 push/pull_request 是**触发器不是 job**
+        if re.match(r"^on:\s*$", ln):
+            in_on_block = True
+            continue
+        if in_on_block:
+            if ln.strip() and not ln.startswith("  "):
+                in_on_block = False
+            else:
+                continue
+        m_job = re.match(r"^  ([\w.-]+):\s*$", ln)
+        if m_job:
+            cur_job = m_job.group(1)
+            jobs.setdefault(cur_job, 0)
+            in_steps = False
+            continue
+        if cur_job is None:
+            continue
+        m_steps = re.match(r"^(\s*)steps:\s*$", ln)
+        if m_steps:
+            in_steps = True
+            item_indent = len(m_steps.group(1)) + 2
+            continue
+        if in_steps:
+            if not ln.strip() or ln.lstrip().startswith("#"):
+                continue
+            cur = len(ln) - len(ln.lstrip())
+            if cur < item_indent:
+                in_steps = False
+                continue
+            if cur == item_indent and re.match(r"^\s{%d}- " % item_indent, ln):
+                jobs[cur_job] += 1
+    return {k: v for k, v in jobs.items() if v > 0}
+
+
+def count_run_all_steps(root: Path):
+    """数 ``tests/run_all.py`` 的 ``STEPS`` 列表长度（AST 节点计数，零依赖）。
+
+    ⚠️ 不可用 ``ast.literal_eval(node.value)``——STEPS 元素里含
+    ``sys.executable``（ast.Attribute），literal_eval 会抛
+    ``ValueError: malformed node or string``。必须用 ``len(node.value.elts)``。
+
+    ★口径：返回**机械门禁条数** = ``len(STEPS) - 1``，与 ``run_all.py:60``
+    的运行时 print（``{len(STEPS) - 1} 机械门禁``）**完全同源**。
+    末位「静态契约」步按 run_all.py docstring 计入 ②「静态契约评测」，
+    不计入 ③「机械门禁」。⇒ D8 8b 判「本地机械门禁 N 条」时用本返回值，
+    与用户看到的运行时输出一致，不会制造假红。
+    """
+    p = root / "tests" / "run_all.py"
+    if not p.is_file():
+        return None
+    try:
+        import ast
+        tree = ast.parse(_read(p))
+    except (OSError, SyntaxError, ValueError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id == "STEPS":
+                    if isinstance(node.value, ast.List):
+                        return len(node.value.elts) - 1
+    return None
 
 
 # ── SSOT 解析：task-router §1 表的 task_type 个数 ─────────────────────────
@@ -573,6 +779,73 @@ def check(root: Path, verbose: bool = False):
             not bad_d7, "; ".join(bad_d7[:8]))
     except Exception as e:  # 判据自身崩 → 显式失败，不静默
         add("D7", "task_type_required ⊆ router 枚举 + 工具总表锚齐备（★I-2）",
+            False, f"判据执行异常: {e}")
+
+    # ── D8：计数类事实声明与 SSOT 一致（★P3.5 v2.20.2）────────────────────
+    # 缺口（v2.20.1 遗留裁决第 2 项）：D1 只管 **task_type 计数**，
+    # 而「CI 步数 / 本地门禁条数」这类**计数类事实声明**此前无任何机械门禁。
+    # 实证（v2.20.0 → v2.20.1）：references/decision-lanes.md:46「CI 23 步全绿」
+    # 自 v2.11.0 引入后从未更新（实测 30 步），且同根因硬编码同时存在于
+    # tests/run_all.py 的 docstring 与运行时 print ⇒ 同一事实 3–4 处同源表述。
+    #
+    # ★设计取舍（可靠性优先于覆盖面）：本判据**只认两个强歧义固定搭配**，
+    #   其余一律不判——宁可覆盖面小，也不要误伤。实测扫描面内 12 行命中，
+    #   仅 1 行是真目标（README.md:5），其余 11 行是误伤候选
+    #   （「§2 Step 4」「门禁 4.11」「checklist（7 项）」「13 态强制门禁链」
+    #   「check_cross_chapter.py（共 6 项）」…）⇒ 粗匹配必然误伤。
+    #   语义绑定靠「主题词 + 计数」**成对固定搭配**，而非「行内有数字」。
+    try:
+        bad_d8 = []
+
+        # ── SSOT-1：CI workflow step 数 ──────────────────────────────────
+        wf_p = root / ".github" / "workflows" / "harness-gate.yml"
+        ci_steps = None
+        if not wf_p.is_file():
+            bad_d8.append(".github/workflows/harness-gate.yml 不存在——判据失效")
+        else:
+            per_job = count_workflow_steps_per_job(_read(wf_p))
+            if not per_job:
+                bad_d8.append("harness-gate.yml 解析不出 job 的 steps——判据失效")
+            else:
+                # 本仓单 job（harness-gate）；多 job 时取**总和**并按 job 名标注
+                ci_steps = sum(per_job.values())
+                job_desc = ", ".join(f"{k}={v}" for k, v in sorted(per_job.items()))
+
+        # ── SSOT-2：本地机械门禁条数（tests/run_all.py 的 STEPS 长度）──────
+        run_steps = count_run_all_steps(root)
+
+        # ── 判据 8a：「CI/门禁 N 步」 → workflow step 数 ─────────────────
+        # 固定搭配要求「步」为**中文量词**且数字紧邻 ⇒ 天然排除
+        # 「§2 Step 4」「workflow-state.yaml」「Step 2」等英文 Step 写法。
+        if ci_steps is not None:
+            for rel, text in _iter_md(root):
+                for ln, line in _lines_with_no_ignore(text):
+                    for claimed in _d8_claims(line, "步", require_ci_ctx=True):
+                        if claimed != ci_steps:
+                            bad_d8.append(
+                                f"{rel}:{ln} 声明 {claimed} 步，实际 {ci_steps} 步")
+
+        # ── 判据 8b：「本地机械门禁 N 条」→ run_all.py 机械门禁条数 ─────
+        # ⚠️ 仅在**显式指向本地机械门禁**时判（「本地机械门禁」「本地回归」
+        # 「门禁 N 条全绿」这类搭配），避免与业务侧「N 条判据」「N 条用例」
+        # 混淆。SSOT 取值 = len(STEPS)-1，与 run_all.py:60 运行时 print 同源。
+        if run_steps is not None:
+            for rel, text in _iter_md(root):
+                for ln, line in _lines_with_no_ignore(text):
+                    for claimed in _d8_claims(line, "条", require_local_ctx=True):
+                        if claimed != run_steps:
+                            bad_d8.append(
+                                f"{rel}:{ln} 声明 {claimed} 条门禁，实际 {run_steps} 条")
+
+        add("D8", "计数类事实声明与 SSOT 一致（CI 步数 / 本地门禁条数）",
+            not bad_d8, "; ".join(bad_d8[:8]))
+        if ci_steps is not None:
+            notes.append(f"D8：CI workflow step 数实测 {ci_steps}（{job_desc}）")
+        if run_steps is not None:
+            notes.append(f"D8：本地机械门禁条数实测 {run_steps}"
+                         "（tests/run_all.py STEPS 长度 − 1，与 run_all.py 运行时 print 同源）")
+    except Exception as e:  # 判据自身崩 → 显式失败，不静默
+        add("D8", "计数类事实声明与 SSOT 一致（CI 步数 / 本地门禁条数）",
             False, f"判据执行异常: {e}")
 
     failed = [i for i in items if not i[2]]
