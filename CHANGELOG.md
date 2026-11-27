@@ -3,6 +3,71 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.20.1] — 2026-11-27 ★P3.5 遗留裁决闭环（注释影响面更正 + 红道链事实漂移 + 测试数字勘误）
+
+### 背景与勘误（实测）
+v2.20.0 发布后主理人按 SOP 做**遗留裁决**——逐项复核上一轮上报但未落盘的遗留条目，
+并对**已发布资产**做事实性核查。本轮共 6 项：5 项事实/表述缺陷闭环 + 1 项历史数字勘误。
+
+> **背景与勘误（实测）**：v2.20.0 条目的 Verification 节记 `pytest 490 passed / 3 skipped
+> （493 collected）`，而**同一次发布**的 commit message 记 `498 passed / 3 skipped
+> （501 collected）` —— 同一发布内 CHANGELOG 与 commit message **自相矛盾**。
+> 经 `git worktree add` checkout 到 `c932e2b` 时点实跑全量（501 collected），
+> 权威数字为 **498 passed / 3 skipped（501 collected）** ⇒ **commit message 正确，
+> CHANGELOG 数字系错记**。按仓库既有勘误范式（不抹原文，另起勘误说明，
+> 见本文件「批次 2」段的「背景与勘误（实测）」块），**v2.20.0 条目原文保持不改**，
+> 闭环以本条目为准。
+
+### Fixed — 注释影响面更正（1 项，主理人自引入）
+- **`scripts/check_doc_consistency.py` `_iter_md` 分支 B 注释**：v2.20.0 修复「分支 B 漏
+  `IMMUNE_FILES` 检查」时，主理人所写注释称影响面为「**D1+D2**」，但 `_iter_md` 实为
+  **D1/D2/D3/D4 四条判据的唯一扫描入口**（调用点 334/349/358/377；D5/D6 直读
+  `references/path-ownership.md`、D7 直读契约 JSON，均不经此函数）⇒ 原注释**少报两条**
+  （D3/D4）。同一事实的同源表述在 `tests/test_doc_consistency.py:377`（模块注释）与
+  `:406`（断言消息）亦有两处，一并更正为 **D1–D4**。注释内补记「为什么是 D1–D4」，
+  防后续维护者再次少报/多报影响面。**纯注释改动，零行为变化**（改前/改后门禁输出
+  逐字节一致）。
+
+### Fixed — 红道链事实漂移（2 项，主理人独立复核发现）
+- **`references/decision-lanes.md:46`「CI 23 步全绿」**：实测 `harness-gate.yml`
+  `steps_total = 30`（`README.md:5` 已正确写「CI 门禁 30 步全绿」）。git 追溯该数字自
+  commit `20c6f5a`（v2.11.0）引入后**从未更新** ⇒ 长期滞后。**不改为硬编码「30 步」**
+  （否则重蹈 v2.20.0 修 DEF-4 的覆辙），改为**动态表述**「CI 全绿（门禁 step 数以
+  workflow 实测为准）」。
+- **`references/decision-lanes.md:46`「SKILL_CHANGELOG 登记」**：根目录**不存在**
+  `SKILL_CHANGELOG.md`，真实路径为 **`skills/SKILL_CHANGELOG.md`**（`git ls-files`
+  确认在库随包分发）→ 修正为完整路径。
+
+### Fixed — 本地回归入口数字漂移（1 项，主理人独立复核发现）
+- **`tests/run_all.py` 头部 docstring 三处硬编码**：①「静态契约评测（282 计分项）」——
+  实测 `total_checks = 330`；②「十道机械门禁」——实测 `STEPS` 共 **11** 条（该「十道」说法
+  自 commit `f566c34` 写下后，v2.18.1 加入「链接核验」未同步）；③「只单跑 2 个 pytest
+  文件」——实测 CI `harness-gate.yml` 引用 **6** 个。三处**一律改为动态表述**
+  （「以评测器输出为准」/「以本文件 STEPS 为准」/「以 workflow 实际引用为准」），
+  不写死新数字——否则只是把同一个坑推迟一版。
+- **`tests/run_all.py:59` 运行时 print 输出「10 机械门禁」**：与 docstring 同根因但**位于
+  可执行路径**（只改文档不改运行时输出，缺陷仍在）→ 改为 f-string 动态计算
+  `len(STEPS) - 1`。实测：临时追加一条 step ⇒ 输出自动变 11；还原 ⇒ 回到 10。
+
+### Fixed — 知识底座失效指针（1 项，主理人独立复核发现）
+- **`.harness-kb/learnings.md` / `mode2-log.md` 协议指针全部失效**：两文件头部引用的
+  `coding-prompt/references/evolution.md`、`coding-prompt/references/learnings.md`、
+  `coding-prompt/SKILL.md` 及 `agents/_harness_kb_init.py` —— 经 `git log --all` 核实
+  **在整个 git 历史中从不存在**（`coding-prompt/` 目录从未有过），属**失效指针**。
+  改为如实陈述：D11–D16 信号由 Mode 2 运行时追加至 `mode2-log.md`，PK 晋升由主理人裁决。
+  另将 mode2-log 中累计 **6 次**的 `D13-缺回归测试` 信号按同根因判定**晋升为
+  `PK-TEST-01` 候选**（`.harness-kb/` 为 gitignored 本地底座，不入库、不进分发包，
+  不影响版本同步）。
+
+### Verification
+- pytest **499 passed / 3 skipped**（502 collected）；`run_all.py` 11 步门禁全绿（步数以该文件 STEPS 为准）；
+  静态契约 1.000；路由 63/63；文档一致性 7/7；链接 0 断链；学科中立 FAIL 0；
+  manifest 33/33；版本自洽 R1-R5 / R6 PASS。
+- 负向对照：摘除 `_iter_md` 分支 B 免疫检查 ⇒ `test_iter_md_skips_immune_files_in_both_branches`
+  **立红**（证明用例非空转）；恢复后 7/7 全绿。
+- 历史追溯留证：`git worktree` checkout `c932e2b` 实跑全量 = 498/3（501 collected），
+  坐实 v2.20.0 CHANGELOG 数字错记；临时 worktree 已清理。
+
 ## [2.20.0] — 2026-11-27 ★P3.5 审计遗留缺陷闭环（4 项漂移修复 + 2 项门禁盲区根治）
 
 ### 背景

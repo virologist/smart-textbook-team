@@ -43,7 +43,7 @@
 
 红道完整链（缺一 = 违规合入）：
 **diff 预览确认 → 实现 → 测试（含反向例：不恒真放行、不静默吞错）→ 全量 pytest
-+ CI 23 步全绿 → SKILL_CHANGELOG 登记 → 版本三处自洽（README/plugin.json×2/
++ CI 全绿（门禁 step 数以 workflow 实测为准）→ `skills/SKILL_CHANGELOG.md` 登记 → 版本三处自洽（README/plugin.json×2/
 install.sh + marketplace.json）→ package_release.sh --check → 推送**。
 
 ### 3.2 进化黄道（实现 + 回归即可，diff 可事后审）

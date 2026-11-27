@@ -374,7 +374,7 @@ def test_d1_does_not_treat_plain_etc_as_enumeration_context():
 # 病灶：`_iter_md` 的两条扫描分支是**各自独立**的 if —— 分支 A（SCAN_DIRS
 # 递归）带 IMMUNE_FILES 检查，分支 B（SCAN_FILES 根文件列表）**漏掉**。
 # ⇒ 免疫承诺（CHANGELOG / SKILL_CHANGELOG 照抄旧数字是证据要求，不参与判据）
-#    在分支 A 生效、在分支 B **完全失效** ⇒ D1+D2 对这两个文件的漂移静默漏检。
+#    在分支 A 生效、在分支 B **完全失效** ⇒ D1–D4 对这两个文件的漂移静默漏检。
 #
 # 当前 SCAN_FILES 恰好不含 CHANGELOG.md / SKILL_CHANGELOG.md，所以缺陷**尚未
 # 发作**——但它是一枚埋雷：任何人往 SCAN_FILES 加入免疫文件，免疫立即失效且
@@ -403,7 +403,7 @@ def test_iter_md_skips_immune_files_in_both_branches(sandbox_pkg):
 
     # 分支 B（根文件列表）不得产出免疫文件
     assert "CHANGELOG.md" not in scanned, \
-        "免疫文件经分支 B 被扫描 ⇒ 免疫承诺失效（D1/D2 对 CHANGELOG 静默漏检）"
+        "免疫文件经分支 B 被扫描 ⇒ 免疫承诺失效（D1–D4 对 CHANGELOG 静默漏检）"
 
     # 分支 A（递归）同样不得产出免疫文件（既有行为，防回退）
     for rel in scanned:

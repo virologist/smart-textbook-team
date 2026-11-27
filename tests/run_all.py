@@ -4,14 +4,15 @@
 run_all.py — 本地全量回归统一入口
 
 本地覆盖：① pytest tests/ 全量（独立 --basetemp，并校验「收集数 == passed+skipped」，
-          防漏收新测试却报全绿）② 静态契约评测（282 计分项）
-          ③ 相位/文档/中立/挂载/引用/用例/frontmatter/清单同步/红道登记 十道机械门禁
+          防漏收新测试却报全绿）② 静态契约评测（计分项数以评测器输出为准）
+          ③ 机械门禁（步数以本文件 STEPS 列表为准，静态契约步计入 ②）：
+          相位/文档/中立/挂载/引用/链接核验/用例/frontmatter/红道登记/清单同步
 
-判据集说明（诚实声明）：CI harness-gate.yml 另有大量端到端 step，且只单跑 2 个
-pytest 文件；本文件与 CI 判据集**不完全同源**（已知待收敛项）。本文件全绿不等于
-CI 全绿，反之亦然；发布前仍须看远端 CI 结论。
+判据集说明（诚实声明）：CI harness-gate.yml 另有大量端到端 step，且只单跑少数
+pytest 文件（具体以 workflow 实际引用为准）；本文件与 CI 判据集**不完全同源**
+（已知待收敛项）。本文件全绿不等于 CI 全绿，反之亦然；发布前仍须看远端 CI 结论。
 
-用法：python3 tests/run_all.py [--fast]   # --fast 跳过 pytest（仅十门禁+契约）
+用法：python3 tests/run_all.py [--fast]   # --fast 跳过 pytest（仅机械门禁+契约）
 退出码：0 全绿 | 1 任一失败
 """
 from __future__ import annotations
@@ -56,7 +57,7 @@ def main() -> int:
     ap.add_argument("--fast", action="store_true", help="跳过 pytest 全量")
     args = ap.parse_args()
     print("=" * 62)
-    print("本地全量回归（10 机械门禁 + 静态契约 + pytest 全量；判据集与 CI 不完全同源）")
+    print(f"本地全量回归（{len(STEPS) - 1} 机械门禁 + 静态契约 + pytest 全量；判据集与 CI 不完全同源）")
     print("=" * 62)
     ok = True
     for name, cmd in STEPS:

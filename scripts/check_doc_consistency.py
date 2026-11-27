@@ -157,11 +157,14 @@ def _iter_md(root: Path):
             yield str(p.relative_to(root)), _read(p)
     for f in SCAN_FILES:
         p = root / f
-        # ★v2.20.0（2026-11-27，coder-B 自审 + 主理人复核确认）：
+        # ★v2.20.0（2026-11-27，主理人独立复核发现并修复；coder-A 复核指出影响面应为 D1–D4）：
         #   分支 B 此前**漏掉 IMMUNE_FILES 检查** —— 免疫承诺（CHANGELOG /
         #   SKILL_CHANGELOG 照抄旧数字是证据要求，不参与判据）在分支 A 生效、
-        #   在分支 B **完全失效** ⇒ D1+D2 对这两个文件的漂移**静默漏检**。
+        #   在分支 B **完全失效** ⇒ D1–D4 对这两个文件的漂移**静默漏检**。
         #   分支 A 的检查不可外推到分支 B：两者是独立 if，必须各自判定。
+        #   ★影响面更正（2026-11-27）：`_iter_md` 是 D1/D2/D3/D4 四条判据的
+        #   **唯一扫描入口**（D5/D6 直读 path-ownership.md、D7 直读契约 JSON，
+        #   均不经此函数）⇒ 原写「D1+D2」少报两条（D3/D4），应为 D1–D4。
         if p.is_file() and p.name not in IMMUNE_FILES:
             yield f, _read(p)
 
