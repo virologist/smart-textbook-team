@@ -305,6 +305,52 @@ def _widen_race_window(mod, n: int, timeout: float = RACE_WINDOW):
         mod.current_metrics = original
 
 
+@contextlib.contextmanager
+def _widen_e3_race_window(mod, n: int, timeout: float = RACE_WINDOW):
+    """把 e3_window 的「读-改-写」竞态窗口**人为放宽**（与 _widen_race_window 同构）。
+
+    为什么需要（实测结论，非猜测）：
+      `_record_locked` 的结构是
+          _load(读) → 改内存 → _save(写)
+      竞态窗口在「读已完成、写未发生」之间 ⇒ 在**写盘前**卡住就能把错位
+      窗口从微秒级放大到可控尺度。
+      不放宽时，实测**跨平台 flaky**：macOS 本地 8/8 绿，但 GitHub Actions
+      的 2 vCPU Linux runner 上各进程错开执行 ⇒ 反而每个都完整写入 1 条
+      ⇒ 落盘窗口 3 条 ⇒ 负控制立不了红（A2/A6/D1 三例全红）。
+
+    ⚠⚠ 为什么放宽点必须落在**写盘前**（`_save`）而不是读后（`_load`）：
+      无锁时最终落盘是**最后一个写入者**的内容。若在读后同步：N 个线程都
+      读到同一份旧状态 → 各自算出 1 条 → 但「谁最后写谁赢」⇒ 落盘条数取
+      决于写入顺序，可能是 1 条也可能是 3 条 ⇒ 负控制 flaky。
+      若在**写前**同步：N 个线程全部完成「读-改」后一起等 → 全部放行 → 全部
+      写同一份「1 条」的内容 ⇒ 落盘**必然**是 1 条 ⇒ 负控制**必然**立红。
+
+    实现：**超时受限的线程屏障**（不是 sleep）。
+      · 无锁时：N 个线程全部到达屏障 ⇒ **同时**放行 ⇒ 必然互相覆盖（确定性）。
+      · 有锁时：临界区内只有 1 个线程能到达屏障 ⇒ 屏障超时破裂 ⇒ 该线程继续
+        ⇒ 语义不变（仍是「读已完成、写未发生」的时点）。
+
+    ⚠ 关键纪律：正例与负控制**注入同一个放宽** ⇒ 被测变量恒为
+      「有没有 _file_lock」这**一个**，放宽本身不改变判据语义。
+    """
+    original = mod._save
+    barrier = threading.Barrier(n)
+
+    def gated(*args, **kwargs):
+        try:
+            barrier.wait(timeout=timeout)
+        except threading.BrokenBarrierError:
+            # 有锁时只有 1 个线程能到达 ⇒ 超时破裂后放行（语义不变）
+            pass
+        return original(*args, **kwargs)
+
+    mod._save = gated
+    try:
+        yield
+    finally:
+        mod._save = original
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 跨进程并发装置：文件屏障 + 子进程 worker
 # ═══════════════════════════════════════════════════════════════════════════
@@ -351,6 +397,42 @@ while len(list(bar.iterdir())) < n:
     if time.time() > deadline:
         sys.exit(9)          # 屏障超时 = 失败，绝不静默通过
     time.sleep(0.002)
+
+# ★竞态窗口放宽（与 metrics_baseline 的 _widen_race_window 同构）：
+#   e3_window 的「读-改-写」窗口在 `_load` 之后、`_save` 之前 ⇒ 把 **`_save`**
+#   包一层**跨进程文件屏障**即可把「读已完成、写未发生」的错位窗口放大到
+#   可控尺度。
+#   ⚠⚠ 为什么放宽点必须落在**写盘前**（`_save`）而不是读后（`_load`）：
+#     无锁时各进程「读-改-写」交错，最终落盘是**最后一个写入者**的内容。
+#     若在读后同步：N 个进程都读到同一份旧状态 → 各自算出 1 条 → 但**谁最后写**
+#     谁赢 ⇒ 落盘窗口条数取决于写入顺序，可能是 1 条（覆盖）也可能是 3 条
+#     （若三者写入内容恰好相同）。实测：错开 200ms 时读后同步仍会假绿。
+#     若在**写前**同步：N 个进程全部完成「读-改」后一起等 → 全部放行 → 全部
+#     写同一份「1 条」的内容 ⇒ 落盘**必然**是 1 条（不是 3）⇒ 确定性覆盖，
+#     负控制**必然**立红。
+#   无锁时 N 个进程全部到达 ⇒ 同步放行 ⇒ 必然互相覆盖（确定性）；
+#   有锁时只有 1 个进程能进临界区 ⇒ 其余进程在锁上排队 ⇒ 屏障超时后放行
+#   （语义不变：仍是「读已完成、写未发生」的时点）。
+#   ⚠ 没有这一步，负控制是**跨平台 flaky**：起跑屏障只保证「同时开始」，
+#   不保证「同时到达读-改-写窗口」⇒ 在 CI 的 2 vCPU Linux runner 上各进程
+#   错开执行，反而每个都完整写入了 1 条 ⇒ 落盘窗口有 3 条 ⇒ 负控制立不了红
+#   （实测：macOS 本地 8/8 绿，GitHub Actions Linux 上 A2/A6/D1 三例全红）。
+if os.environ.get("STT_RACE_WINDOW") == "1":
+    _orig_save = e3._save
+    def _gated_save(*a, **k):
+        gate = work_root / "race_gate"
+        gate.mkdir(parents=True, exist_ok=True)
+        flag = gate / "timeout.flag"
+        (gate / str(idx)).write_text("1", encoding="utf-8")
+        deadline2 = time.time() + float(os.environ.get("STT_RACE_TMO", "2.0"))
+        while not flag.exists() and len(list(gate.iterdir())) < n:
+            if time.time() > deadline2:
+                # 宣告「锁在起作用」⇒ 其余进程立即放行（不等满超时）
+                flag.write_text("1", encoding="utf-8")
+                break
+            time.sleep(0.002)
+        return _orig_save(*a, **k)
+    e3._save = _gated_save
 
 sys.exit(e3.record(work_root, corr, outcome))
 '''
@@ -499,7 +581,7 @@ class TestE3WindowConcurrency:
         root = _e3_work_root(scratch)
         rcs = _spawn(_E3_WORKER, SCRIPTS, root,
                      [[str(i), 'ch01', 'ERROR'] for i in range(N_PROCS)],
-                     {'STT_BREAK_LOCK': '0'})
+                     {'STT_BREAK_LOCK': '0', 'STT_RACE_WINDOW': '1'})
         assert not any(rc == 9 for rc in rcs), f'跨进程屏障超时: {rcs}'
 
         win_len, e3_count, state = _e3_snapshot(root)
@@ -525,7 +607,7 @@ class TestE3WindowConcurrency:
             root = _e3_work_root(scratch)
             rcs = _spawn(_E3_WORKER, sandbox, root,
                          [[str(i), 'ch01', 'ERROR'] for i in range(N_PROCS)],
-                         {'STT_BREAK_LOCK': '1'})
+                         {'STT_BREAK_LOCK': '1', 'STT_RACE_WINDOW': '1'})
             assert not any(rc == 9 for rc in rcs), f'跨进程屏障超时: {rcs}'
 
             win_len, e3_count, state = _e3_snapshot(root)
@@ -590,7 +672,10 @@ class TestE3WindowConcurrency:
         （`_file_lock` 用 fcntl.flock，同进程不同 fd 之间同样互斥——已实测）。
         """
         root = _e3_work_root(scratch, name='wr_thread')
-        results = _e3_thread_record(root, N_THREADS, 'ERROR')
+        # ★注入竞态窗口放宽（与 A1 的跨进程版同构）：
+        #   正例与负控制注入**同一个**放宽 ⇒ 被测变量恒为「有没有 _file_lock」
+        with _widen_e3_race_window(e3_window, N_THREADS):
+            results = _e3_thread_record(root, N_THREADS, 'ERROR')
 
         assert not any(rc == -1 for rc in results), (
             f'并发 record 抛异常（疑似状态文件写坏了）: {results}')
@@ -616,7 +701,10 @@ class TestE3WindowConcurrency:
             _break_e3_window_lock(sandbox / 'e3_window.py')
 
             root = _e3_work_root(scratch, name='wr_thread_neg')
-            _e3_thread_record(root, N_THREADS, 'ERROR', module=_broken_e3(sandbox))
+            broken = _broken_e3(sandbox)
+            # ★与 A5 注入**同一个**竞态窗口放宽（见 _widen_e3_race_window 文档）
+            with _widen_e3_race_window(broken, N_THREADS):
+                _e3_thread_record(root, N_THREADS, 'ERROR', module=broken)
 
             win_len, e3_count, state = _e3_snapshot(root)
             assert win_len < e3_window.WINDOW_SIZE, (
@@ -1062,7 +1150,7 @@ class TestNegativeControlIsNotVacuous:
             root = _e3_work_root(scratch, name='wr_d1')
             rcs = _spawn(_E3_WORKER, sandbox, root,
                          [[str(i), 'ch01', 'ERROR'] for i in range(N_PROCS)],
-                         {'STT_BREAK_LOCK': '1'})
+                         {'STT_BREAK_LOCK': '1', 'STT_RACE_WINDOW': '1'})
             assert not any(rc == 9 for rc in rcs), f'跨进程屏障超时: {rcs}'
 
             win_len, _, _ = _e3_snapshot(root)
