@@ -1,8 +1,14 @@
 name: harness-gate
 
-# smart-textbook-team 编排质量门禁（evo-16 接入；P0 阶段扩至 4 道，2026-10-15）:
-#   1) router 离线评测      命中率 >= 0.80 (40 用例, SSOT 解析自 skill §1; P2-3 扩容)
-#   2) 静态契约评测        总分须 >= 0.99 (330 计分项; E1c 已降级为不计分环境项)
+# smart-textbook-team 编排质量门禁（evo-16 接入，2026-10-15 起持续扩充）:
+#
+# ⚠️ 本头注为**导读**，非权威清单 —— 权威清单 = 本文件下方实际 step 定义。
+# 计数类声明一律以「实测为准」：workflow step 数 / 静态契约计分项 / router 用例数
+# 均随代码演进变化，硬编码数字必然滞后（v2.19.1 审计 DEF-4 即此类漂移）。
+# 修改门禁后请同步核对 README「CI 门禁 N 步」声明与实际 step 数。
+#
+#   1) router 离线评测      命中率 >= 0.80 (用例数以评测器输出为准, SSOT 解析自 skill §1)
+#   2) 静态契约评测        总分须 >= 0.99 (计分项以评测器输出为准; E1c 已降级为不计分环境项)
 #                          —— 阈值从 0.95 上调: E1c 解耦后 1.000 可达,
 #                             0.99 仅容忍约 1 项偶发失败, 2 项及以上必红
 #   3) shared-core 分发门禁  vendor 兜底副本与清单自洽 + git-clone 态冒烟
@@ -14,6 +20,7 @@ name: harness-gate
 #   8) 相位一致性门禁         PHASE_ORDER 唯一权威，文档只许引用不许复述（ADR-04，2026-11-01）
 #   9) 协议组件评测门禁       protocol_eval.py 总分 >= 0.80 + 每组件 >= 0.80（R1，2026-11-05）
 #                          —— 闭环末环「评测回归」的执行体；此前只存在于文档文字、零实现
+#  （以上 9 项为门禁**族**，实际展开为 30 个 step —— 族与 step 是多对一关系）
 on:
   push:
     branches: [master, main]
@@ -319,7 +326,8 @@ jobs:
         run: |
           # D5（2026-11-16）：原样跑两遍（直跑 + --json）→ 合并为单次 --json。
           # test_smart_textbook_team.py 的 --json 分支同样以 returncode 表达通过/失败，
-          # 故单次执行即可同时拿 score 与退出码，避免 282 计分项重复执行。
+          # 故单次执行即可同时拿 score 与退出码，避免全部计分项重复执行
+          # （计分项总数随契约演进变化，此处不硬编码——以评测器输出为准）。
           set -o pipefail
           SCORE_JSON=$(python3 tests/test_smart_textbook_team.py --json)
           PYTEST_RC=$?

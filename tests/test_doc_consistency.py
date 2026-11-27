@@ -102,17 +102,24 @@ def test_gate_has_seven_criteria():
     assert ids == {"D1", "D2", "D3", "D4", "D5", "D6", "D7"}, ids
 
 
-def test_d7_catches_unknown_task_type_key():
-    """D7 负向例：契约 task_type_required 混入 router 外的键 ⇒ 必须被拦。"""
+def test_d7_catches_unknown_task_type_key(sandbox_pkg):
+    """D7 负向例：契约 task_type_required 混入 router 外的键 ⇒ 必须被拦。
+
+    ★v2.20.0（2026-11-27，主理人复核发现）：本用例此前直接改**真实包**
+    的 `references/member-contracts.json`，靠 `try/finally` 恢复。进程若被
+    SIGTERM/超时杀死（finally 不执行），破坏样本会**永久留在生产资产里** ——
+    实测已发生：真实包残留 `fake-task-xx` 键，导致 D7 对真实包持续报红。
+    现改为在**沙箱副本**上破坏，从根上杜绝污染。
+    """
     import json
-    contract = PKG_ROOT / "references" / "member-contracts.json"
+    contract = sandbox_pkg / "references" / "member-contracts.json"
     original = contract.read_text(encoding="utf-8")
     try:
         d = json.loads(original)
         d["members"]["quality-examiner"].setdefault("task_type_required", {})["fake-task-xx"] = [
             "章节/{ch}/review/x.md"]
         contract.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
-        failed, _ = _run_gate(PKG_ROOT)
+        failed, _ = _run_gate(sandbox_pkg)
         assert "D7" in failed, "D7 未拦截枚举外的 task_type_required 键（判据恒真）"
     finally:
         contract.write_text(original, encoding="utf-8")
@@ -245,6 +252,172 @@ def test_immune_files_are_skipped(sandbox_pkg):
     # 真正的免疫名单是 CHANGELOG.md / SKILL_CHANGELOG.md
     assert "CHANGELOG.md" in (PKG_ROOT / "scripts" / "check_doc_consistency.py").read_text(
         encoding="utf-8")
+
+
+# ── ★DEF-5（v2.20.0）：D1 门禁盲区加固 ────────────────────────────────────
+#
+# 病灶：`skills/task-router/SKILL.md:10` 写「映射成 17 个标准 task_type 之一」，
+# 而同文件 §1 表（SSOT）实为 22 类 —— frontmatter:4 与 §1 标题:28 均为 22。
+# 漂移长期无人报警，因旧 D1 判据的计数正则只认「N 类 / N 种 / N-type」三种量词，
+# **「N 个标准 task_type」这类量词句式完全漏网**（量词是「个」不是「类」）。
+#
+# 本组用例锁两件事：
+#   ① 正向：该句式被改坏 → D1 必须拦（门禁不再是假门禁）
+#   ② 反向：非 task_type 的计数（「22 个成员」「13 类 skill」）不得误伤
+#      ——量词面一扩，误伤面同步扩大，故「语义绑定」必须与量词面同时落地
+
+
+def test_d1_catches_quantifier_form_task_type_count(sandbox_pkg):
+    """D1 正向：把「22 个标准 task_type」改回「12 个标准 task_type」必须被拦。
+
+    这是 DEF-5 的原始病灶形态——旧门禁对此**完全漏网**（实测改坏后仍 7/7 PASS）。
+    """
+    p = sandbox_pkg / "skills" / "task-router" / "SKILL.md"
+    t = p.read_text(encoding="utf-8")
+    assert "22 个标准 task_type" in t, "前置条件：SKILL.md:10 应写 22 个标准 task_type"
+    p.write_text(t.replace("22 个标准 task_type", "12 个标准 task_type"),
+                 encoding="utf-8")
+
+    failed, items = _run_gate(sandbox_pkg)
+    assert "D1" in failed, "D1 未拦住「N 个标准 task_type」句式的计数漂移（旧盲区）"
+    assert "12 类" in _detail(items, "D1")
+
+
+def test_d1_does_not_flag_non_task_type_counts(sandbox_pkg):
+    """D1 反向：非 task_type 的计数不得误伤。
+
+    「22 个成员」「13 类 skill」这类计数**数的东西不是 task_type**——
+    量词面扩充后若不做语义绑定，它们会被误判成 task_type 计数 ⇒ 门禁误杀合法内容。
+    """
+    p = sandbox_pkg / "agents" / "smart-textbook-team-team-lead.md"
+    t = p.read_text(encoding="utf-8")
+    # 在含 task_type 触发行处插入无关计数行。
+    # 关键：该行**必须带触发词**（task-router），否则根本不进 D1 判定路径，
+    # 用例就成了空转（假反例）。行内「22 个成员」「13 类 skill」数的是别的东西。
+    anchor = "1. **标注 task_type**"
+    assert anchor in t, "前置条件：team-lead.md 应含 task_type 标注步骤"
+    noise = "> 本团 22 个成员共同维护 task-router 路由，仓内共 13 类 skill 参与协作。"
+    t = t.replace(anchor, noise + "\n\n" + anchor, 1)
+    p.write_text(t, encoding="utf-8")
+
+    # 前置自检：该行确实带触发词（否则本用例空转）
+    mod = _load_gate(sandbox_pkg)
+    assert mod.RE_TT_TRIGGER.search(noise), "前置条件：干扰行必须含 task-router 触发词"
+
+    failed, items = _run_gate(sandbox_pkg)
+    assert "D1" not in failed, f"D1 误伤了非 task_type 计数：{_detail(items, 'D1')}"
+
+
+def test_d1_exempts_threshold_context(sandbox_pkg):
+    """D1 反向：阈值语境（「命中 ≥2 个 task_type」）是命中数下限，不是枚举总数。
+
+    ESC1/ESC2 升级规则里的「≥2 个 task_type」说的是**候选命中个数**，
+    与枚举总数（22）无关——若不豁免，D1 会把升级规则判成漂移。
+    """
+    p = sandbox_pkg / "skills" / "task-router" / "SKILL.md"
+    t = p.read_text(encoding="utf-8")
+    assert "≥2 个 task_type" in t, "前置条件：ESC1 应含「≥2 个 task_type」阈值表述"
+    # 前置行本身在 §1 表之后，用 sandbox 里的当前值即可（此处只验豁免不误伤）
+    failed, items = _run_gate(sandbox_pkg)
+    assert "D1" not in failed, f"D1 误伤了阈值语境：{_detail(items, 'D1')}"
+
+
+def test_d1_semantic_binding_unit():
+    """D1 语义绑定单元级：计数必须**确实指代 task_type** 才认领。
+
+    直接驱动门禁内部的 `_tt_count_claims`（不落盘、不依赖沙箱），
+    把「直邻 / 省略 / 异指 / 阈值豁免」四态逐条钉死。
+    """
+    mod = _load_gate(PKG_ROOT)
+
+    def _claims(line):
+        return [c[1] for c in mod._tt_count_claims(line)]
+
+    # 直邻：中心词是 task_type 语义 → 认领
+    assert _claims("映射成 22 个标准 task_type 之一") == [22]
+    assert _claims("Defines task_type enum (22 types)") == [22]
+    # 省略：中心词缺省（计数是括号/分句末项）+ 枚举语境锚 → 认领
+    assert _claims("## 1. task_type 枚举（22 类，SSOT）") == [22]
+    assert _claims("按 router §1 枚举（design-bloom 等 22 类）判定") == [22]
+    # 异指：中心词非 task_type 语义 → **不认领**
+    assert _claims("本团 22 个成员共同维护路由") == []
+    assert _claims("仓内共 13 类 skill 参与协作") == []
+    # 阈值：命中数下限 → **不认领**
+    assert _claims("候选歧义（同一问法命中 ≥2 个 task_type）") == []
+    # 历史行：变更记录里的旧枚举数非 task_type 中心词 → 不认领
+    assert _claims("初版：12 task_type 枚举 + 4 步决策算法") == []
+
+
+def test_d1_does_not_treat_plain_etc_as_enumeration_context():
+    """D1 反向：裸「等」是并列连词，不是枚举语境标记（自审实测抓到的误报类）。
+
+    病灶形态：「加载 task-router 等 22 个」——「22 个」数的是 **skill 总数**，
+    不是 task_type 枚举数。但「等」紧邻触发词 task-router，且计数处**中心词省略**
+    ⇒ 若枚举语境锚把裸「等」当锚，就会被误认成 task_type 计数 ⇒ 门禁误杀合法内容。
+
+    正解：裸「等」不单独成立，须与强枚举信号（task_type/枚举/路由/扩至…）同现。
+    """
+    mod = _load_gate(PKG_ROOT)
+
+    def _claims(line):
+        return [c[1] for c in mod._tt_count_claims(line)]
+
+    # 裸「等」+ 中心词省略 ⇒ 不认领（数的是 skill/任务/成员总数）
+    assert _claims("加载 task-router 等 22 个") == []
+    assert _claims("本轮跑了 task-router 等 22 个") == []
+    # 但「等」+ 强枚举信号同现 ⇒ 认领（「按 §1 枚举（… 等 22 类）」）
+    assert _claims("按 router §1 枚举（design-bloom 等 22 类）判定") == [22]
+
+
+# ── ★v2.20.0：_iter_md 分支 B 免疫失效修复的回归锁定 ────────────────────────
+#
+# 病灶：`_iter_md` 的两条扫描分支是**各自独立**的 if —— 分支 A（SCAN_DIRS
+# 递归）带 IMMUNE_FILES 检查，分支 B（SCAN_FILES 根文件列表）**漏掉**。
+# ⇒ 免疫承诺（CHANGELOG / SKILL_CHANGELOG 照抄旧数字是证据要求，不参与判据）
+#    在分支 A 生效、在分支 B **完全失效** ⇒ D1+D2 对这两个文件的漂移静默漏检。
+#
+# 当前 SCAN_FILES 恰好不含 CHANGELOG.md / SKILL_CHANGELOG.md，所以缺陷**尚未
+# 发作**——但它是一枚埋雷：任何人往 SCAN_FILES 加入免疫文件，免疫立即失效且
+# 无人察觉。本用例锁死「分支 B 也必须跳过免疫文件」这一行为。
+
+
+def test_iter_md_skips_immune_files_in_both_branches(sandbox_pkg):
+    """免疫文件在**两条扫描分支**上都必须被跳过（不得只保护其中一条）。"""
+    mod = _load_gate(sandbox_pkg)
+
+    # 前置条件：免疫名单含 CHANGELOG.md / SKILL_CHANGELOG.md
+    assert "CHANGELOG.md" in mod.IMMUNE_FILES
+    assert "SKILL_CHANGELOG.md" in mod.IMMUNE_FILES
+
+    # 造一个免疫文件，并把它**显式塞进 SCAN_FILES** —— 模拟「有人把 CHANGELOG
+    # 加进根文件扫描列表」这一最危险的情形。
+    immune = sandbox_pkg / "CHANGELOG.md"
+    immune.write_text("# 历史流水\n\n照抄旧数字：映射成 3 个标准 task_type 之一\n",
+                      encoding="utf-8")
+    orig_scan_files = mod.SCAN_FILES
+    mod.SCAN_FILES = tuple(orig_scan_files) + ("CHANGELOG.md",)
+    try:
+        scanned = dict(mod._iter_md(sandbox_pkg))
+    finally:
+        mod.SCAN_FILES = orig_scan_files
+
+    # 分支 B（根文件列表）不得产出免疫文件
+    assert "CHANGELOG.md" not in scanned, \
+        "免疫文件经分支 B 被扫描 ⇒ 免疫承诺失效（D1/D2 对 CHANGELOG 静默漏检）"
+
+    # 分支 A（递归）同样不得产出免疫文件（既有行为，防回退）
+    for rel in scanned:
+        assert Path(rel).name not in mod.IMMUNE_FILES, \
+            f"免疫文件被扫描：{rel}"
+
+
+def test_iter_md_branch_b_still_scans_normal_root_files(sandbox_pkg):
+    """反向：分支 B 的免疫修复**不得**误伤正常根文件（README 等仍须被扫）。"""
+    mod = _load_gate(sandbox_pkg)
+    scanned = dict(mod._iter_md(sandbox_pkg))
+    for f in ("README.md", "CONTRIBUTING.md", "AGENTS.md"):
+        if (sandbox_pkg / f).is_file():
+            assert f in scanned, f"正常根文件 {f} 被误排除（免疫修复过度）"
 
 
 if __name__ == "__main__":

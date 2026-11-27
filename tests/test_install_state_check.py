@@ -527,6 +527,204 @@ class TestCliExitCodes:
         assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
         assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
 
+    def test_04_test_archive_dir_only_in_source_is_not_drift(self, work_root):
+        """负向核心（2026-11-27 DEF-2）：源码侧有 `04-test/` ⇒ **不得**报漂移。
+
+        `04-test/` 是流程留档目录（测试报告 / 审计报告 / 成员报告）。
+        仓库内**有意 git 入库**（公开流程证据），但 package_release.sh
+        打包阶段有意排除（不进对外分发包）——与 `00_archive` 同级
+        「源码留痕但不进分发包」。
+
+        ⚠ git 忽略剪枝对它**无效**：04-test 被 git 跟踪 ⇒ 不在
+          `git ls-files --others --ignored` 输出里 ⇒ 只能靠
+          SRC_ONLY_EXCLUDE_DIRS（仅源码侧剪）。
+          修复分发包后宿主从新 zip 安装，安装态不再有 04-test/，检查器
+          若不排除 ⇒ 源码侧 3 个留档文件全算成「安装态缺失」= 假漂移
+          （2026-11-27 实测：src_only 3 项 / EXIT=1）。
+        """
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        _write(src_dir / '04-test' / '测试报告.md', '# 流程留档')
+        _write(src_dir / '04-test' / '可靠性诊断报告.md', '# 流程留档')
+        # 前置自检：确认「04-test 真的落在源码侧」——否则下面「04-test 不出现
+        # 在报告里」是真空通过（路径写错/剪枝过度都可能被误判为绿）。
+        src_seen = isc.collect_files(
+            src_dir, extra_exclude_dirs=isc.SRC_ONLY_EXCLUDE_DIRS)
+        assert 'a.py' in src_seen, '前置自检失败：源码侧文件未被收集'
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+        assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
+        assert '04-test' not in r.stdout, r.stdout + r.stderr
+
+    def test_04_test_in_cache_side_is_still_reported(self, work_root):
+        """反向（2026-11-27 DEF-2 返工核心）：安装态残留 `04-test/` ⇒ **必须报**。
+
+        首版修复把 `04-test` 塞进全局 `EXCLUDE_DIRS`，而该常量的剪枝是
+        **双向**的（collect_files 遍历时剪目录 + 文件名命中即跳过，两侧共用）
+        ⇒ 安装态侧的 `04-test/` 也被一并剪掉 ⇒ 真残留被彻底屏蔽
+        （实测 cache_only=[] / EXIT=0 = **漏报**），且与本脚本自身宣称的
+        语义（「安装态反而有 ⇒ 仍按 cache_only 报出（该清）」）直接矛盾。
+
+        正确语义（单向剪枝，与 git 忽略剪枝同构）：
+          · 源码侧有、安装态无 ⇒ 正常 ⇒ 不算漂移；
+          · 安装态有、源码无   ⇒ **真残留**（旧分发包留下的）⇒ 须报出来。
+        """
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        cache_dir = work_root / 'cache' / 'my-experts' / 'demo-pkg' / '1.0.0'
+        _write(cache_dir / '04-test' / '测试报告.md', '# 旧分发包残留')
+        # 前置自检：确认该文件**真的**被安装态侧 collect_files 观察到
+        # （若路径写错或被误剪，下面「必须报出」会真空通过）。
+        cache_seen = isc.collect_files(cache_dir)
+        assert '04-test/测试报告.md' in cache_seen, \
+            '前置自检失败：安装态侧未观察到该残留文件（路径写错或被误剪）'
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_DRIFT, r.stdout + r.stderr
+        assert '安装态多出' in r.stdout, r.stdout + r.stderr
+        assert '04-test/测试报告.md' in r.stdout, r.stdout + r.stderr
+
+    def test_04_test_src_only_exclusion_is_one_sided(self, work_root):
+        """单元级：`04-test` 的剪枝**只**在源码侧生效。
+
+        直接锁死 SRC_ONLY_EXCLUDE_DIRS 的单向语义：
+          · 源码侧 collect_files 剪掉 04-test；
+          · 安装态侧 collect_files **不剪**（否则真残留会被屏蔽）。
+        """
+        pkg = work_root / 'pkg'
+        _write(pkg / 'a.py', 'x')
+        _write(pkg / '04-test' / '测试报告.md', '# 留档')
+        # 源码侧（带 extra_exclude_dirs）⇒ 剪掉
+        src_files = isc.collect_files(
+            pkg, extra_exclude_dirs=isc.SRC_ONLY_EXCLUDE_DIRS)
+        assert 'a.py' in src_files
+        assert not any(k.startswith('04-test/') for k in src_files), \
+            '源码侧未剪 04-test（假漂移会复发）'
+        # 安装态侧（不传 extra）⇒ **不剪**，真残留必须看得见
+        cache_files = isc.collect_files(pkg)
+        assert any(k.startswith('04-test/') for k in cache_files), \
+            '安装态侧也被剪 ⇒ 真残留被屏蔽（漏报）'
+
+    def test_global_exclude_dirs_semantics_unchanged(self, work_root):
+        """回归护栏：全局 EXCLUDE_DIRS 的**双向**语义不得被本次改动破坏。
+
+        既有成员（.git / .in_use / .harness-kb / .wiki-creator …）是
+        **运行态/元数据**目录——本就不该出现在任一侧 ⇒ 两侧都剪才是对的。
+        本次改动只把「源码留痕但不分发」类目录（04-test / 00_archive）
+        迁到 SRC_ONLY_EXCLUDE_DIRS 这个**单独通道**，**不触碰**全局常量
+        的其余成员 ⇒ 它们的行为必须原样保留。
+
+        ⚠ `00_archive` 已于 v2.20.0 迁出本集合（它是**归档留痕**，
+          与 04-test 同构），故本用例**不再**断言它的双向剪枝。
+        """
+        pkg = work_root / 'pkg'
+        _write(pkg / 'a.py', 'x')
+        for rel in ('.harness-kb/状态.md', '.wiki-creator/底座.md'):
+            _write(pkg / rel, '留档')
+        files = isc.collect_files(pkg)
+        assert 'a.py' in files
+        for rel in ('.harness-kb', '.wiki-creator'):
+            assert not any(k.startswith(rel + '/') for k in files), \
+                f'{rel} 的双向剪枝语义被破坏'
+        # 运行态目录**不应**出现在任一侧：源码侧与安装态侧都剪
+        assert '00_archive' not in isc.EXCLUDE_DIRS, \
+            '00_archive 属「源码留痕但不分发」，不应留在全局双向集合'
+        assert '00_archive' in isc.SRC_ONLY_EXCLUDE_DIRS, \
+            '00_archive 应在单向剪枝集合'
+
+    # ── 00_archive：与 04-test 同构（v2.20.0 主理人授权一并闭环）──
+
+    def test_00_archive_src_only_is_not_drift(self, work_root):
+        """三态之一：源码侧有 `docs/00_archive/` ⇒ **不得**报漂移。
+
+        `docs/00_archive/` 是**归档留痕目录**（git 跟踪的三个历史资产，
+        2026-11-16 归档），package_release.sh 打包阶段有意排除
+        （分发包 -876KB）——与 `04-test` **完全同构**：
+          · 仓库内有意 git 入库做可追溯留痕；
+          · 不进对外分发包；
+          · 被 git 跟踪 ⇒ git 忽略剪枝对它天然无效。
+
+        故源码侧有、安装态无 ⇒ 正常，不算漂移。
+        """
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        src_dir = work_root / 'marketplaces' / 'my-experts' / 'plugins' / 'demo-pkg'
+        _write(src_dir / 'docs' / '00_archive' / '旧资产.md', '# 归档留痕')
+        # 前置自检：确认归档文件**真的**落在源码侧（否则「不报漂移」是真空通过）
+        src_seen = isc.collect_files(
+            src_dir, extra_exclude_dirs=isc.SRC_ONLY_EXCLUDE_DIRS)
+        assert 'a.py' in src_seen, '前置自检失败：源码侧文件未被收集'
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_CONSISTENT, r.stdout + r.stderr
+        assert '安装态缺失' not in r.stdout, r.stdout + r.stderr
+        assert '00_archive' not in r.stdout, r.stdout + r.stderr
+
+    def test_00_archive_in_cache_side_is_still_reported(self, work_root):
+        """三态之二：安装态残留 `docs/00_archive/` ⇒ **必须报** cache_only。
+
+        与 `04-test` 同根同症状：`00_archive` 原先误放在全局 EXCLUDE_DIRS
+        （双向剪枝）⇒ 安装态侧被一并剪掉 ⇒ 真残留被屏蔽、报不出
+        （实测 cache_only=[] / EXIT=0 = 漏报）。迁入 SRC_ONLY 后修复。
+        """
+        make_plugins_root(work_root, src_files={'a.py': 'same'},
+                          cache_files={'a.py': 'same'})
+        cache_dir = work_root / 'cache' / 'my-experts' / 'demo-pkg' / '1.0.0'
+        _write(cache_dir / 'docs' / '00_archive' / '旧资产.md', '# 旧分发包残留')
+        # 前置自检：确认安装态侧**确实观察到**该残留（否则「必须报出」真空通过）
+        cache_seen = isc.collect_files(cache_dir)
+        assert 'docs/00_archive/旧资产.md' in cache_seen, \
+            '前置自检失败：安装态侧未观察到该残留（路径写错或被误剪）'
+        r = run_cli('--plugins-root', str(work_root))
+        assert r.returncode == isc.EXIT_DRIFT, r.stdout + r.stderr
+        assert '安装态多出' in r.stdout, r.stdout + r.stderr
+        assert 'docs/00_archive/旧资产.md' in r.stdout, r.stdout + r.stderr
+
+    def test_00_archive_nested_pruning_is_one_sided(self, work_root):
+        """三态之三（单元级）：**嵌套路径** `docs/00_archive` 的单向剪枝。
+
+        `04-test` 是顶层目录名，`00_archive` 是**嵌套**路径
+        （docs/00_archive）——必须实测确认嵌套层级的剪枝按预期工作：
+          · 源码侧：docs/00_archive/ 被剪；
+          · 安装态侧：docs/00_archive/ **不剪**（真残留须看得见）；
+          · 两侧都**不得**误伤 docs/ 下的其它内容（不得整棵剪掉 docs/）。
+        """
+        pkg = work_root / 'pkg'
+        _write(pkg / 'a.py', 'x')
+        _write(pkg / 'docs' / 'normal.md', '# 正常文档')
+        _write(pkg / 'docs' / '00_archive' / '旧资产.md', '# 归档')
+        # 源码侧 ⇒ 剪掉嵌套的 00_archive，保留 docs/ 下其它内容
+        src_files = isc.collect_files(
+            pkg, extra_exclude_dirs=isc.SRC_ONLY_EXCLUDE_DIRS)
+        assert 'a.py' in src_files
+        assert 'docs/normal.md' in src_files, '嵌套剪枝误伤了 docs/ 下的正常文档'
+        assert not any('00_archive' in k for k in src_files), \
+            '源码侧未剪 docs/00_archive（假漂移会复发）'
+        # 安装态侧 ⇒ **不剪**，真残留必须看得见
+        cache_files = isc.collect_files(pkg)
+        assert 'docs/00_archive/旧资产.md' in cache_files, \
+            '安装态侧也被剪 ⇒ 真残留被屏蔽（漏报）'
+        assert 'docs/normal.md' in cache_files
+
+    def test_00_archive_same_semantics_as_04_test(self, work_root):
+        """同口径回归：`00_archive` 与 `04-test` 必须**行为一致**。
+
+        两者都是「仓库内有意留痕、但不进对外分发包」的目录 ⇒ 检查器
+        必须一视同仁。若一个单向、一个双向 ⇒ 同类场景仍会漏报。
+        """
+        pkg = work_root / 'pkg'
+        _write(pkg / 'a.py', 'x')
+        _write(pkg / '04-test' / '报告.md', '# 留档')
+        _write(pkg / 'docs' / '00_archive' / '旧资产.md', '# 归档')
+
+        src_files = isc.collect_files(
+            pkg, extra_exclude_dirs=isc.SRC_ONLY_EXCLUDE_DIRS)
+        cache_files = isc.collect_files(pkg)
+        for rel in ('04-test/', 'docs/00_archive/'):
+            assert not any(k.startswith(rel) for k in src_files), \
+                f'源码侧未剪 {rel}'
+            assert any(k.startswith(rel) for k in cache_files), \
+                f'安装态侧被剪 {rel}（与 04-test 口径不一致）'
+
 
 # ══════════════════════════════════════════════════════════════════════
 # 7. 快照机制（--snapshot / --changed-only）

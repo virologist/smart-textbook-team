@@ -20,6 +20,10 @@ check_doc_consistency.py — 文档计数/量纲/编号/归属一致性门禁（
 ------------------------------------------------------------------------------
   D1  task_type 计数一致：文档声明的「N 类 task_type」必须等于
       `skills/task-router/SKILL.md` §1 表实际行数（SSOT 解析，非硬编码）。
+      ★DEF-5（v2.20.0）加固：覆盖「N 个标准 task_type」等**量词句式**
+      （旧正则只认「类/种/-type」，量词为「个」时完全漏网），并对计数做
+      **语义绑定**——只有确实指代 task_type 的计数才参与判定，
+      「22 个成员」「13 类 skill」不误伤。
   D2  置信度量纲一致：全包不得出现 0-1 量纲的置信度阈值写法
       （`confidence < 0.7` / `routing_confidence ≥ 0.7`）——当前量纲是 0-100
       （与 harness §1 信封 `confidence: 0-100` 同源），旧写法是量纲撕裂。
@@ -66,9 +70,53 @@ IGNORE_MARK = "doc-consistency:ignore"
 # 形态有多种：「13 类 task_type」「task_type（15 类）」「…等 15 类」「15-type routing」。
 # 共同点：**所在行提到 task_type（或 task-router N-type）** + 该行出现一个「N 类 / N-type」数字。
 # 故判据改为「行内触发词 + 行内计数」的组合，而非固定词序。
+#
+# ★DEF-5（v2.20.0）加固——**量词面 + 语义绑定**两处同时补：
+#   ① 量词面：原 RE_TT_COUNT 只认「类/种/-type」三种量词，「17 个标准 task_type」
+#      这类**量词句式**完全漏网（实证：真实仓库带着该漂移跑门禁仍 7/7 PASS）。
+#      现扩到「类/种/个/款/项」。
+#   ② 语义绑定：原实现是「行内触发词 + 行内计数」的**粗匹配**——行内任意
+#      「N 类 / N 种」都被当成 task_type 计数。量词面一扩，误伤面同步扩大
+#      （「22 个成员」「13 类 skill」这类**非 task_type** 计数会被判失败）。
+#      故计数须**确实指代 task_type** 才算数，按三态判定（见 _tt_count_claims）：
+#        · 直邻：中心词是 task_type 语义（task_type / 枚举 / 路由 / 类型 / 种类）
+#        · 省略：中心词缺省（计数是所在括号/分句的末项，如「等 22 类」
+#                「（22 类，SSOT）」）→ 由枚举语境锚兜底
+#        · 异指：中心词存在但非 task_type 语义 ⇒ 不算 task_type 计数
+#      另：阈值语境（「命中 ≥2 个 task_type」）是**候选命中阈值**而非枚举总数，豁免。
+#      覆盖形态：中文量词（类/种/个/款/项）+「N-type」+ 英文「N type(s)」。
 RE_TT_TRIGGER = re.compile(r"\btask_type\b|task-router\b|task router\b", re.I)
-RE_TT_COUNT = re.compile(r"(\d+)\s*(?:类|种|-type\b)")
+RE_TT_COUNT = re.compile(r"(\d+)\s*(?:类|种|个|款|项)")
 RE_TT_COUNT_ALT = re.compile(r"(\d+)\s*类\s*task_type")
+# 「N-type」形态（15-type routing）——数字自带 task_type 语义，直接绑定
+RE_TT_COUNT_TYPE = re.compile(r"(\d+)\s*-type\b", re.I)
+# 「N type(s)」形态（frontmatter 的 `task_type enum (22 types)`）——
+# 英文复数形态，量词与中心词合一。语义绑定靠**同段锚点**（task_type / 枚举 /
+# enum），避免把「22 types of content」这类无关计数收进来。
+RE_TT_COUNT_EN = re.compile(r"(\d+)\s+types?\b", re.I)
+RE_TT_EN_ANCHOR = re.compile(r"task[\s_-]?types?|枚举|\benum\b", re.I)
+# 计数前的阈值前缀 → 该数字是阈值（命中数下限）而非枚举总数
+RE_TT_THRESHOLD = re.compile(
+    r"(?:[<>≥≤]=?|至少|不少于|不超过|不多于|少于|多于|超过|超出|大于|小于)\s*$")
+# 中心词：task_type 语义（决定「这个计数数的是什么」）
+RE_TT_HEAD = re.compile(r"^(?:task[\s_-]?types?|tasktype|枚举|路由|种类|类型)", re.I)
+# 中心词前的标点与修饰词（剥离用；修饰词后允许无空格）
+RE_TT_HEAD_LEAD = re.compile(
+    r"^[\s，、。；：:（）()\[\]【】「」『』·*/\\\-_>`*~]+")
+RE_TT_HEAD_MOD = re.compile(
+    r"^(?:标准|常用|核心|基本|内置|可选|主要|通用|全部)\s*")
+# 枚举语境锚（中心词缺省时用）：回看窗口内出现即视为枚举计数。
+# ★收窄（自审实测）：原锚含**裸「等」**——但「等」在中文里绝大多数是并列连词
+# （「加载 task-router 等 22 个」= 22 个 skill），不是枚举语境标记，
+# 会把行尾省略中心的计数误认成 task_type 计数 ⇒ 误伤。
+# 现改为：裸「等」**不单独成立**，须与强枚举信号**同现**
+# （如「按 §1 枚举（… 等 22 类）」）；强信号单独出现即可成立。
+RE_TT_ENUM_CTX = re.compile(
+    r"task[\s_-]?types?|枚举|路由|扩至|扩为|增至|增加到|覆盖", re.I)
+# 裸列举连词（仅作**辅助**信号，须与 RE_TT_ENUM_CTX 同现才成立）
+RE_TT_ETC = re.compile(r"等")
+# 强分隔符：其后的文本不再属于当前计数的作用域
+RE_TT_STRONG_SEP = re.compile(r"[，、；：。,;!！?？]")
 
 # ── D2：置信度 0-1 量纲残留 ───────────────────────────────────────────────
 # 只匹配「阈值比较 + 0-1 小数」这一形态，避免误伤正文里普通的 0.7
@@ -109,7 +157,12 @@ def _iter_md(root: Path):
             yield str(p.relative_to(root)), _read(p)
     for f in SCAN_FILES:
         p = root / f
-        if p.is_file():
+        # ★v2.20.0（2026-11-27，coder-B 自审 + 主理人复核确认）：
+        #   分支 B 此前**漏掉 IMMUNE_FILES 检查** —— 免疫承诺（CHANGELOG /
+        #   SKILL_CHANGELOG 照抄旧数字是证据要求，不参与判据）在分支 A 生效、
+        #   在分支 B **完全失效** ⇒ D1+D2 对这两个文件的漂移**静默漏检**。
+        #   分支 A 的检查不可外推到分支 B：两者是独立 if，必须各自判定。
+        if p.is_file() and p.name not in IMMUNE_FILES:
             yield f, _read(p)
 
 
@@ -125,6 +178,121 @@ def _lines_with_no_ignore(text: str):
         if IGNORE_MARK in line:
             continue
         yield i, line
+
+
+# ── D1 语义绑定：判定「这个计数数的是什么」 ──────────────────────────────
+def _tt_head_region(line: str, pos: int):
+    """计数之后**中心词的作用域**文本。
+
+    作用域的右边界：
+      · 若计数位于括号内 → 止于**配对的闭括号**（括号里的枚举清单收尾于
+        计数本身，如「（… 等 22 类）」→ 作用域为空 ⇒ 中心词缺省）
+      · 否则 → 止于**强分隔符**（，、；：。 等）
+    """
+    tail = line[pos:]
+    depth = 0
+    for i, ch in enumerate(tail):
+        if ch in "（(":
+            depth += 1
+        elif ch in "）)":
+            depth -= 1
+            if depth < 0:          # 计数右侧的闭括号 → 作用域到此为止
+                return tail[:i]
+    sep = RE_TT_STRONG_SEP.search(tail)
+    return tail[:sep.start()] if sep else tail
+
+
+def _tt_count_claims(line: str):
+    """产出 (起始位置, 计数数字, 量词) —— 该行中**指代 task_type 枚举总数**的计数。
+
+    ★DEF-5 加固核心：不再是「行内有数字量词就算」，而是逐个计数做**语义绑定**
+    ——只收「这个 N 数的是 task_type」的计数，行内无关数字（「22 个成员」
+    「13 类 skill」）一律不算。
+
+    判定分四步（顺序即优先级）：
+      ① 阈值豁免：数字前有比较符/至少等 → 是阈值（命中数下限），不是枚举总数 → 跳过
+      ② 中心词直邻：数字量词后紧跟的词是 task_type 语义（task_type / 枚举 /
+         路由 / 种类 / 类型）→ 收
+      ③ 中心词异指：数字量词后紧跟的词存在但**不是** task_type 语义
+         （成员 / skill / 项 / 步 / 个 / 条…）→ 不收
+      ④ 中心词省略：数字量词后**没有**中心词（该计数是所在括号/分句的末项，
+         如「等 22 类」「（22 类，SSOT）」）→ 由**枚举语境锚**兜底：
+         回看窗口内出现 task_type/枚举/路由/扩至 等锚 → 收，否则不收
+
+    「N-type」形态（15-type routing）数字自带 task_type 语义，直接收。
+    """
+    claims = []
+    seen = set()
+
+    def _add(pos, num, quant, end):
+        # 同一处计数可能被 RE_TT_COUNT 与 RE_TT_COUNT_ALT 各命中一次
+        # （「22 类 task_type」两正则都吃）→ 按**跨度重叠**去重，避免
+        # 详情里同一声明重复报两行（旧实现有此噪声，一并收敛）。
+        for s, n, _q, e in seen:
+            if pos < e and s < end:
+                return
+        seen.add((pos, num, quant, end))
+        claims.append((pos, num, quant))
+
+    for m in list(RE_TT_COUNT.finditer(line)) + list(RE_TT_COUNT_ALT.finditer(line)):
+        prefix = line[:m.start()]
+        # ① 阈值豁免（「命中 ≥2 个 task_type」= 命中数下限，不是枚举总数）
+        if RE_TT_THRESHOLD.search(prefix):
+            continue
+        num = int(m.group(1))
+        quant = m.group(2) if m.lastindex and m.lastindex >= 2 else "类"
+        # 中心词作用域 → 截到强分隔符 → 剥前导标点 → 剥修饰词
+        scope = _tt_head_region(line, m.end())
+        sep = RE_TT_STRONG_SEP.search(scope)
+        if sep:
+            scope = scope[:sep.start()]
+        scope = RE_TT_HEAD_LEAD.sub("", scope, count=1)
+        for _ in range(3):                       # 修饰词可叠加（「标准的」）
+            scope = RE_TT_HEAD_MOD.sub("", scope, count=1)
+        # ② 直邻：作用域首词即 task_type 语义
+        if RE_TT_HEAD.match(scope):
+            _add(m.start(), num, quant, m.end())
+            continue
+        # ③ 异指：作用域首词存在但非 task_type 语义 → 不是 task_type 计数
+        first = re.match(r"[^\s]*", scope).group(0)
+        if first:
+            continue
+        # ④ 省略：中心词缺省 → 回看枚举语境锚（同一分句内、该计数之前）
+        back = prefix
+        cut = None
+        for sep_m in RE_TT_STRONG_SEP.finditer(prefix):
+            cut = sep_m.end()
+        if cut is not None:
+            back = prefix[cut:]
+        # 枚举语境锚成立条件：
+        #   · 出现**强枚举信号**（task_type/枚举/路由/扩至…）→ 收
+        #   · 仅出现裸「等」→ **不收**（「加载 task-router 等 22 个」= 22 个 skill）
+        #     但「按 §1 枚举（… 等 22 类）」这类已在强信号分支覆盖
+        if RE_TT_ENUM_CTX.search(back):
+            _add(m.start(), num, quant, m.end())
+        elif RE_TT_ETC.search(back) and RE_TT_ENUM_CTX.search(prefix):
+            # 「等」+ 强枚举信号同现（强信号可落在「等」之前的整段前缀里）→ 收
+            _add(m.start(), num, quant, m.end())
+
+    # 「N-type」形态单独收（数字自带 task_type 语义）
+    for m in RE_TT_COUNT_TYPE.finditer(line):
+        if RE_TT_THRESHOLD.search(line[:m.start()]):
+            continue
+        _add(m.start(), int(m.group(1)), "-type", m.end())
+    # 「N type(s)」形态（frontmatter `task_type enum (22 types)`）→
+    # 须**同段有 task_type/枚举/enum 锚**才认领（避免「22 types of content」误伤）
+    for m in RE_TT_COUNT_EN.finditer(line):
+        if RE_TT_THRESHOLD.search(line[:m.start()]):
+            continue
+        back = line[:m.start()]
+        cut = None
+        for sep_m in RE_TT_STRONG_SEP.finditer(back):
+            cut = sep_m.end()
+        if cut is not None:
+            back = back[cut:]
+        if RE_TT_EN_ANCHOR.search(back):
+            _add(m.start(), int(m.group(1)), "type(s)", m.end())
+    return claims
 
 
 # ── SSOT 解析：task-router §1 表的 task_type 个数 ─────────────────────────
@@ -167,9 +335,9 @@ def check(root: Path, verbose: bool = False):
             for ln, line in _lines_with_no_ignore(text):
                 if not RE_TT_TRIGGER.search(line):
                     continue
-                # 该行所有「N 类 / N-type」计数都应是 task_type 计数
-                for m in list(RE_TT_COUNT.finditer(line)) + list(RE_TT_COUNT_ALT.finditer(line)):
-                    claimed = int(m.group(1))
+                # ★DEF-5：只收「确实指代 task_type 枚举总数」的计数
+                #   （行内触发词 + 计数**语义绑定**，见 _tt_count_claims）
+                for _pos, claimed, _quant in _tt_count_claims(line):
                     if claimed != tt_count:
                         bad.append(f"{rel}:{ln} 声明 {claimed} 类，实际 {tt_count} 类")
         add("D1", f"task_type 计数一致（文档声明 == router §1 表实际 {tt_count} 类）",

@@ -87,17 +87,47 @@ from pathlib import Path
 #   运行态**不应**进安装态（分发包泄漏本机操作痕迹 + 与版本层口径漂移）。
 EXCLUDE_DIRS = {'.git', '.in_use', '.pytest_cache', '__pycache__', '.DS_Store',
                 '.workbuddy', '.versionctl',
-                # v2.18.2（2026-11-18 内部测试实测）：00_archive 是**归档留痕目录**
-                # （git 跟踪、docs/00_archive/ 三个历史资产，2026-11-16 归档），
-                # package_release.sh 打包阶段有意排除（分发包 -876KB）——与 .git 同级
-                # 「源码留痕但不进分发包」。检查器原先按 git-ignored 语义排除，
-                # 但 `git ls-files --others --ignored` 不列 tracked 文件 ⇒ 归档三件
-                # 恒报 src_only 假漂移（即使安装态与分发包完全一致）。固定排除。
-                '00_archive',
                 # 2026-11-20 全量复测：专家团 SOP 项目级运行态目录（断点状态机/
                 # wiki 底座），agent-harness 流程写入被测仓时会真实出现，
                 # 内容可由流程重建——不属包内容，不报 src_only 假漂移
                 '.harness-kb', '.wiki-creator'}
+
+# ★ v2.20.0（2026-11-27 DEF-2 返工）：**仅作用于源码侧**的排除目录
+#
+# 病灶（主理人独立复核发现，v2.20.0 首版修复引入的真缺陷）：
+#   首版把 `04-test` 直接加进 `EXCLUDE_DIRS`。但 `collect_files` 的剪枝是
+#   **双向**的（遍历时剪目录 + 文件名命中即跳过），且**两侧共用**同一常量：
+#       dn[:] = [d for d in dn if d not in EXCLUDE_DIRS]   # 遍历时剪
+#       if name in EXCLUDE_DIRS or name in EXCLUDE_FILES:  # 命中即跳过
+#   ⇒ 源码侧 `04-test/` 被剪掉了，**安装态侧的 `04-test/` 也一并被剪掉**。
+#   ⇒ 「安装态残留了旧分发包带来的 04-test/」这个**真残留**场景，检查器
+#     彻底看不见（实测 src_only=[] / cache_only=[] / EXIT=0 = **漏报**）。
+#   ⇒ 且与本脚本自身宣称的语义（「安装态反而有 ⇒ 仍按 cache_only 报出」）
+#     直接矛盾。
+#
+# 正确语义（单向剪枝，与 git 忽略剪枝同构）：
+#   · 源码侧有、安装态无 ⇒ **正常**（该目录本就不进分发包）⇒ 不算漂移；
+#   · 安装态有、源码无 ⇒ **真残留**（旧分发包留下的）⇒ 仍须报 cache_only。
+#
+# 为什么不能靠 git 忽略剪枝兜住：二者都被 **git 跟踪** ⇒ 不在
+#   `git ls-files --others --ignored` 输出里 ⇒ 剪枝对它们天然无效。
+#
+# ── 成员语义（两类，别混淆）────────────────────────────────────────
+#   本集合 = 「**源码留痕但不分发**」——仓库里有意保留做公开证据，
+#   但 package_release.sh 打包阶段有意排除 ⇒ 两侧语义**不同**：
+#     源码侧有 → 正常；安装态侧有 → 真残留（该清）。
+#   EXCLUDE_DIRS = 「**运行态/元数据**」——本就不该出现在任一侧
+#     （.git / .in_use / .pytest_cache / .workbuddy / .versionctl /
+#      .harness-kb / .wiki-creator …）⇒ 两侧都剪才是对的。
+#
+#   `00_archive` 原先误放在 EXCLUDE_DIRS 里（v2.18.2 起），它其实是
+#   **归档留痕**（git 跟踪、docs/00_archive/ 三个历史资产）⇒ 与 04-test
+#   同构，已于 v2.20.0 迁入本集合。
+#
+# ⚠ 匹配粒度：`collect_files` 按**目录名**匹配（os.walk 的 dn 列表），
+#   不含路径 ⇒ 嵌套目录（docs/00_archive）同样生效（进入 docs/ 层时
+#   子目录名 00_archive 即被剪），且**不会**误伤 docs/ 下的其它内容。
+SRC_ONLY_EXCLUDE_DIRS = {'04-test', '00_archive'}
 
 # 排除的文件名（元数据，不是包内容）
 # .downloaded_at —— 宿主写入的「本次下载时间戳」。它**只存在于安装态**，
@@ -223,12 +253,18 @@ def _sha256(path: Path) -> str:
     return digest
 
 
-def collect_files(root: Path, git_ignored: set[str] | None = None) -> dict[str, str]:
+def collect_files(root: Path, git_ignored: set[str] | None = None,
+                  extra_exclude_dirs: set[str] | None = None) -> dict[str, str]:
     """遍历目录 → {相对路径: sha256}，排除元数据目录与 git 忽略路径。
 
     `git_ignored`：源码仓中被 .gitignore 排除的**具体相对路径**集合
     （由 `_git_ignored_paths` 提供）。命中的路径整条跳过——它们是运行态
     备份 / 本机工作产物，永远进不了分发包，不该算作「安装态缺失」。
+
+    `extra_exclude_dirs`：**本次调用额外**要剪的目录名（只影响这一侧）。
+    用于「单向剪枝」语义——同一目录名在源码侧该剪、在安装态侧不该剪
+    （见 SRC_ONLY_EXCLUDE_DIRS 的定义与 compare_pair 的用法）。
+    调用方按需传入，**不传**则完全沿用全局 EXCLUDE_DIRS 的既有行为。
 
     ⚠ 刻意**不做**「git 忽略文件 ⇒ 其所在目录整棵剪掉」的推断
       （v2.9.0 实测：会把 scripts/ 与 packages/ 整个剪掉 ⇒ 假漂移 547 项）。
@@ -238,10 +274,11 @@ def collect_files(root: Path, git_ignored: set[str] | None = None) -> dict[str, 
     if not root.is_dir():
         return out
     ignored = git_ignored or set()
+    excluded = EXCLUDE_DIRS | (extra_exclude_dirs or set())
     for dp, dn, fn in os.walk(root):
-        dn[:] = [d for d in dn if d not in EXCLUDE_DIRS]
+        dn[:] = [d for d in dn if d not in excluded]
         for name in fn:
-            if name in EXCLUDE_DIRS or name in EXCLUDE_FILES:
+            if name in excluded or name in EXCLUDE_FILES:
                 continue
             p = Path(dp) / name
             try:
@@ -317,10 +354,19 @@ def compare_pair(src: Path, cache: Path) -> dict:
       源码侧被 .gitignore 排除的目录（运行态备份）本就不该进安装态
       ⇒ 不算「安装态缺失」；但若安装态**反而有**这些目录，那是真残留
       ⇒ 仍按 cache_only 报出（该清）。两侧都排除 ⇒ 完全不报。
+
+    ⚠ v2.20.0（2026-11-27 DEF-2 返工）：SRC_ONLY_EXCLUDE_DIRS 同样
+      **只作用于源码侧**（`04-test` 与 `00_archive`）。
+      首版修复把 `04-test` 塞进全局 EXCLUDE_DIRS，而该常量的剪枝是
+      **双向**的（collect_files 遍历时剪目录、文件名命中即跳过，两侧共用）
+      ⇒ 安装态侧的 `04-test/` 也被剪掉 ⇒ 「安装态残留旧分发包的 04-test/」
+      这个**真残留**被彻底屏蔽（实测 cache_only=[] / EXIT=0 = 漏报）。
+      现改为：源码侧用 `extra_exclude_dirs` 单独剪，安装态侧**不剪**
+      ⇒ 源码留痕不算漂移，安装态真残留照报。
     """
     ignored = _git_ignored_paths(src)
-    s = collect_files(src, ignored)
-    c = collect_files(cache)   # 安装态不按 git 忽略剪枝
+    s = collect_files(src, ignored, extra_exclude_dirs=SRC_ONLY_EXCLUDE_DIRS)
+    c = collect_files(cache)   # 安装态不按 git 忽略剪枝，也不按 SRC_ONLY 剪
     src_only = sorted(set(s) - set(c))
     cache_only = sorted(set(c) - set(s))
     diff = sorted(k for k in set(s) & set(c) if s[k] != c[k])

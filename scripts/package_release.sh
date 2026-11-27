@@ -90,6 +90,10 @@ rm -rf "$STAGE/smart-textbook-team/docs/00_archive" 2>/dev/null || true
 # 专家团项目级运行态目录（agent-harness-expert SOP：断点状态机 / wiki 底座）
 # 不进分发包（2026-11-20 复测：zip 曾带入 .harness-kb 5 条目，泄漏内部流程状态）
 rm -rf "$STAGE/smart-textbook-team/.harness-kb" "$STAGE/smart-textbook-team/.wiki-creator" 2>/dev/null || true
+# 流程留档目录不进分发包（2026-11-27 DEF-2：04-test 收录测试报告 / 审计报告 /
+# 成员报告等流程留档，属内部运行态证据，与 .harness-kb 同口径——仓库内有意
+# git 入库做公开流程留痕，但不对外分发；此前漏排，zip 曾带入 04-test 4 条目）
+rm -rf "$STAGE/smart-textbook-team/04-test" 2>/dev/null || true
 
 rm -f "$OUT"
 (cd "$STAGE" && zip -r -q "$OUT" smart-textbook-team)

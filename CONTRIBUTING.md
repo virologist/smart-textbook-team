@@ -1,6 +1,6 @@
 # Contributing to Smart Textbook Team
 
-> **Note**: This repository is currently in **private pre-release** state. Public contribution is not yet open. This document is provided as a preview of the expected workflow once the repo is moved to public visibility.
+> **Note**: This repository is in **public pre-release** state. Public contribution is not yet formally open. This document is provided as a preview of the expected workflow once the contribution process is officially announced.
 
 Thank you for your interest in contributing to **smart-textbook-team**.
 
@@ -21,7 +21,7 @@ Changes that violate the layer separation will be rejected.
 ## 🚀 Development Setup
 
 ```bash
-git clone https://github.com/biodog/smart-textbook-team.git
+git clone https://github.com/virologist/smart-textbook-team.git
 cd smart-textbook-team
 
 # 安装到本地测试环境
@@ -31,8 +31,8 @@ bash install.sh --target all          # 实际安装
 # 跑全量测试
 pytest tests/test_smart_textbook_team.py
 
-# 验证校验器（用于 ch06 等下游产物）
-python3 tb-writer/scripts/validate_chapter.py <chapter.docx>
+# 验证书稿校验器（门禁 4；--work-root 指向书稿工作区，--chapter 传章节文件名）
+python3 scripts/check_manuscript.py --work-root <work-root> --chapter <chapter>.md --strict
 ```
 
 ---

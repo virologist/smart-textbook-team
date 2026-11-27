@@ -3,6 +3,64 @@
 All notable changes to **smart-textbook-team** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.20.0] — 2026-11-27 ★P3.5 审计遗留缺陷闭环（4 项漂移修复 + 2 项门禁盲区根治）
+
+### 背景
+v2.19.1 发布后主理人按 SOP 做**三源对账**（`_state.json` 声明 vs 成员回传 vs 落盘实物），
+发现状态机记 `P4-done / open_items=[]`，但**实物层面 P3.5 审计遗留缺陷并未真正闭环**——
+其中数项曾被记为「建议后续处理」而未落盘。本轮逐项复核、修复、回归，并发布。
+
+### Fixed — 审计遗留漂移（4 项）
+- **DEF-2** 分发包排除 `04-test/`：`scripts/package_release.sh` 排除清单追加流程留档目录
+  （此前 zip 带入 3 条目成员报告）。zip 内 `04-test` 条目 4 → 0。
+- **DEF-5** task-router 正文计数漂移：`skills/task-router/SKILL.md:10` 「17 个标准 task_type」
+  → 「22 个」（与 §1 SSOT 表 22 类一致）。该项**审计员曾误报为「§1 表 17 行」而被驳回**，
+  但正文残留确为真缺陷——驳回的是「表行数」结论，不是「正文数字」结论。
+- **DEF-4** CI 注释漂移两处：workflow 头注「P0 阶段扩至 4 道」与实列 9 道族/30 step 不符；
+  `:322` 注释「避免 282 计分项重复执行」与实测 330 不符 → 均改为**动态表述**（以评测器输出为准），
+  杜绝硬编码数字再次滞后。
+- **README 日期**：`2026-11-13` 经 git 历史追溯为 v2.15.1 引入的**固定基准日期**（历次 bump 保持
+  不变），属既有约定而非漂移 → 判定**不改**。
+
+### Fixed — 主理人独立复核追加（3 项，非审计员所报）
+- **安装态检查器真残留漏报**（`install_state_check.py`）：剪枝常量 `EXCLUDE_DIRS` 是**双向**的
+  （两侧共用），把「源码留痕但不进分发包」的目录塞进它 ⇒ 安装态侧的真残留被一并屏蔽
+  （实测 cache_only=[] / EXIT=0 = 漏报）。改为**单向剪枝**通道 `SRC_ONLY_EXCLUDE_DIRS`：
+  源码侧有/安装态无 ⇒ 不算漂移；安装态有/源码无 ⇒ 仍报 cache_only。覆盖 `04-test` 与
+  `00_archive`（后者为**既存**同根因缺陷，本轮一并闭环）。
+- **`_iter_md` 分支 B 免疫失效**（`check_doc_consistency.py`）：两条扫描分支是独立 if，
+  分支 A 带 `IMMUNE_FILES` 检查、分支 B 漏掉 ⇒ 免疫承诺（CHANGELOG 照抄旧数字不参与判据）
+  在分支 B 完全失效。当前 `SCAN_FILES` 恰不含免疫文件故**尚未发作**，但属埋雷（任何人把
+  CHANGELOG 加入根文件扫描列表即静默漏检）→ 补齐 + 回归锁定。
+- **负向测试污染生产资产**（`tests/test_doc_consistency.py`）：D7 负向例直接改**真实包**的
+  `references/member-contracts.json`，靠 `try/finally` 恢复——进程被 SIGTERM 杀死时 finally
+  不执行，破坏样本**永久留在生产资产**（实测已发生：`fake-task-xx` 键残留致 D7 对真实包持续报红）。
+  改为在**沙箱副本**上破坏，从根上杜绝污染。
+
+### Fixed — 文档可执行性（2 项）
+- **CONTRIBUTING.md clone URL 指向不存在的仓库**：`biodog/smart-textbook-team` 经 GitHub API
+  实证 **Could not resolve**（实际为 `virologist/smart-textbook-team`）→ 修正。贡献者按原文
+  克隆必然失败。
+- **CONTRIBUTING.md 引用已不存在的脚本**：`tb-writer/scripts/validate_chapter.py`（`tb-writer/`
+  目录 v2.19.1 已不存在）→ 改为真实可执行的 `scripts/check_manuscript.py --work-root … --chapter … --strict`。
+  另修正「private pre-release」表述（仓库实为 PUBLIC，GitHub API 实证）。
+
+### Added — 门禁盲区根治
+- **D1 计数门禁量词面 + 语义面双补**（`check_doc_consistency.py`）：旧 `RE_TT_COUNT` 只认
+  「类/种/-type」三种量词 ⇒「N 个标准 task_type」**整行零判定**（真实仓库带着该漂移跑门禁仍
+  7/7 PASS = 假门禁）。现扩量词面 + 新增四态语义绑定（直邻/省略/异指/阈值豁免），
+  避免只扩量词导致的误伤（「22 个成员」「13 类 skill」）。实测破坏 → D1 FAIL / 退出码 1；
+  恢复 → 7/7 全绿。**同一缺陷第 2 次复发**（2026-11-12 审计 A3 修的是「15→17」措辞，
+  未根治量词面）。
+
+### Verification
+- pytest **490 passed / 3 skipped**（493 collected）；`run_all.py` 12/12 门禁全绿；
+  静态契约 1.000；路由 63/63；文档一致性 7/7；链接 0 断链；学科中立 FAIL 0。
+- manifest 同步 33/33；版本七处 2.19.1 → 2.20.0 自洽。
+- 负向对照：回退 D1 加固 → 正例立红；回退 `_iter_md` 免疫修复 → 新用例立红。
+- 留档纪律：审计报告 / `SKILL.md:317` 历史变更行 / `docs/2026-11-12` 报告 A3 三处**保持原貌不改**
+  （按留档纪律保留证据快照，闭环记录以本条目为准）；已验证 D1 对这些留档的豁免生效。
+
 ## [2.19.1] — 2026-11-24 P3.5 一致性审计收口（撞限重跑完成）
 
 ### 背景
