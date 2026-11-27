@@ -145,6 +145,20 @@ class TestCollectFiles:
         assert 'a.py' in files
         assert '.downloaded_at' not in files, '下载时间戳不是包内容，必须排除'
 
+    def test_excludes_orphaned_at_file(self, work_root):
+        """宿主「孤儿标记」时间戳，同 .downloaded_at 性质（只存在于安装态）。
+
+        实测（2026-11-27）：zip 内 0 项 / 源码 git 跟踪 0 项 / 各版本 cache 皆有，
+        内容为 epoch 毫秒。不排除 ⇒ 每次升版后宿主必然报「安装态多出 1 项」
+        = 纯假漂移（v2.20.0 实测已发生）。
+        """
+        pkg = work_root / 'pkg'
+        _write(pkg / 'a.py', 'x')
+        _write(pkg / '.orphaned_at', '1795746776286')
+        files = isc.collect_files(pkg)
+        assert 'a.py' in files
+        assert '.orphaned_at' not in files, '宿主孤儿标记不是包内容，必须排除'
+
     @pytest.mark.parametrize('dirname', ['.git', '.in_use', '.pytest_cache',
                                          '__pycache__'])
     def test_excludes_metadata_dirs(self, work_root, dirname):
@@ -497,14 +511,18 @@ class TestCliExitCodes:
         assert 'packages' in data
 
     def test_metadata_only_difference_is_not_drift(self, work_root):
-        """负向核心：安装态多一个 .downloaded_at → **不得**报漂移。
+        """负向核心：安装态多出宿主元数据文件 → **不得**报漂移。
 
         这是首版实战的真坑（12 个包恒定报陈旧 1 项）。
+        ★v2.20.0：并入 `.orphaned_at` —— 宿主「孤儿标记」时间戳，同属只存在于
+        安装态的元数据（实测 zip 内 0 项 / 源码 git 跟踪 0 项），不排除则每次
+        升版后宿主必然报「安装态多出 1 项」= 假漂移。
         """
         make_plugins_root(work_root, src_files={'a.py': 'same'},
                           cache_files={'a.py': 'same'})
         cache_dir = work_root / 'cache' / 'my-experts' / 'demo-pkg' / '1.0.0'
         _write(cache_dir / '.downloaded_at', '2026-11-04T10:00:00')
+        _write(cache_dir / '.orphaned_at', '1795746776286')
         (cache_dir / '.in_use').mkdir(exist_ok=True)
         _write(cache_dir / '.in_use' / '94544', '{"pid":123}')
         r = run_cli('--plugins-root', str(work_root))

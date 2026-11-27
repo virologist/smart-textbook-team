@@ -135,7 +135,12 @@ SRC_ONLY_EXCLUDE_DIRS = {'04-test', '00_archive'}
 #   ① 每个包都会恒定报「内容陈旧 1 项」→ 真漂移被噪声淹没；
 #   ② cache_only 里全是它 → 误报「源码已删」。
 #   ⇒ 一律排除。
-EXCLUDE_FILES = {'.downloaded_at'}
+# .orphaned_at —— 宿主写入的「孤儿标记时间戳」，与 .downloaded_at **同类**：
+#   实测（2026-11-27）它只存在于安装态 cache（zip 内 0 项 / 源码 git 跟踪 0 项 /
+#   2.18.1 起各版本 cache 皆有），内容为 epoch 毫秒时间戳，随宿主生命周期变化。
+#   不排除 ⇒ 每次升版后宿主必然报「安装态多出 1 项」= 纯假漂移。
+#   ⇒ 与 .downloaded_at 一并排除（v2.20.0 追加）。
+EXCLUDE_FILES = {'.downloaded_at', '.orphaned_at'}
 
 # ★ v2.9.0（2026-11-05 R3-遗留 L4a）：git 忽略目录的**通用排除**
 #
